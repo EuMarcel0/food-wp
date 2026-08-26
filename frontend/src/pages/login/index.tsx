@@ -44,10 +44,16 @@ export function LoginPage() {
           <FormikForm>
             {status ? <Alert type='error' showIcon style={{ marginBottom: 16 }} message={status} /> : null}
             <FormField name='email' label='E-mail'>
-              <Input autoComplete='email' placeholder='voce@loja.com' />
+              <Input
+                type="email"
+                autoComplete="email"
+                spellCheck={false}
+                inputMode="email"
+                placeholder="voce@loja.com…"
+              />
             </FormField>
             <FormField name='password' label='Senha'>
-              <Input.Password autoComplete='current-password' placeholder='********' />
+              <Input.Password autoComplete="current-password" placeholder="Sua senha…" />
             </FormField>
             <Button type='primary' htmlType='submit' block loading={isSubmitting} disabled={!ready}>
               Entrar

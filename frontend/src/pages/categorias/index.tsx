@@ -92,6 +92,7 @@ export function CategoriesPage() {
   return (
     <>
       <PageHeader
+        kicker="Organização"
         title="Categorias"
         subtitle="Organize o cardápio. Só as ativas aparecem no WhatsApp e no cadastro de itens."
         extra={
@@ -113,7 +114,7 @@ export function CategoriesPage() {
         <Input.Search
           className="filter-search"
           allowClear
-          placeholder="Nome da categoria"
+          placeholder="Nome da categoria…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
         />
@@ -189,7 +190,7 @@ export function CategoriesPage() {
           empty={
             activeCount > 0
               ? "Nenhuma categoria encontrada com esses filtros."
-              : "Nenhuma categoria nesta página."
+              : "Inclua a primeira categoria para organizar o cardápio."
           }
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);

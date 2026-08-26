@@ -1,4 +1,5 @@
 import { Button, Input, InputNumber, Select, Switch } from "antd";
+import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { FormControl, FormField } from "../../components/FormField";
 import { maskBRL } from "../../lib/validation";
 import type { ProductValues } from "../../lib/validation";
@@ -28,6 +29,17 @@ function emptyGroup(
   };
 }
 
+function groupMeta(group: ProductValues["optionGroups"][number]) {
+  const price =
+    group.priceMode === "replace" ? "Substitui o preço" : "Soma no preço";
+  const required = group.required ? "Obrigatório" : "Opcional";
+  const max =
+    Number(group.maxSelect) === 1
+      ? "1 escolha"
+      : `Até ${group.maxSelect} escolhas`;
+  return `${required} · ${price} · ${max}`;
+}
+
 export function OptionGroupsEditor({
   groups,
   onChange,
@@ -43,60 +55,74 @@ export function OptionGroupsEditor({
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    <div className="product-form-groups">
+      <div className="product-form-templates">
         <Button
           size="small"
+          icon={<PlusOutlined />}
           onClick={() => onChange([...groups, emptyGroup("Tamanho", "replace", 1)])}
         >
-          + Tamanho
+          Tamanho
         </Button>
         <Button
           size="small"
+          icon={<PlusOutlined />}
           onClick={() => onChange([...groups, emptyGroup("Sabores", "addon", 2)])}
         >
-          + Sabores
+          Sabores
         </Button>
         <Button
           size="small"
+          icon={<PlusOutlined />}
           onClick={() => onChange([...groups, emptyGroup("Borda", "addon", 1, false)])}
         >
-          + Borda
+          Borda
         </Button>
         <Button
           size="small"
+          icon={<PlusOutlined />}
           onClick={() => onChange([...groups, emptyGroup("", "addon", 1)])}
         >
-          + Grupo livre
+          Grupo livre
         </Button>
       </div>
+      <div className="product-form-groups-scroll">
+      {groups.length === 0 ? (
+        <div className="product-form-empty">
+          <p>
+            Nenhuma etapa ainda. Comece por um atalho ou crie um grupo livre.
+          </p>
+        </div>
+      ) : null}
       {groups.map((group, groupIndex) => (
-        <div
-          key={group.id}
-          style={{
-            border: "1px solid var(--food-border, #e5e5e5)",
-            borderRadius: 8,
-            padding: 12,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <strong>{group.name || `Grupo ${groupIndex + 1}`}</strong>
+        <article key={group.id} className="product-form-group">
+          <div className="product-form-group-head">
+            <div className="product-form-group-title">
+              <span className="product-form-step">
+                {String(groupIndex + 1).padStart(2, "0")}
+              </span>
+              <div>
+                <strong>{group.name || `Etapa ${groupIndex + 1}`}</strong>
+                <div className="product-form-group-meta">{groupMeta(group)}</div>
+              </div>
+            </div>
             <Button
-              type="link"
+              type="text"
               danger
               size="small"
+              icon={<DeleteOutlined />}
               onClick={() => onChange(groups.filter((_, index) => index !== groupIndex))}
             >
-              Remover grupo
+              Remover
             </Button>
           </div>
           <FormField name={`optionGroups.${groupIndex}.name`} label="Nome do grupo">
-            <Input placeholder="Tamanho, sabores, borda, ponto da carne..." />
+            <Input placeholder="Tamanho, sabores, borda, ponto da carne…" />
           </FormField>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="product-form-group-grid">
             <FormControl
               name={`optionGroups.${groupIndex}.priceMode`}
-              label="Preço"
+              label="Como entra no preço"
             >
               {({ value, setValue }) => (
                 <Select
@@ -132,72 +158,84 @@ export function OptionGroupsEditor({
               )}
             </FormControl>
           </div>
-          <FormControl
-            name={`optionGroups.${groupIndex}.required`}
-            label="Obrigatório"
-          >
-            {({ value, setValue }) => (
-              <Switch
-                checked={Boolean(value)}
-                onChange={(checked) => {
-                  setValue(checked);
-                  update(groupIndex, {
-                    required: checked,
-                    minSelect: checked ? Math.max(1, group.minSelect) : 0,
-                  });
-                }}
-              />
-            )}
-          </FormControl>
-          {group.options.map((option, optionIndex) => (
-            <div
-              key={option.id}
-              style={{ display: "grid", gridTemplateColumns: "1fr 120px 32px", gap: 8 }}
-            >
-              <FormField
-                name={`optionGroups.${groupIndex}.options.${optionIndex}.name`}
-                label={optionIndex === 0 ? "Opções" : ""}
-              >
-                <Input placeholder="Grande, calabresa, catupiry..." />
-              </FormField>
-              <FormControl
-                name={`optionGroups.${groupIndex}.options.${optionIndex}.extraPrice`}
-                label={optionIndex === 0 ? "Preço" : ""}
-              >
-                {({ value, setValue, setTouched }) => (
-                  <Input
-                    prefix="R$"
-                    inputMode="numeric"
-                    value={String(value ?? "")}
-                    onChange={(event) => setValue(maskBRL(event.target.value))}
-                    onBlur={setTouched}
-                  />
-                )}
-              </FormControl>
-              <Button
-                type="text"
-                danger
-                disabled={group.options.length <= 1}
-                onClick={() =>
-                  update(groupIndex, {
-                    options: group.options.filter((_, index) => index !== optionIndex),
-                  })
-                }
-              >
-                ×
-              </Button>
+          <label className="product-form-toggle" style={{ marginBottom: 12 }}>
+            <div>
+              <strong>Obrigatório</strong>
+              <p>O cliente precisa responder esta etapa</p>
             </div>
-          ))}
-          <Button
-            size="small"
-            onClick={() =>
-              update(groupIndex, { options: [...group.options, emptyOption()] })
-            }
-          >
-            + Opção
-          </Button>
-        </div>
+            <FormControl name={`optionGroups.${groupIndex}.required`} compact>
+              {({ value, setValue }) => (
+                <Switch
+                  checked={Boolean(value)}
+                  onChange={(checked) => {
+                    setValue(checked);
+                    update(groupIndex, {
+                      required: checked,
+                      minSelect: checked ? Math.max(1, group.minSelect) : 0,
+                    });
+                  }}
+                />
+              )}
+            </FormControl>
+          </label>
+          <div className="product-form-options">
+            <div className="product-form-options-head">
+              <span>Opção</span>
+              <span>Preço</span>
+              <span />
+            </div>
+            {group.options.map((option, optionIndex) => (
+              <div key={option.id} className="product-form-option">
+                <FormField
+                  name={`optionGroups.${groupIndex}.options.${optionIndex}.name`}
+                  compact
+                >
+                  <Input placeholder="Grande, calabresa, catupiry…" />
+                </FormField>
+                <FormControl
+                  name={`optionGroups.${groupIndex}.options.${optionIndex}.extraPrice`}
+                  compact
+                >
+                  {({ value, setValue, setTouched }) => (
+                    <Input
+                      prefix="R$"
+                      inputMode="numeric"
+                      value={String(value ?? "")}
+                      onChange={(event) => setValue(maskBRL(event.target.value))}
+                      onBlur={setTouched}
+                    />
+                  )}
+                </FormControl>
+                <Button
+                  className="product-form-option-remove"
+                  type="text"
+                  danger
+                  aria-label="Remover opção"
+                  disabled={group.options.length <= 1}
+                  onClick={() =>
+                    update(groupIndex, {
+                      options: group.options.filter((_, index) => index !== optionIndex),
+                    })
+                  }
+                >
+                  ×
+                </Button>
+              </div>
+            ))}
+            <Button
+              className="product-form-add-option"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() =>
+                update(groupIndex, { options: [...group.options, emptyOption()] })
+              }
+            >
+              Adicionar opção
+            </Button>
+          </div>
+        </article>
       ))}
+      </div>
     </div>
   );
 }

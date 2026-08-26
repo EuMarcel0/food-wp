@@ -62,16 +62,22 @@ export function SignupPage() {
             ) : null}
             {status?.error ? <Alert type='error' showIcon style={{ marginBottom: 16 }} message={status.error} /> : null}
             <FormField name='name' label='Nome'>
-              <Input autoComplete='name' placeholder='Seu nome' />
+              <Input autoComplete="name" placeholder="Nome da equipe…" />
             </FormField>
             <FormField name='email' label='E-mail'>
-              <Input autoComplete='email' placeholder='voce@loja.com' />
+              <Input
+                type="email"
+                autoComplete="email"
+                spellCheck={false}
+                inputMode="email"
+                placeholder="voce@loja.com…"
+              />
             </FormField>
             <FormField name='password' label='Senha'>
-              <Input.Password autoComplete='new-password' placeholder='********' />
+              <Input.Password autoComplete="new-password" placeholder="Mínimo 6 caracteres…" />
             </FormField>
             <FormField name='confirm' label='Confirmar senha'>
-              <Input.Password autoComplete='new-password' placeholder='********' />
+              <Input.Password autoComplete="new-password" placeholder="Repita a senha…" />
             </FormField>
             <Button type='primary' htmlType='submit' block loading={isSubmitting} disabled={!ready}>
               Cadastrar

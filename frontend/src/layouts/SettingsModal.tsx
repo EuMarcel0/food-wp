@@ -108,17 +108,17 @@ export function SettingsModal({
               </Form.Item>
             </Form>
             <FormField name="name" label="Nome">
-              <Input placeholder="Seu nome" />
+              <Input autoComplete="name" placeholder="Nome que aparece no painel…" />
             </FormField>
             <p className="settings-section">Alterar senha</p>
             <FormField name="currentPassword" label="Senha atual">
-              <Input.Password autoComplete="current-password" placeholder="Obrigatória para trocar a senha" />
+              <Input.Password autoComplete="current-password" placeholder="Necessária para trocar a senha…" />
             </FormField>
             <FormField name="newPassword" label="Nova senha">
-              <Input.Password autoComplete="new-password" placeholder="Mínimo de 6 caracteres" />
+              <Input.Password autoComplete="new-password" placeholder="Mínimo 6 caracteres…" />
             </FormField>
             <FormField name="confirmPassword" label="Confirmar nova senha">
-              <Input.Password autoComplete="new-password" placeholder="Repita a nova senha" />
+              <Input.Password autoComplete="new-password" placeholder="Repita a nova senha…" />
             </FormField>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <Button onClick={onClose}>Cancelar</Button>

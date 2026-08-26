@@ -14,12 +14,13 @@ export function AuthLayout({
     <div className="auth-shell">
       <Card className="auth-card" bordered={false}>
         <div className="auth-brand">
-          <div className="food-mark">🍽️</div>
+          <div className="food-mark" aria-hidden="true">🍽️</div>
           <div>
             <strong>Food WP</strong>
             <span>Retaguarda do bot</span>
           </div>
         </div>
+        <p className="page-kicker">Acesso</p>
         <Typography.Title level={4} className="auth-title">
           {title}
         </Typography.Title>

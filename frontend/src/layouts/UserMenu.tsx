@@ -87,12 +87,14 @@ export function UserMenu() {
           },
         }}
       >
-        <Avatar
-          className="user-avatar"
-          src={user ? getAvatarUrl(user) : undefined}
-          icon={!user ? <UserOutlined /> : undefined}
-          style={{ backgroundColor: "#E85D04", cursor: "pointer" }}
-        />
+        <button type="button" className="user-menu-trigger" aria-label="Menu da conta">
+          <Avatar
+            className="user-avatar"
+            src={user ? getAvatarUrl(user) : undefined}
+            icon={!user ? <UserOutlined /> : undefined}
+            style={{ backgroundColor: "#E85D04" }}
+          />
+        </button>
       </Dropdown>
       <SettingsModal
         open={settingsOpen}

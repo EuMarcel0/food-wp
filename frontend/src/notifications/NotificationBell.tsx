@@ -58,7 +58,7 @@ export function NotificationBell() {
               ))}
             </ul>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhuma notificação" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhuma notificação ainda." />
           )}
         </div>
       }

@@ -151,6 +151,7 @@
   letter-spacing: -0.03em;
   color: var(--food-accent);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .entity-card-meta {

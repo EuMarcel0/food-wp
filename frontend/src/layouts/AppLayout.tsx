@@ -35,7 +35,7 @@ function readSiderCollapsed() {
 function SiderBrand() {
   return (
     <div className="food-sider-brand">
-      <div className="food-mark">🍽️</div>
+      <div className="food-mark" aria-hidden="true">🍽️</div>
       <div className="food-sider-copy">
         <strong>Food WP</strong>
         <span>Retaguarda do bot</span>
@@ -83,6 +83,9 @@ export function AppLayout() {
   return (
     <NotificationProvider>
     <Layout className="app-shell" hasSider={!isMobile}>
+      <a className="skip-link" href="#conteudo">
+        Ir para o conteúdo
+      </a>
       {isMobile ? (
         <Drawer
           placement="left"
@@ -96,7 +99,7 @@ export function AppLayout() {
           }}
         >
           <SiderBrand />
-          {menu}
+          <nav aria-label="Menu principal">{menu}</nav>
         </Drawer>
       ) : (
         <Layout.Sider
@@ -107,7 +110,7 @@ export function AppLayout() {
           theme="dark"
         >
           <SiderBrand />
-          {menu}
+          <nav aria-label="Menu principal">{menu}</nav>
         </Layout.Sider>
       )}
       <Layout className="app-main">
@@ -157,7 +160,7 @@ export function AppLayout() {
             <UserMenu />
           </div>
         </Layout.Header>
-        <Layout.Content className="app-content">
+        <Layout.Content id="conteudo" className="app-content" tabIndex={-1}>
           <div className="app-page">
             <Outlet />
           </div>

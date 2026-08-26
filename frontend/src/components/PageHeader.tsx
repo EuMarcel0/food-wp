@@ -2,10 +2,12 @@ import type { ReactNode } from "react";
 import { Typography } from "antd";
 
 export function PageHeader({
+  kicker,
   title,
   subtitle,
   extra,
 }: {
+  kicker?: string;
   title: string;
   subtitle?: string;
   extra?: ReactNode;
@@ -13,6 +15,7 @@ export function PageHeader({
   return (
     <div className="page-header">
       <div>
+        {kicker ? <p className="page-kicker">{kicker}</p> : null}
         <Typography.Title level={3} className="page-title">
           {title}
         </Typography.Title>

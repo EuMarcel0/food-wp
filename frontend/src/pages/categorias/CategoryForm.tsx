@@ -58,7 +58,7 @@ export function CategoryForm({
               />
             ) : null}
             <FormField name="name" label="Nome">
-              <Input placeholder="Ex.: Lanches" />
+              <Input placeholder="Ex.: Lanches…" />
             </FormField>
             <FormField name="sortOrder" label="Ordem">
               <Input inputMode="numeric" placeholder="0" />

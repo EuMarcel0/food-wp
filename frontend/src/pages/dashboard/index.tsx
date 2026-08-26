@@ -29,10 +29,10 @@ export function DashboardPage() {
   return (
     <>
       <div className={showHeader ? undefined : "page-header-pending"}>
-        <PageHeader title={title} subtitle={subtitle} />
+        <PageHeader kicker="Cozinha" title={title} subtitle={subtitle} />
       </div>
       <div className="stat-grid">
-        <article className="stat-card">
+        <article className="stat-card is-priority">
           <span className="stat-label">Pedidos em aberto</span>
           <strong className="stat-value">{stats.open}</strong>
         </article>

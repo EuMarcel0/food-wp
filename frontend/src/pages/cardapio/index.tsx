@@ -93,6 +93,7 @@ export function CatalogPage() {
   return (
     <>
       <PageHeader
+        kicker="Itens"
         title="Cardápio"
         subtitle="Os itens ativos aparecem para o cliente no WhatsApp."
         extra={
@@ -119,7 +120,7 @@ export function CatalogPage() {
         <Input.Search
           className="filter-search"
           allowClear
-          placeholder="Nome ou descrição"
+          placeholder="Nome ou descrição…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
         />
@@ -224,7 +225,7 @@ export function CatalogPage() {
           empty={
             activeCount > 0
               ? "Nenhum item encontrado com esses filtros."
-              : "Nenhum item nesta página."
+              : "Inclua o primeiro item do cardápio."
           }
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);

@@ -11,6 +11,9 @@ const sharedToken: ThemeConfig["token"] = {
   controlHeight: 40,
   controlHeightSM: 32,
   controlHeightLG: 44,
+  controlOutline: "rgba(232, 93, 4, 0.28)",
+  controlOutlineWidth: 3,
+  motionDurationMid: "0.2s",
 };
 
 const sharedComponents: ThemeConfig["components"] = {

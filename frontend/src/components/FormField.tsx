@@ -33,10 +33,12 @@ export function FormField({
   name,
   label,
   children,
+  compact,
 }: {
   name: string;
-  label: string;
+  label?: string;
   children: ReactElement<FieldProps>;
+  compact?: boolean;
 }) {
   const [field, meta] = useField(name);
   const message = fieldError(meta.error);
@@ -48,7 +50,7 @@ export function FormField({
         label={label || undefined}
         validateStatus={invalid ? "error" : ""}
         help={invalid ? message : undefined}
-        style={{ marginBottom: 12 }}
+        style={{ marginBottom: compact ? 0 : 12 }}
       >
       {cloneElement(children, field)}
     </Form.Item>
@@ -60,15 +62,17 @@ export function FormControl({
   name,
   label,
   children,
+  compact,
 }: {
   name: string;
-  label: string;
+  label?: string;
   children: (helpers: {
     value: unknown;
     invalid: boolean;
     setValue: (value: unknown) => void;
     setTouched: () => void;
   }) => ReactNode;
+  compact?: boolean;
 }) {
   const [field, meta, helpers] = useField(name);
   const message = fieldError(meta.error);
@@ -77,10 +81,10 @@ export function FormControl({
   return (
     <Form layout="vertical" requiredMark={false} component={false}>
       <Form.Item
-        label={label}
+        label={label || undefined}
         validateStatus={invalid ? "error" : ""}
         help={invalid ? message : undefined}
-        style={{ marginBottom: 12 }}
+        style={{ marginBottom: compact ? 0 : 12 }}
       >
         {children({
           value: field.value,

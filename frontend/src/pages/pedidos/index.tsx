@@ -122,8 +122,9 @@ export function OrdersPage() {
   return (
     <>
       <PageHeader
+        kicker="Fila"
         title="Pedidos"
-        subtitle="Ao mudar o status, o backend avisa o cliente no WhatsApp automaticamente."
+        subtitle="Ao mudar o status, o cliente recebe o aviso no WhatsApp."
       />
       <ListFilters
         activeCount={activeCount}
@@ -136,7 +137,7 @@ export function OrdersPage() {
         <Input.Search
           className="filter-search"
           allowClear
-          placeholder="Código, cliente ou item"
+          placeholder="Código, cliente ou item…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
         />
@@ -251,7 +252,7 @@ export function OrdersPage() {
           empty={
             activeCount > 0
               ? "Nenhum pedido encontrado com esses filtros."
-              : "Nenhum pedido nesta página."
+              : "Quando o cliente pedir no WhatsApp, a fila aparece aqui."
           }
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);

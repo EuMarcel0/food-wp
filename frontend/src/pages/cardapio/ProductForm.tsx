@@ -9,6 +9,7 @@ import {
 } from "../../lib/validation";
 import type { Category, Product } from "../../types";
 import { OptionGroupsEditor } from "./OptionGroupsEditor";
+import "./product-form.css";
 
 function groupsFromProduct(product: Product | null): ProductValues["optionGroups"] {
   return (product?.optionGroups ?? []).map((group) => ({
@@ -59,7 +60,28 @@ export function ProductForm({
       onCancel={onCancel}
       footer={null}
       destroyOnClose
-      width={680}
+      centered
+      width="80vw"
+      rootClassName="product-form-modal"
+      styles={{
+        content: {
+          display: "flex",
+          flexDirection: "column",
+          padding: 0,
+          overflow: "hidden",
+        },
+        header: {
+          margin: 0,
+          padding: "16px 24px",
+          borderBottom: "1px solid var(--food-card-border)",
+        },
+        body: {
+          flex: 1,
+          minHeight: 0,
+          padding: 0,
+          overflow: "hidden",
+        },
+      }}
     >
       <Formik
         enableReinitialize
@@ -84,91 +106,137 @@ export function ProductForm({
         }}
       >
         {({ isSubmitting, status, values, setFieldValue, errors, touched }) => (
-          <FormikForm>
+          <FormikForm className="product-form">
             {status ? (
               <Alert
+                className="product-form-alert"
                 type="error"
                 showIcon
-                style={{ marginBottom: 12 }}
                 message={status}
               />
             ) : null}
-            <FormField name="name" label="Nome">
-              <Input placeholder="Ex.: Pizza, X-Burguer" />
-            </FormField>
-            <FormControl name="categoryId" label="Categoria">
-              {({ value, setValue, setTouched }) => (
-                <Select
-                  style={{ width: "100%" }}
-                  placeholder="Escolha a categoria"
-                  value={value ? String(value) : undefined}
-                  onChange={(next) => setValue(next)}
-                  onBlur={setTouched}
-                  options={categories.map((category) => ({
-                    value: category.id,
-                    label: category.name,
-                  }))}
-                />
-              )}
-            </FormControl>
-            <FormField name="description" label="Descrição">
-              <Input.TextArea rows={3} placeholder="Opcional" />
-            </FormField>
-            <FormControl
-              name="price"
-              label={
-                values.customizable
-                  ? "Preço base (se nenhuma opção substituir)"
-                  : "Preço"
-              }
-            >
-              {({ value, setValue, setTouched }) => (
-                <Input
-                  prefix="R$"
-                  inputMode="numeric"
-                  placeholder="0,00"
-                  value={String(value ?? "")}
-                  onChange={(event) => setValue(maskBRL(event.target.value))}
-                  onBlur={setTouched}
-                />
-              )}
-            </FormControl>
-            <FormControl name="active" label="Ativo no WhatsApp">
-              {({ value, setValue }) => (
-                <Switch
-                  checked={Boolean(value)}
-                  onChange={(checked) => setValue(checked)}
-                />
-              )}
-            </FormControl>
-            <FormControl name="customizable" label="Montável">
-              {({ value, setValue }) => (
-                <Switch
-                  checked={Boolean(value)}
-                  onChange={(checked) => setValue(checked)}
-                />
-              )}
-            </FormControl>
-            {values.customizable ? (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ marginBottom: 8, fontWeight: 600 }}>
-                  Opções de montagem
-                </div>
-                {typeof errors.optionGroups === "string" && touched.optionGroups ? (
-                  <Alert
-                    type="error"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                    message={errors.optionGroups}
-                  />
+            <div className="product-form-body">
+              <section className="product-form-pane product-form-pane--identity">
+                <p className="product-form-kicker">Ficha</p>
+                <h3 className="product-form-heading">O que aparece no cardápio</h3>
+                <p className="product-form-hint">
+                  Nome, categoria e preço base. O cliente vê isso antes de montar o pedido.
+                </p>
+                <FormField name="name" label="Nome">
+                  <Input placeholder="Ex.: Pizza, X-Burguer…" />
+                </FormField>
+                <FormControl name="categoryId" label="Categoria">
+                  {({ value, setValue, setTouched }) => (
+                    <Select
+                      style={{ width: "100%" }}
+                      placeholder="Escolha a categoria"
+                      value={value ? String(value) : undefined}
+                      onChange={(next) => setValue(next)}
+                      onBlur={setTouched}
+                      options={categories.map((category) => ({
+                        value: category.id,
+                        label: category.name,
+                      }))}
+                    />
+                  )}
+                </FormControl>
+                <FormField name="description" label="Descrição">
+                  <Input.TextArea rows={4} placeholder="Ingredientes, observação…" />
+                </FormField>
+                <FormControl
+                  name="price"
+                  label={
+                    values.customizable
+                      ? "Preço base"
+                      : "Preço"
+                  }
+                >
+                  {({ value, setValue, setTouched }) => (
+                    <Input
+                      prefix="R$"
+                      inputMode="numeric"
+                      placeholder="0,00"
+                      value={String(value ?? "")}
+                      onChange={(event) => setValue(maskBRL(event.target.value))}
+                      onBlur={setTouched}
+                    />
+                  )}
+                </FormControl>
+                {values.customizable ? (
+                  <p className="product-form-hint product-form-hint--tight">
+                    Usado se nenhuma opção substituir o valor.
+                  </p>
                 ) : null}
-                <OptionGroupsEditor
-                  groups={values.optionGroups ?? []}
-                  onChange={(next) => setFieldValue("optionGroups", next)}
-                />
-              </div>
-            ) : null}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <div className="product-form-toggles">
+                  <label className="product-form-toggle">
+                    <div>
+                      <strong>Ativo no WhatsApp</strong>
+                      <p>Entra no cardápio do cliente</p>
+                    </div>
+                    <FormControl name="active" compact>
+                      {({ value, setValue }) => (
+                        <Switch
+                          checked={Boolean(value)}
+                          onChange={(checked) => setValue(checked)}
+                        />
+                      )}
+                    </FormControl>
+                  </label>
+                  <label className="product-form-toggle">
+                    <div>
+                      <strong>Montável</strong>
+                      <p>Tamanho, sabores, extras e outros grupos</p>
+                    </div>
+                    <FormControl name="customizable" compact>
+                      {({ value, setValue }) => (
+                        <Switch
+                          checked={Boolean(value)}
+                          onChange={(checked) => setValue(checked)}
+                        />
+                      )}
+                    </FormControl>
+                  </label>
+                </div>
+              </section>
+              <section
+                className={`product-form-pane product-form-pane--assembly${values.customizable ? " is-live" : ""}`}
+              >
+                <p className="product-form-kicker">Montagem</p>
+                <h3 className="product-form-heading">O cliente escolhe nesta ordem</h3>
+                {values.customizable ? (
+                  <>
+                    <p className="product-form-hint">
+                      Cada grupo vira uma pergunta no WhatsApp. A ordem da lista é a ordem da conversa.
+                    </p>
+                    {typeof errors.optionGroups === "string" && touched.optionGroups ? (
+                      <Alert
+                        type="error"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        message={errors.optionGroups}
+                      />
+                    ) : null}
+                    <OptionGroupsEditor
+                      groups={values.optionGroups ?? []}
+                      onChange={(next) => setFieldValue("optionGroups", next)}
+                    />
+                  </>
+                ) : (
+                  <div className="product-form-empty">
+                    <p>
+                      Ligue Montável para o cliente escolher tamanho, sabores ou extras no WhatsApp.
+                    </p>
+                    <Button
+                      type="primary"
+                      onClick={() => setFieldValue("customizable", true)}
+                    >
+                      Ativar montagem
+                    </Button>
+                  </div>
+                )}
+              </section>
+            </div>
+            <div className="product-form-footer">
               <Button onClick={onCancel}>Cancelar</Button>
               <Button
                 type="primary"

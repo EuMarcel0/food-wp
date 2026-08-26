@@ -12,7 +12,7 @@ export function RowActions({ items }: { items: MenuProps["items"] }) {
       placement="bottomRight"
       menu={{ items: actions }}
     >
-      <Button type="text" icon={<MoreOutlined />} />
+      <Button type="text" icon={<MoreOutlined />} aria-label="Ações da linha" />
     </Dropdown>
   );
 }
