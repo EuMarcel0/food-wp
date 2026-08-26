@@ -14,6 +14,7 @@ import {
 import { describeOrderStatus } from "./status.js";
 import {
   assembledName,
+  flavorSelectMax,
   groupPrompt,
   isCustomizable,
   nextAssembly,
@@ -134,10 +135,11 @@ async function askAssembly(
   }
 
   const group = next.group;
-  if (group.maxSelect > 1) {
+  const maxSelect = flavorSelectMax(product, group);
+  if (maxSelect > 1) {
     await sendText(
       to,
-      `${groupPrompt(product, group)}\n\n${numberedOptionsText(group)}`,
+      `${groupPrompt(product, group, maxSelect)}\n\n${numberedOptionsText(group)}`,
     );
     return false;
   }
@@ -281,6 +283,7 @@ export async function handleIncomingMessage(input: {
 
     if (pending.type === "options") {
       const group = pending.group;
+      const maxSelect = flavorSelectMax(product, group);
       const current =
         drafts.find((item) => item.groupId === group.id) ??
         {
@@ -315,13 +318,13 @@ export async function handleIncomingMessage(input: {
       const picked =
         fromButton?.length
           ? fromButton
-          : parseOptionPicks(input.text || incoming, group.options, group.maxSelect);
+          : parseOptionPicks(input.text || incoming, group.options, maxSelect);
 
       if (!picked?.length) {
         await sendText(
           input.from,
-          group.maxSelect > 1
-            ? "Não entendi. Envie os números, ex.: 1, 2"
+          maxSelect > 1
+            ? "Não entendi. Para meia a meia envie os números, ex.: 1, 2"
             : "Não encontrei essa opção.",
         );
         await askAssembly(input.from, product, context);

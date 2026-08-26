@@ -192,16 +192,28 @@ export function variantPrompt(product: Product, groups: ProductOptionGroup[]) {
   ].join("\n");
 }
 
-export function groupPrompt(product: Product, group: ProductOptionGroup) {
+export function flavorSelectMax(product: Product, group: ProductOptionGroup) {
+  const cluster = exclusiveClusters(activeGroups(product)).find((items) =>
+    items.some((item) => item.id === group.id),
+  );
+  const isSizeFlavors = (cluster?.length ?? 0) > 1;
+  if (isSizeFlavors && group.options.length > 1) {
+    return Math.max(group.maxSelect, 2);
+  }
+  return Math.max(1, group.maxSelect);
+}
+
+export function groupPrompt(
+  product: Product,
+  group: ProductOptionGroup,
+  maxSelect = group.maxSelect,
+) {
+  const multi = maxSelect > 1;
   const lines = [
     `*${product.name}*`,
-    group.maxSelect > 1
-      ? `Sabores de *${group.name}*`
-      : `Escolha: *${group.name}*`,
-    group.maxSelect > 1
-      ? `Pode marcar até ${group.maxSelect}${
-          group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""
-        }. Envie os números de uma vez, ex.: 1, 2`
+    multi ? `Sabores de *${group.name}*` : `Escolha: *${group.name}*`,
+    multi
+      ? `Marque 1 sabor inteiro ou ${maxSelect} para meia a meia.\nEnvie os números de uma vez, ex.: 1, 2`
       : group.required
         ? "Escolha 1 opção."
         : "Opcional — pode pular.",
@@ -213,7 +225,7 @@ export function numberedOptionsText(group: ProductOptionGroup) {
   return group.options
     .map(
       (option, index) =>
-        `${index + 1}. ${option.name} — ${optionDescription(option.extraPrice)}`,
+        `☐ ${index + 1}. ${option.name} — ${optionDescription(option.extraPrice)}`,
     )
     .join("\n");
 }
