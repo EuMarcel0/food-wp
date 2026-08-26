@@ -23,6 +23,7 @@ import {
   unitPriceCents,
   variantPriceLabel,
   variantPrompt,
+  activeGroups,
 } from "./assemble.js";
 import type {
   CartSelection,
@@ -153,7 +154,16 @@ async function askAssembly(
   }
 
   const group = next.group;
-  const current = context.draftSelections?.find((item) => item.groupId === group.id);
+  return askGroupOptions(to, product, group, context.draftSelections ?? []);
+}
+
+async function askGroupOptions(
+  to: string,
+  product: Product,
+  group: ProductOptionGroup,
+  drafts: CartSelection[],
+) {
+  const current = drafts.find((item) => item.groupId === group.id);
   const picked = current?.options.map((option) => option.id) ?? [];
   const remaining = group.options.filter((option) => !picked.includes(option.id));
   if (!remaining.length) return true;
@@ -174,6 +184,18 @@ async function askAssembly(
     ]);
   }
   return false;
+}
+
+function groupWantingMore(product: Product, drafts: CartSelection[]) {
+  const groups = activeGroups(product);
+  for (let index = drafts.length - 1; index >= 0; index -= 1) {
+    const draft = drafts[index];
+    const group = groups.find((item) => item.id === draft.groupId);
+    if (!group || draft.options.length >= group.maxSelect) continue;
+    const picked = new Set(draft.options.map((option) => option.id));
+    if (group.options.some((option) => !picked.has(option.id))) return group;
+  }
+  return null;
 }
 
 async function askQuantity(to: string, product: Product, extras: CartSelection[]) {
@@ -294,6 +316,18 @@ export async function handleIncomingMessage(input: {
       }
     };
 
+    if (incoming === "more_options" || normalized === "mais um") {
+      const group = groupWantingMore(product, drafts);
+      if (!group) {
+        await goNext();
+        return;
+      }
+      await persist("awaiting_option", context);
+      const finished = await askGroupOptions(input.from, product, group, drafts);
+      if (finished) await goNext();
+      return;
+    }
+
     if (pending.type === "variant") {
       const group = findVariant(incoming, normalized, pending.groups);
       if (!group) {
@@ -343,9 +377,9 @@ export async function handleIncomingMessage(input: {
         return;
       }
 
-      if (incoming === "more_options") {
-        await persist("awaiting_option", context);
-        await askAssembly(input.from, product, context);
+      if (incoming === "more_options" || normalized === "mais um") {
+        const finished = await askGroupOptions(input.from, product, group, drafts);
+        if (finished) await goNext();
         return;
       }
 
