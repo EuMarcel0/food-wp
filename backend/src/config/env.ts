@@ -23,6 +23,10 @@ export const env = {
   whatsappAppSecret: read("WHATSAPP_APP_SECRET"),
   whatsappGraphVersion: read("WHATSAPP_GRAPH_VERSION", "v21.0"),
   defaultStoreId: read("DEFAULT_STORE_ID", "00000000-0000-0000-0000-000000000001"),
+  frontendOrigins: read("FRONTEND_ORIGIN")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
 };
 
 export const flags = {
