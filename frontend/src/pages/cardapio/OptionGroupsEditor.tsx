@@ -142,7 +142,7 @@ export function OptionGroupsEditor({
             </FormControl>
             <FormControl
               name={`optionGroups.${groupIndex}.maxSelect`}
-              label="Máximo de sabores (2 = meia a meia)"
+              label="Máximo de escolhas"
             >
               {({ value, setValue }) => (
                 <InputNumber
@@ -190,10 +190,7 @@ export function OptionGroupsEditor({
             <Switch
               checked={Boolean(group.exclusiveSet)}
               onChange={(checked) =>
-                update(groupIndex, {
-                  exclusiveSet: checked ? "tamanho" : null,
-                  maxSelect: checked ? Math.max(2, Number(group.maxSelect ?? 1)) : group.maxSelect,
-                })
+                update(groupIndex, { exclusiveSet: checked ? "tamanho" : null })
               }
             />
           </label>

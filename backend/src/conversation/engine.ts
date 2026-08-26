@@ -14,13 +14,10 @@ import {
 import { describeOrderStatus } from "./status.js";
 import {
   assembledName,
-  flavorSelectMax,
   groupPrompt,
   isCustomizable,
   nextAssembly,
-  numberedOptionsText,
   optionDescription,
-  parseOptionPicks,
   selectionKey,
   startingPrice,
   unitPriceCents,
@@ -135,26 +132,22 @@ async function askAssembly(
   }
 
   const group = next.group;
-  const maxSelect = flavorSelectMax(product, group);
-  if (maxSelect > 1) {
-    await sendText(
-      to,
-      `${groupPrompt(product, group, maxSelect)}\n\n${numberedOptionsText(group)}`,
-    );
-    return false;
-  }
+  const current = context.draftSelections?.find((item) => item.groupId === group.id);
+  const picked = current?.options.map((option) => option.id) ?? [];
+  const remaining = group.options.filter((option) => !picked.includes(option.id));
+  if (!remaining.length) return true;
 
-  await sendList(to, groupPrompt(product, group), "Escolher", [
+  await sendList(to, groupPrompt(product, group, picked), "Escolher", [
     {
       title: group.name.slice(0, 24),
-      rows: group.options.slice(0, 10).map((option) => ({
+      rows: remaining.slice(0, 10).map((option) => ({
         id: `opt:${option.id}`,
         title: option.name.slice(0, 24),
         description: optionDescription(option.extraPrice),
       })),
     },
   ]);
-  if (!group.required) {
+  if (!group.required && picked.length === 0) {
     await sendButtons(to, "Esta etapa é opcional.", [
       { id: "skip_group", title: "Pular" },
     ]);
@@ -283,7 +276,6 @@ export async function handleIncomingMessage(input: {
 
     if (pending.type === "options") {
       const group = pending.group;
-      const maxSelect = flavorSelectMax(product, group);
       const current =
         drafts.find((item) => item.groupId === group.id) ??
         {
@@ -312,42 +304,48 @@ export async function handleIncomingMessage(input: {
         return;
       }
 
-      const fromButton = incoming.startsWith("opt:")
-        ? group.options.filter((option) => option.id === incoming.slice(4))
-        : null;
-      const picked =
-        fromButton?.length
-          ? fromButton
-          : parseOptionPicks(input.text || incoming, group.options, maxSelect);
-
-      if (!picked?.length) {
-        await sendText(
-          input.from,
-          maxSelect > 1
-            ? "Não entendi. Para meia a meia envie os números, ex.: 1, 2"
-            : "Não encontrei essa opção.",
-        );
+      if (incoming === "more_options") {
+        await persist("awaiting_option", context);
         await askAssembly(input.from, product, context);
         return;
       }
 
-      current.options = picked.map((option) => ({
-        id: option.id,
-        name: option.name,
-        extraPrice: option.extraPrice,
-      }));
-      await persist("awaiting_option", context);
+      if (incoming.startsWith("opt:")) {
+        const option = group.options.find((item) => item.id === incoming.slice(4));
+        if (!option) {
+          await sendText(input.from, "Não encontrei essa opção.");
+          await askAssembly(input.from, product, context);
+          return;
+        }
+        if (!current.options.some((item) => item.id === option.id)) {
+          current.options.push({
+            id: option.id,
+            name: option.name,
+            extraPrice: option.extraPrice,
+          });
+        }
+        await persist("awaiting_option", context);
 
-      if (current.options.length < Math.max(group.required ? 1 : 0, group.minSelect)) {
-        await sendText(
-          input.from,
-          `Faltou opção. Marque pelo menos ${Math.max(1, group.minSelect)}.`,
-        );
+        if (current.options.length >= group.maxSelect) {
+          await goNext();
+          return;
+        }
+        if (current.options.length >= Math.max(group.required ? 1 : 0, group.minSelect)) {
+          await sendButtons(
+            input.from,
+            `*${group.name}:* ${current.options.map((item) => item.name).join(", ")}`,
+            [
+              { id: "more_options", title: "Mais um" },
+              { id: "done_options", title: "Pronto" },
+            ],
+          );
+          return;
+        }
         await askAssembly(input.from, product, context);
         return;
       }
 
-      await goNext();
+      await askAssembly(input.from, product, context);
       return;
     }
 

@@ -3,7 +3,6 @@ import type {
   CartItem,
   CartSelection,
   Product,
-  ProductOption,
   ProductOptionGroup,
 } from "../types.js";
 
@@ -169,10 +168,7 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
 export function assembledName(product: Product, selections: CartSelection[]) {
   const parts = selections
     .filter((selection) => selection.options.length)
-    .map((selection) => {
-      const options = selection.options.map((option) => option.name).join("/");
-      return `${selection.groupName}: ${options}`;
-    });
+    .map((selection) => selection.options.map((option) => option.name).join("/"));
   return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
 }
 
@@ -187,86 +183,29 @@ export function selectionKey(item: Pick<CartItem, "productId" | "extras">) {
 export function variantPrompt(product: Product, groups: ProductOptionGroup[]) {
   return [
     `*${product.name}*`,
-    "Escolha o tamanho. Depois você marca os sabores desse tamanho de uma vez.",
+    "Escolha o tamanho.",
     groups.map((group) => `• ${group.name}`).join("\n"),
   ].join("\n");
 }
 
-export function flavorSelectMax(product: Product, group: ProductOptionGroup) {
-  const cluster = exclusiveClusters(activeGroups(product)).find((items) =>
-    items.some((item) => item.id === group.id),
-  );
-  const isSizeFlavors = (cluster?.length ?? 0) > 1;
-  if (isSizeFlavors && group.options.length > 1) {
-    return Math.max(group.maxSelect, 2);
-  }
-  return Math.max(1, group.maxSelect);
-}
-
-export function groupPrompt(
-  product: Product,
-  group: ProductOptionGroup,
-  maxSelect = group.maxSelect,
-) {
-  const multi = maxSelect > 1;
+export function groupPrompt(product: Product, group: ProductOptionGroup, picked: string[]) {
+  const chosen = group.options
+    .filter((option) => picked.includes(option.id))
+    .map((option) => option.name);
   const lines = [
     `*${product.name}*`,
-    multi ? `Sabores de *${group.name}*` : `Escolha: *${group.name}*`,
-    multi
-      ? `Marque 1 sabor inteiro ou ${maxSelect} para meia a meia.\nEnvie os números de uma vez, ex.: 1, 2`
+    `Escolha: *${group.name}*`,
+    group.maxSelect > 1
+      ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
       : group.required
         ? "Escolha 1 opção."
         : "Opcional — pode pular.",
+    chosen.length ? `Já escolheu: ${chosen.join(", ")}.` : "",
   ];
   return lines.filter(Boolean).join("\n");
-}
-
-export function numberedOptionsText(group: ProductOptionGroup) {
-  return group.options
-    .map(
-      (option, index) =>
-        `☐ ${index + 1}. ${option.name} — ${optionDescription(option.extraPrice)}`,
-    )
-    .join("\n");
 }
 
 export function optionDescription(extraPrice: number) {
   if (extraPrice <= 0) return "Incluído";
   return `+ ${formatReais(extraPrice)}`;
-}
-
-export function parseOptionPicks(
-  raw: string,
-  options: ProductOption[],
-  maxSelect: number,
-) {
-  const text = normalizeName(raw).replace(/opt:/g, "");
-  if (!text) return null;
-
-  const chunks = text
-    .split(/[,;+/]| e | e(?=\d)/g)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean);
-  const parts = chunks.length ? chunks : [text];
-  const picked: ProductOption[] = [];
-
-  for (const part of parts) {
-    if (/^\d+$/.test(part)) {
-      const option = options[Number(part) - 1];
-      if (option && !picked.some((item) => item.id === option.id)) picked.push(option);
-      continue;
-    }
-    const matches = options.filter(
-      (option) =>
-        normalizeName(option.name) === part ||
-        normalizeName(option.name).startsWith(part) ||
-        part.startsWith(normalizeName(option.name)),
-    );
-    if (matches.length === 1 && !picked.some((item) => item.id === matches[0].id)) {
-      picked.push(matches[0]);
-    }
-  }
-
-  if (!picked.length) return null;
-  return picked.slice(0, Math.max(1, maxSelect));
 }
