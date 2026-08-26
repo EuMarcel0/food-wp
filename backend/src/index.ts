@@ -5,6 +5,7 @@ import { webhookRouter } from "./routes/webhook.js";
 import { ordersRouter } from "./routes/orders.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { catalogRouter } from "./routes/catalog.js";
+import { legalRouter } from "./routes/legal.js";
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.get("/health", (_req, res) => {
   });
 });
 
+app.use("/legal", legalRouter);
 app.use("/webhook", webhookRouter);
 app.use("/api/orders", ordersRouter);
 app.use("/api/notifications", notificationsRouter);
