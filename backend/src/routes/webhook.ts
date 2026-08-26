@@ -19,7 +19,7 @@ type WhatsAppChange = {
         list_reply?: { id?: string; title?: string };
       };
     }>;
-    contacts?: Array<{ profile?: { name?: string } }>;
+    contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
   };
 };
 
@@ -68,6 +68,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
       const messages = change.value?.messages ?? [];
       noteWebhook(change.field, messages.length);
       const name = change.value?.contacts?.[0]?.profile?.name;
+      const waId = change.value?.contacts?.[0]?.wa_id;
       for (const message of messages) {
         const replyId =
           message.interactive?.button_reply?.id ??
@@ -77,11 +78,15 @@ webhookRouter.post("/whatsapp", (req, res) => {
           message.interactive?.button_reply?.title ??
           message.interactive?.list_reply?.title ??
           "";
-        if (!message.from || (!text && !replyId)) continue;
+        const to = waId || message.from;
+        if (!to || (!text && !replyId)) continue;
         incoming += 1;
+        console.log(
+          `WhatsApp inbound from=${message.from} wa_id=${waId ?? "-"} reply=${to}`,
+        );
 
         handleIncomingMessage({
-          from: message.from,
+          from: to,
           name,
           text,
           replyId,

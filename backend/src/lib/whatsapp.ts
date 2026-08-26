@@ -9,12 +9,24 @@ type ListSection = {
   rows: { id: string; title: string; description?: string }[];
 };
 
-async function send(payload: Record<string, unknown>) {
-  if (!flags.whatsappReady) {
-    console.info("[whatsapp:dry-run]", JSON.stringify(payload, null, 2));
-    return { dryRun: true };
-  }
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, "");
+}
 
+/** Brasil: o 9 extra depois do DDD às vezes entra no webhook e não na lista de teste. */
+function brazilRecipientOptions(to: string) {
+  const digits = digitsOnly(to);
+  const options = [digits];
+  if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+    options.push(`${digits.slice(0, 4)}${digits.slice(5)}`);
+  }
+  if (digits.startsWith("55") && digits.length === 12) {
+    options.push(`${digits.slice(0, 4)}9${digits.slice(4)}`);
+  }
+  return [...new Set(options)];
+}
+
+async function sendTo(to: string, payload: Record<string, unknown>) {
   const response = await fetch(
     `${GRAPH}/${env.whatsappPhoneNumberId}/messages`,
     {
@@ -27,16 +39,38 @@ async function send(payload: Record<string, unknown>) {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         ...payload,
+        to,
       }),
     },
   );
+  const body = await response.text();
+  return { ok: response.ok, status: response.status, body };
+}
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`WhatsApp API ${response.status}: ${body}`);
+async function send(payload: Record<string, unknown>) {
+  if (!flags.whatsappReady) {
+    console.info("[whatsapp:dry-run]", JSON.stringify(payload, null, 2));
+    return { dryRun: true };
   }
 
-  return response.json();
+  const targets = brazilRecipientOptions(String(payload.to ?? ""));
+  let lastBody = "";
+  let lastStatus = 0;
+  for (const to of targets) {
+    const result = await sendTo(to, payload);
+    if (result.ok) {
+      if (to !== targets[0]) {
+        console.log(`WhatsApp: enviado para formato alternativo ${to}`);
+      }
+      return JSON.parse(result.body || "{}");
+    }
+    lastStatus = result.status;
+    lastBody = result.body;
+    if (!result.body.includes("131030")) break;
+    console.warn(`WhatsApp 131030 para ${to}; tentando outro formato`);
+  }
+
+  throw new Error(`WhatsApp API ${lastStatus}: ${lastBody}`);
 }
 
 export async function checkWhatsAppToken() {
