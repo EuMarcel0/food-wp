@@ -65,6 +65,8 @@ export function ProductForm({
         enableReinitialize
         initialValues={initialValues}
         validationSchema={productSchema}
+        validateOnChange={false}
+        validateOnBlur
         onSubmit={async (values, helpers) => {
           helpers.setStatus(undefined);
           try {
@@ -81,7 +83,7 @@ export function ProductForm({
           }
         }}
       >
-        {({ isSubmitting, status, values }) => (
+        {({ isSubmitting, status, values, setFieldValue, errors, touched }) => (
           <FormikForm>
             {status ? (
               <Alert
@@ -148,14 +150,23 @@ export function ProductForm({
               )}
             </FormControl>
             {values.customizable ? (
-              <FormControl name="optionGroups" label="Opções de montagem">
-                {({ setValue }) => (
-                  <OptionGroupsEditor
-                    groups={values.optionGroups ?? []}
-                    onChange={(next) => setValue(next)}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 8, fontWeight: 600 }}>
+                  Opções de montagem
+                </div>
+                {typeof errors.optionGroups === "string" && touched.optionGroups ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={errors.optionGroups}
                   />
-                )}
-              </FormControl>
+                ) : null}
+                <OptionGroupsEditor
+                  groups={values.optionGroups ?? []}
+                  onChange={(next) => setFieldValue("optionGroups", next)}
+                />
+              </div>
             ) : null}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <Button onClick={onCancel}>Cancelar</Button>

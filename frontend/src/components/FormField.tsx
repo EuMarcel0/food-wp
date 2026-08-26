@@ -8,6 +8,20 @@ import {
 import { useField } from "formik";
 import { Form } from "antd";
 
+function fieldError(error: unknown): string | undefined {
+  if (!error) return undefined;
+  if (typeof error === "string") return error;
+  if (Array.isArray(error)) {
+    return error.map(fieldError).find(Boolean);
+  }
+  if (typeof error === "object") {
+    return Object.values(error as Record<string, unknown>)
+      .map(fieldError)
+      .find(Boolean);
+  }
+  return undefined;
+}
+
 type FieldProps = {
   name?: string;
   value?: string;
@@ -25,14 +39,15 @@ export function FormField({
   children: ReactElement<FieldProps>;
 }) {
   const [field, meta] = useField(name);
-  const invalid = meta.touched && Boolean(meta.error);
+  const message = fieldError(meta.error);
+  const invalid = meta.touched && Boolean(message);
 
   return (
     <Form layout="vertical" requiredMark={false} component={false}>
       <Form.Item
-        label={label}
+        label={label || undefined}
         validateStatus={invalid ? "error" : ""}
-        help={invalid ? meta.error : undefined}
+        help={invalid ? message : undefined}
         style={{ marginBottom: 12 }}
       >
       {cloneElement(children, field)}
@@ -56,14 +71,15 @@ export function FormControl({
   }) => ReactNode;
 }) {
   const [field, meta, helpers] = useField(name);
-  const invalid = meta.touched && Boolean(meta.error);
+  const message = fieldError(meta.error);
+  const invalid = meta.touched && Boolean(message);
 
   return (
     <Form layout="vertical" requiredMark={false} component={false}>
       <Form.Item
         label={label}
         validateStatus={invalid ? "error" : ""}
-        help={invalid ? meta.error : undefined}
+        help={invalid ? message : undefined}
         style={{ marginBottom: 12 }}
       >
         {children({
