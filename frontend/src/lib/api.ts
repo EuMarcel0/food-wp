@@ -105,6 +105,8 @@ export const api = {
     description: string | null;
     price: number;
     active: boolean;
+    customizable: boolean;
+    optionGroups: Product["optionGroups"];
   }) =>
     request<Product>("/api/products", {
       method: "POST",
@@ -118,6 +120,8 @@ export const api = {
       description: string | null;
       price: number;
       active: boolean;
+      customizable: boolean;
+      optionGroups: Product["optionGroups"];
     }>,
   ) =>
     request<Product>(`/api/products/${id}`, {

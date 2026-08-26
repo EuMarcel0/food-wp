@@ -19,5 +19,8 @@ Rode nesta ordem:
 7. `007_realtime.sql`
 8. `008_seed.sql`
 9. `009_product_price_decimal.sql` — se o banco já existia com `price_cents`
+10. `010_notifications.sql`
+11. `011_avatars_storage.sql`
+12. `012_product_options.sql` — itens montáveis (tamanho, sabores, borda, etc.)
 
 O `DEFAULT_STORE_ID` do backend é `00000000-0000-0000-0000-000000000001`.

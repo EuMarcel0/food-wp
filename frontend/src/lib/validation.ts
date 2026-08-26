@@ -64,6 +64,41 @@ export const productSchema = Yup.object({
       return amount !== null && amount >= 0;
     }),
   active: Yup.boolean().default(true),
+  customizable: Yup.boolean().default(false),
+  optionGroups: Yup.array()
+    .of(
+      Yup.object({
+        id: Yup.string().required(),
+        name: Yup.string().trim().required("Informe o nome do grupo"),
+        required: Yup.boolean().default(true),
+        minSelect: Yup.number().min(0).default(1),
+        maxSelect: Yup.number().min(1).default(1),
+        priceMode: Yup.mixed<"addon" | "replace">()
+          .oneOf(["addon", "replace"])
+          .default("addon"),
+        options: Yup.array()
+          .of(
+            Yup.object({
+              id: Yup.string().required(),
+              name: Yup.string().trim().required("Informe a opção"),
+              extraPrice: Yup.string().required(),
+              active: Yup.boolean().default(true),
+            }),
+          )
+          .min(1, "Inclua pelo menos uma opção")
+          .required(),
+      }),
+    )
+    .default([]),
+}).test("montavel", "", function (values) {
+  if (!values.customizable) return true;
+  if (!values.optionGroups?.length) {
+    return this.createError({
+      path: "optionGroups",
+      message: "Inclua grupos como tamanho, sabores ou borda.",
+    });
+  }
+  return true;
 });
 
 export const categorySchema = Yup.object({

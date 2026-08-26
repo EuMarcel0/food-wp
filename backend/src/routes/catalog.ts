@@ -17,8 +17,40 @@ import {
   parseSearch,
 } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
+import type { ProductOptionGroup } from "../types.js";
 
 export const catalogRouter = Router();
+
+function parseOptionGroups(raw: unknown): ProductOptionGroup[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((item, index) => {
+    const group = item as Record<string, unknown>;
+    const options = Array.isArray(group.options) ? group.options : [];
+    const minSelect = Math.max(0, Number(group.minSelect ?? 1));
+    const maxSelect = Math.max(1, Number(group.maxSelect ?? 1));
+    const priceMode: ProductOptionGroup["priceMode"] =
+      group.priceMode === "replace" ? "replace" : "addon";
+    return {
+      id: String(group.id ?? `group-${index}`),
+      name: String(group.name ?? "").trim() || `Opção ${index + 1}`,
+      required: group.required !== false,
+      minSelect: Math.min(minSelect, maxSelect),
+      maxSelect,
+      priceMode,
+      sortOrder: Number(group.sortOrder ?? index),
+      options: options.map((optionRaw, optionIndex) => {
+        const option = optionRaw as Record<string, unknown>;
+        return {
+          id: String(option.id ?? `opt-${index}-${optionIndex}`),
+          name: String(option.name ?? "").trim(),
+          extraPrice: Math.max(0, Number(option.extraPrice ?? 0)),
+          sortOrder: Number(option.sortOrder ?? optionIndex),
+          active: option.active !== false,
+        };
+      }).filter((option) => option.name),
+    };
+  }).filter((group) => group.options.length > 0);
+}
 
 function categoryPayload(body: Record<string, unknown>) {
   const name = String(body.name ?? "").trim();
@@ -114,9 +146,17 @@ catalogRouter.post("/products", async (req, res) => {
   const description = String(req.body?.description ?? "").trim() || null;
   const price = Number(req.body?.price);
   const active = req.body?.active !== false;
+  const customizable = Boolean(req.body?.customizable);
+  const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
   if (!name || !categoryId || !Number.isFinite(price) || price < 0) {
     res.status(400).json({ error: "Preencha nome, categoria e preço." });
+    return;
+  }
+  if (customizable && optionGroups.length === 0) {
+    res.status(400).json({
+      error: "Item montável precisa de pelo menos um grupo de opções.",
+    });
     return;
   }
 
@@ -128,6 +168,8 @@ catalogRouter.post("/products", async (req, res) => {
         description,
         price: Math.round(price * 100) / 100,
         active,
+        customizable,
+        optionGroups,
       }),
     );
   } catch (error) {
@@ -144,6 +186,8 @@ function productPatch(body: Record<string, unknown>) {
     description?: string | null;
     price?: number;
     active?: boolean;
+    customizable?: boolean;
+    optionGroups?: ProductOptionGroup[];
   } = {};
 
   if (body.name !== undefined) {
@@ -167,6 +211,12 @@ function productPatch(body: Record<string, unknown>) {
   if (body.active !== undefined) {
     patch.active = Boolean(body.active);
   }
+  if (body.customizable !== undefined) {
+    patch.customizable = Boolean(body.customizable);
+  }
+  if (body.optionGroups !== undefined) {
+    patch.optionGroups = parseOptionGroups(body.optionGroups) ?? [];
+  }
 
   return patch;
 }
@@ -175,6 +225,12 @@ catalogRouter.patch("/products/:id", async (req, res) => {
   const patch = productPatch(req.body ?? {});
   if (!patch || Object.keys(patch).length === 0) {
     res.status(400).json({ error: "Nada para atualizar." });
+    return;
+  }
+  if (patch.customizable && patch.optionGroups && patch.optionGroups.length === 0) {
+    res.status(400).json({
+      error: "Item montável precisa de pelo menos um grupo de opções.",
+    });
     return;
   }
   try {

@@ -8,6 +8,24 @@ import {
   type ProductValues,
 } from "../../lib/validation";
 import type { Category, Product } from "../../types";
+import { OptionGroupsEditor } from "./OptionGroupsEditor";
+
+function groupsFromProduct(product: Product | null): ProductValues["optionGroups"] {
+  return (product?.optionGroups ?? []).map((group) => ({
+    id: group.id,
+    name: group.name,
+    required: group.required,
+    minSelect: group.minSelect,
+    maxSelect: group.maxSelect,
+    priceMode: group.priceMode,
+    options: group.options.map((option) => ({
+      id: option.id,
+      name: option.name,
+      extraPrice: maskBRL(String(Math.round(option.extraPrice * 100))),
+      active: option.active,
+    })),
+  }));
+}
 
 export function ProductForm({
   open,
@@ -30,6 +48,8 @@ export function ProductForm({
     description: product?.description ?? "",
     price: product ? maskBRL(String(Math.round(product.price * 100))) : "",
     active: product?.active ?? true,
+    customizable: product?.customizable ?? false,
+    optionGroups: groupsFromProduct(product),
   };
 
   return (
@@ -39,6 +59,7 @@ export function ProductForm({
       onCancel={onCancel}
       footer={null}
       destroyOnClose
+      width={680}
     >
       <Formik
         enableReinitialize
@@ -60,7 +81,7 @@ export function ProductForm({
           }
         }}
       >
-        {({ isSubmitting, status }) => (
+        {({ isSubmitting, status, values }) => (
           <FormikForm>
             {status ? (
               <Alert
@@ -71,7 +92,7 @@ export function ProductForm({
               />
             ) : null}
             <FormField name="name" label="Nome">
-              <Input placeholder="Ex.: X-Burguer" />
+              <Input placeholder="Ex.: Pizza, X-Burguer" />
             </FormField>
             <FormControl name="categoryId" label="Categoria">
               {({ value, setValue, setTouched }) => (
@@ -91,7 +112,14 @@ export function ProductForm({
             <FormField name="description" label="Descrição">
               <Input.TextArea rows={3} placeholder="Opcional" />
             </FormField>
-            <FormControl name="price" label="Preço">
+            <FormControl
+              name="price"
+              label={
+                values.customizable
+                  ? "Preço base (se nenhuma opção substituir)"
+                  : "Preço"
+              }
+            >
               {({ value, setValue, setTouched }) => (
                 <Input
                   prefix="R$"
@@ -111,6 +139,24 @@ export function ProductForm({
                 />
               )}
             </FormControl>
+            <FormControl name="customizable" label="Montável">
+              {({ value, setValue }) => (
+                <Switch
+                  checked={Boolean(value)}
+                  onChange={(checked) => setValue(checked)}
+                />
+              )}
+            </FormControl>
+            {values.customizable ? (
+              <FormControl name="optionGroups" label="Opções de montagem">
+                {({ setValue }) => (
+                  <OptionGroupsEditor
+                    groups={values.optionGroups ?? []}
+                    onChange={(next) => setValue(next)}
+                  />
+                )}
+              </FormControl>
+            ) : null}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <Button onClick={onCancel}>Cancelar</Button>
               <Button
@@ -133,11 +179,31 @@ export function toProductPayload(values: ProductValues) {
   if (price === null) {
     throw new Error("Informe um preço válido.");
   }
+  const optionGroups = values.customizable
+    ? (values.optionGroups ?? []).map((group, index) => ({
+        id: group.id,
+        name: group.name.trim(),
+        required: group.required,
+        minSelect: group.required ? Math.max(1, group.minSelect) : 0,
+        maxSelect: Math.max(1, group.maxSelect),
+        priceMode: group.priceMode,
+        sortOrder: index,
+        options: group.options.map((option, optionIndex) => ({
+          id: option.id,
+          name: option.name.trim(),
+          extraPrice: parseReais(option.extraPrice) ?? 0,
+          sortOrder: optionIndex,
+          active: option.active !== false,
+        })),
+      }))
+    : [];
   return {
     name: values.name.trim(),
     categoryId: values.categoryId,
     description: values.description.trim() || null,
     price,
     active: values.active,
+    customizable: Boolean(values.customizable),
+    optionGroups,
   };
 }

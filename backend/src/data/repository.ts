@@ -9,6 +9,7 @@ import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
 import type {
   AppNotification,
+  CartItem,
   Category,
   Conversation,
   ConversationContext,
@@ -20,10 +21,56 @@ import type {
   OrderStatus,
   PaymentMethod,
   Product,
+  ProductOptionGroup,
   Store,
 } from "../types.js";
 import { STATUS_LABEL } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
+
+const PRODUCT_SELECT =
+  "*, categories(name), product_option_groups(*, product_options(*))";
+
+function mapOptionGroups(row: Record<string, unknown>): ProductOptionGroup[] {
+  const groups = row.product_option_groups;
+  if (!Array.isArray(groups)) return [];
+  return [...groups]
+    .sort(
+      (a, b) =>
+        Number((a as { sort_order?: number }).sort_order ?? 0) -
+        Number((b as { sort_order?: number }).sort_order ?? 0),
+    )
+    .map((raw) => {
+      const group = raw as Record<string, unknown>;
+      const options = Array.isArray(group.product_options)
+        ? [...group.product_options]
+        : [];
+      return {
+        id: String(group.id),
+        name: String(group.name),
+        required: group.required !== false,
+        minSelect: Number(group.min_select ?? 1),
+        maxSelect: Number(group.max_select ?? 1),
+        priceMode: group.price_mode === "replace" ? "replace" : "addon",
+        sortOrder: Number(group.sort_order ?? 0),
+        options: options
+          .sort(
+            (a, b) =>
+              Number((a as { sort_order?: number }).sort_order ?? 0) -
+              Number((b as { sort_order?: number }).sort_order ?? 0),
+          )
+          .map((item) => {
+            const option = item as Record<string, unknown>;
+            return {
+              id: String(option.id),
+              name: String(option.name),
+              extraPrice: Number(option.extra_price ?? 0),
+              sortOrder: Number(option.sort_order ?? 0),
+              active: option.active !== false,
+            };
+          }),
+      };
+    });
+}
 
 function mapStore(row: Record<string, unknown>): Store {
   return {
@@ -50,6 +97,8 @@ function mapProduct(row: Record<string, unknown>): Product {
         ? Number(row.price)
         : Number(row.price_cents ?? 0) / 100,
     active: Boolean(row.active ?? true),
+    customizable: Boolean(row.customizable ?? false),
+    optionGroups: mapOptionGroups(row),
   };
 }
 
@@ -108,7 +157,7 @@ export async function listProducts(): Promise<Product[]> {
 
   const { data, error } = await supabase
     .from("products")
-    .select("*, categories(name)")
+    .select(PRODUCT_SELECT)
     .eq("active", true)
     .order("name");
   if (error || !data) return memoryStore.listProducts();
@@ -121,7 +170,7 @@ export async function listAllProducts(): Promise<Product[]> {
 
   const { data, error } = await supabase
     .from("products")
-    .select("*, categories(name)")
+    .select(PRODUCT_SELECT)
     .order("name");
   if (error || !data) return memoryStore.listAllProducts();
   return data.map((row) => mapProduct(row as Record<string, unknown>));
@@ -139,7 +188,7 @@ export async function listProductsPage(
   const to = from + limit - 1;
   let query = supabase
     .from("products")
-    .select("*, categories(name)", { count: "exact" })
+    .select(PRODUCT_SELECT, { count: "exact" })
     .order("name");
   if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
   if (filter.active !== undefined) query = query.eq("active", filter.active);
@@ -294,6 +343,8 @@ export async function createProduct(input: {
   description: string | null;
   price: number;
   active: boolean;
+  customizable?: boolean;
+  optionGroups?: ProductOptionGroup[];
 }) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.createProduct(input);
@@ -308,13 +359,18 @@ export async function createProduct(input: {
       description: input.description,
       price: input.price,
       active: input.active,
+      customizable: Boolean(input.customizable),
     })
-    .select("*, categories(name)")
+    .select(PRODUCT_SELECT)
     .single();
   if (error || !data) {
     throw new Error(error?.message ?? "Não foi possível salvar o item.");
   }
-  return mapProduct(data as Record<string, unknown>);
+  const product = mapProduct(data as Record<string, unknown>);
+  if (input.optionGroups) {
+    return (await replaceProductOptions(product.id, input.optionGroups)) ?? product;
+  }
+  return product;
 }
 
 export async function updateProduct(
@@ -325,6 +381,8 @@ export async function updateProduct(
     description: string | null;
     price: number;
     active: boolean;
+    customizable: boolean;
+    optionGroups: ProductOptionGroup[];
   }>,
 ) {
   const supabase = getSupabase();
@@ -336,15 +394,59 @@ export async function updateProduct(
   if (input.description !== undefined) payload.description = input.description;
   if (input.price !== undefined) payload.price = input.price;
   if (input.active !== undefined) payload.active = input.active;
+  if (input.customizable !== undefined) payload.customizable = input.customizable;
 
-  const { data, error } = await supabase
-    .from("products")
-    .update(payload)
-    .eq("id", id)
-    .select("*, categories(name)")
-    .single();
-  if (error || !data) return null;
-  return mapProduct(data as Record<string, unknown>);
+  if (Object.keys(payload).length) {
+    const { error } = await supabase.from("products").update(payload).eq("id", id);
+    if (error) return null;
+  }
+  if (input.optionGroups) {
+    return replaceProductOptions(id, input.optionGroups);
+  }
+  return getProduct(id);
+}
+
+async function replaceProductOptions(
+  productId: string,
+  groups: ProductOptionGroup[],
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.getProduct(productId);
+
+  await supabase.from("product_option_groups").delete().eq("product_id", productId);
+  for (const [index, group] of groups.entries()) {
+    const { data, error } = await supabase
+      .from("product_option_groups")
+      .insert({
+        product_id: productId,
+        name: group.name.trim(),
+        required: group.required,
+        min_select: group.minSelect,
+        max_select: group.maxSelect,
+        price_mode: group.priceMode,
+        sort_order: group.sortOrder ?? index,
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new Error(error?.message ?? "Não foi possível salvar as opções.");
+    }
+    const options = group.options.filter((option) => option.name.trim());
+    if (!options.length) continue;
+    const { error: optionError } = await supabase.from("product_options").insert(
+      options.map((option, optionIndex) => ({
+        group_id: data.id,
+        name: option.name.trim(),
+        extra_price: option.extraPrice,
+        sort_order: option.sortOrder ?? optionIndex,
+        active: option.active !== false,
+      })),
+    );
+    if (optionError) {
+      throw new Error(optionError.message);
+    }
+  }
+  return getProduct(productId);
 }
 
 export async function getProduct(id: string) {
@@ -353,7 +455,7 @@ export async function getProduct(id: string) {
 
   const { data, error } = await supabase
     .from("products")
-    .select("*, categories(name)")
+    .select(PRODUCT_SELECT)
     .eq("id", id)
     .maybeSingle();
   if (error || !data) return null;
@@ -464,7 +566,13 @@ export async function createOrder(input: {
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod;
   addressText?: string;
-  items: { productId?: string; name: string; quantity: number; unitPriceCents: number }[];
+  items: {
+    productId?: string;
+    name: string;
+    quantity: number;
+    unitPriceCents: number;
+    extras?: CartItem["extras"];
+  }[];
   deliveryFeeCents: number;
 }) {
   const supabase = getSupabase();
@@ -501,6 +609,7 @@ export async function createOrder(input: {
       name: item.name,
       quantity: item.quantity,
       unit_price_cents: item.unitPriceCents,
+      extras: "extras" in item ? item.extras ?? [] : [],
     })),
   );
 

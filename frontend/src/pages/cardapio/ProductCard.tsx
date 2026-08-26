@@ -35,6 +35,7 @@ export function ProductCard({
           <Tag color={product.active ? "green" : "default"}>
             {product.active ? "Ativo no WhatsApp" : "Inativo"}
           </Tag>
+          {product.customizable ? <Tag color="orange">Montável</Tag> : null}
           <strong className="entity-card-price">{formatReais(product.price)}</strong>
         </>
       }

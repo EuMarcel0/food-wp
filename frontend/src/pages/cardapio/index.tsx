@@ -163,6 +163,16 @@ export function CatalogPage() {
           columns={[
             { title: "Categoria", dataIndex: "categoryName", width: 180 },
             { title: "Item", dataIndex: "name" },
+            {
+              title: "Tipo",
+              width: 120,
+              render: (_, product) =>
+                product.customizable ? (
+                  <Tag color="orange">Montável</Tag>
+                ) : (
+                  <Tag>Simples</Tag>
+                ),
+            },
             { title: "Descrição", dataIndex: "description" },
             {
               title: "Preço",

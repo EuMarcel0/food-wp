@@ -20,6 +20,7 @@ import type {
   OrderStatus,
   PaymentMethod,
   Product,
+  ProductOptionGroup,
   Store,
 } from "../types.js";
 
@@ -48,6 +49,8 @@ const products: Product[] = [
     description: "Pão, carne e queijo",
     price: 22,
     active: true,
+    customizable: false,
+    optionGroups: [],
   },
   {
     id: "prod-x-salada",
@@ -57,6 +60,8 @@ const products: Product[] = [
     description: "Pão, carne, queijo e salada",
     price: 25,
     active: true,
+    customizable: false,
+    optionGroups: [],
   },
   {
     id: "prod-batata",
@@ -66,6 +71,8 @@ const products: Product[] = [
     description: "Porção média",
     price: 14,
     active: true,
+    customizable: false,
+    optionGroups: [],
   },
   {
     id: "prod-refri",
@@ -75,6 +82,8 @@ const products: Product[] = [
     description: "350ml",
     price: 7,
     active: true,
+    customizable: false,
+    optionGroups: [],
   },
 ];
 
@@ -199,6 +208,8 @@ export const memoryStore = {
     description: string | null;
     price: number;
     active: boolean;
+    customizable?: boolean;
+    optionGroups?: ProductOptionGroup[];
   }) {
     const category = categories.find((item) => item.id === input.categoryId);
     const product: Product = {
@@ -209,6 +220,8 @@ export const memoryStore = {
       description: input.description,
       price: input.price,
       active: input.active,
+      customizable: Boolean(input.customizable),
+      optionGroups: input.optionGroups ?? [],
     };
     products.push(product);
     return product;
@@ -222,6 +235,8 @@ export const memoryStore = {
       description: string | null;
       price: number;
       active: boolean;
+      customizable: boolean;
+      optionGroups: ProductOptionGroup[];
     }>,
   ) {
     const product = products.find((item) => item.id === id);
@@ -236,6 +251,8 @@ export const memoryStore = {
     if (input.description !== undefined) product.description = input.description;
     if (input.price !== undefined) product.price = input.price;
     if (input.active !== undefined) product.active = input.active;
+    if (input.customizable !== undefined) product.customizable = input.customizable;
+    if (input.optionGroups !== undefined) product.optionGroups = input.optionGroups;
     return product;
   },
 

@@ -44,6 +44,27 @@ export type Product = {
   description: string | null;
   price: number;
   active: boolean;
+  customizable: boolean;
+  optionGroups: ProductOptionGroup[];
+};
+
+export type ProductOption = {
+  id: string;
+  name: string;
+  extraPrice: number;
+  sortOrder: number;
+  active: boolean;
+};
+
+export type ProductOptionGroup = {
+  id: string;
+  name: string;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  priceMode: "addon" | "replace";
+  sortOrder: number;
+  options: ProductOption[];
 };
 
 export type Store = {

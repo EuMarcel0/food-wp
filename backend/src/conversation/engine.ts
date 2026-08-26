@@ -12,11 +12,22 @@ import {
   upsertCustomer,
 } from "../data/repository.js";
 import { describeOrderStatus } from "./status.js";
+import {
+  activeGroups,
+  assembledName,
+  groupPrompt,
+  isCustomizable,
+  optionDescription,
+  selectionKey,
+  unitPriceCents,
+} from "./assemble.js";
 import type {
+  CartSelection,
   ConversationContext,
   ConversationState,
   Fulfillment,
   PaymentMethod,
+  Product,
 } from "../types.js";
 
 const GREETING_KEYS = ["oi", "olá", "ola", "menu", "inicio", "início", "hi", "hello"];
@@ -75,7 +86,9 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
     rows: items.map((product) => ({
       id: `product:${product.id}`,
       title: product.name,
-      description: `${formatReais(product.price)}${product.description ? ` · ${product.description}` : ""}`,
+      description: `${formatReais(product.price)}${
+        product.customizable ? " · montável" : ""
+      }${product.description ? ` · ${product.description}` : ""}`,
     })),
   }));
 
@@ -85,6 +98,55 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
   }
 
   await sendList(to, intro, "Ver itens", sections);
+}
+
+async function askOptionGroup(
+  to: string,
+  product: Product,
+  context: ConversationContext,
+) {
+  const groups = activeGroups(product);
+  const group = groups[context.optionGroupIndex ?? 0];
+  if (!group) return false;
+  const current = context.draftSelections?.find((item) => item.groupId === group.id);
+  const picked = current?.options.map((option) => option.id) ?? [];
+  const remaining = group.options.filter((option) => !picked.includes(option.id));
+  if (!remaining.length) return true;
+  await sendList(
+    to,
+    groupPrompt(product, group, picked),
+    "Escolher",
+    [
+      {
+        title: group.name.slice(0, 24),
+        rows: remaining.slice(0, 10).map((option) => ({
+          id: `opt:${option.id}`,
+          title: option.name.slice(0, 24),
+          description: optionDescription(option.extraPrice),
+        })),
+      },
+    ],
+  );
+  if (!group.required && picked.length === 0) {
+    await sendButtons(to, "Esta etapa é opcional.", [
+      { id: "skip_group", title: "Pular" },
+    ]);
+  }
+  return false;
+}
+
+async function askQuantity(to: string, product: Product, extras: CartSelection[]) {
+  const name = assembledName(product, extras);
+  const price = unitPriceCents(product, extras);
+  await sendButtons(
+    to,
+    `*${name}*\n${formatReais(price / 100)}\nQuantas unidades?`,
+    [
+      { id: "qty:1", title: "1" },
+      { id: "qty:2", title: "2" },
+      { id: "qty:3", title: "3" },
+    ],
+  );
 }
 
 export async function handleIncomingMessage(input: {
@@ -145,6 +207,107 @@ export async function handleIncomingMessage(input: {
     }
   }
 
+  if (state === "awaiting_option" && context.selectedProductId) {
+    const product = await getProduct(context.selectedProductId);
+    const groups = product ? activeGroups(product) : [];
+    const index = context.optionGroupIndex ?? 0;
+    const group = groups[index];
+    if (!product || !group) {
+      await persist("awaiting_product", context);
+      await showMenu(input.from);
+      return;
+    }
+
+    const drafts = context.draftSelections ?? [];
+    const current =
+      drafts.find((item) => item.groupId === group.id) ??
+      {
+        groupId: group.id,
+        groupName: group.name,
+        priceMode: group.priceMode,
+        options: [] as CartSelection["options"],
+      };
+    if (!drafts.some((item) => item.groupId === group.id)) {
+      drafts.push(current);
+    }
+    context.draftSelections = drafts;
+
+    const nextStep = async () => {
+      const nextIndex = index + 1;
+      if (nextIndex >= groups.length) {
+        context.optionGroupIndex = undefined;
+        await persist("awaiting_quantity", context);
+        await askQuantity(input.from, product, drafts);
+        return;
+      }
+      context.optionGroupIndex = nextIndex;
+      await persist("awaiting_option", context);
+      await askOptionGroup(input.from, product, context);
+    };
+
+    if (
+      incoming === "skip_group" ||
+      normalized === "pular" ||
+      incoming === "done_options" ||
+      normalized === "pronto"
+    ) {
+      if (current.options.length < group.minSelect) {
+        await sendText(
+          input.from,
+          `Escolha pelo menos ${group.minSelect} em *${group.name}*.`,
+        );
+        await askOptionGroup(input.from, product, context);
+        return;
+      }
+      await nextStep();
+      return;
+    }
+
+    if (incoming === "more_options") {
+      await persist("awaiting_option", context);
+      await askOptionGroup(input.from, product, context);
+      return;
+    }
+
+    if (incoming.startsWith("opt:")) {
+      const option = group.options.find((item) => item.id === incoming.slice(4));
+      if (!option) {
+        await sendText(input.from, "Não encontrei essa opção.");
+        await askOptionGroup(input.from, product, context);
+        return;
+      }
+      if (!current.options.some((item) => item.id === option.id)) {
+        current.options.push({
+          id: option.id,
+          name: option.name,
+          extraPrice: option.extraPrice,
+        });
+      }
+      await persist("awaiting_option", context);
+
+      if (current.options.length >= group.maxSelect) {
+        await nextStep();
+        return;
+      }
+      if (current.options.length >= group.minSelect) {
+        await sendButtons(
+          input.from,
+          `*${group.name}:* ${current.options.map((item) => item.name).join(", ")}`,
+          [
+            { id: "more_options", title: "Mais um" },
+            { id: "done_options", title: "Pronto" },
+          ],
+        );
+        return;
+      }
+      await askOptionGroup(input.from, product, context);
+      return;
+    }
+
+    await askOptionGroup(input.from, product, context);
+    return;
+  }
+
   if (incoming.startsWith("product:") || state === "awaiting_product") {
     const productId = incoming.startsWith("product:")
       ? incoming.slice("product:".length)
@@ -160,16 +323,17 @@ export async function handleIncomingMessage(input: {
     }
 
     context.selectedProductId = product.id;
+    context.draftSelections = [];
+    context.optionGroupIndex = 0;
+
+    if (isCustomizable(product)) {
+      await persist("awaiting_option", context);
+      await askOptionGroup(input.from, product, context);
+      return;
+    }
+
     await persist("awaiting_quantity", context);
-    await sendButtons(
-      input.from,
-      `*${product.name}* — ${formatReais(product.price)}\nQuantas unidades?`,
-      [
-        { id: "qty:1", title: "1" },
-        { id: "qty:2", title: "2" },
-        { id: "qty:3", title: "3" },
-      ],
-    );
+    await askQuantity(input.from, product, []);
     return;
   }
 
@@ -185,21 +349,27 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    const already = context.cart.find((item) => item.productId === product.id);
+    const extras = context.draftSelections ?? [];
+    const nextItem = {
+      productId: product.id,
+      name: assembledName(product, extras),
+      quantity,
+      unitPriceCents: unitPriceCents(product, extras),
+      extras,
+    };
+    const already = context.cart.find(
+      (item) => selectionKey(item) === selectionKey(nextItem),
+    );
     if (already) already.quantity += quantity;
-    else {
-      context.cart.push({
-        productId: product.id,
-        name: product.name,
-        quantity,
-        unitPriceCents: Math.round(product.price * 100),
-      });
-    }
+    else context.cart.push(nextItem);
+
     context.selectedProductId = undefined;
+    context.draftSelections = [];
+    context.optionGroupIndex = undefined;
     await persist("cart", context);
     await sendButtons(
       input.from,
-      `${quantity}x ${product.name} adicionado.\n\n${renderCart(context)}`,
+      `${quantity}x ${nextItem.name} adicionado.\n\n${renderCart(context)}`,
       [
         { id: "order", title: "Adicionar mais" },
         { id: "checkout", title: "Fechar pedido" },

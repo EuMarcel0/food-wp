@@ -12,6 +12,7 @@ export type OrderStatus =
 export type ConversationState =
   | "welcome"
   | "awaiting_product"
+  | "awaiting_option"
   | "awaiting_quantity"
   | "cart"
   | "awaiting_fulfillment"
@@ -19,16 +20,45 @@ export type ConversationState =
   | "awaiting_payment"
   | "awaiting_order_code";
 
+export type ProductOption = {
+  id: string;
+  name: string;
+  extraPrice: number;
+  sortOrder: number;
+  active: boolean;
+};
+
+export type ProductOptionGroup = {
+  id: string;
+  name: string;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  priceMode: "addon" | "replace";
+  sortOrder: number;
+  options: ProductOption[];
+};
+
+export type CartSelection = {
+  groupId: string;
+  groupName: string;
+  priceMode: "addon" | "replace";
+  options: { id: string; name: string; extraPrice: number }[];
+};
+
 export type CartItem = {
   productId: string;
   name: string;
   quantity: number;
   unitPriceCents: number;
+  extras?: CartSelection[];
 };
 
 export type ConversationContext = {
   cart: CartItem[];
   selectedProductId?: string;
+  optionGroupIndex?: number;
+  draftSelections?: CartSelection[];
   fulfillment?: Fulfillment;
   addressText?: string;
 };
@@ -51,6 +81,8 @@ export type Product = {
   description: string | null;
   price: number;
   active: boolean;
+  customizable: boolean;
+  optionGroups: ProductOptionGroup[];
 };
 
 export type Category = {
