@@ -158,10 +158,13 @@ export function soleGroupPick(group: ProductOptionGroup) {
 export function unitPriceCents(product: Product, selections: CartSelection[]) {
   let cents = Math.round(product.price * 100);
   for (const selection of selections) {
-    const extra = selection.options.reduce(
-      (sum, option) => sum + Math.round(option.extraPrice * 100),
-      0,
+    const extras = selection.options.map((option) =>
+      Math.round(option.extraPrice * 100),
     );
+    const extra =
+      selection.priceMode === "replace"
+        ? extras.reduce((max, value) => Math.max(max, value), 0)
+        : extras.reduce((sum, value) => sum + value, 0);
     if (selection.priceMode === "replace") cents = extra;
     else cents += extra;
   }
@@ -171,7 +174,9 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
 export function assembledName(product: Product, selections: CartSelection[]) {
   const parts = selections
     .filter((selection) => selection.options.length)
-    .map((selection) => selection.options.map((option) => option.name).join("/"));
+    .map((selection) =>
+      selection.options.map((option) => option.name).join(" + "),
+    );
   return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
 }
 

@@ -70,6 +70,15 @@ function findVariant(
   });
 }
 
+function parseQuantity(raw: string) {
+  const text = raw.replace(/^qty:/i, "").trim();
+  const match = text.match(/\d{1,3}/);
+  if (!match) return null;
+  const quantity = Number(match[0]);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) return null;
+  return quantity;
+}
+
 function emptyContext(): ConversationContext {
   return { cart: [] };
 }
@@ -93,7 +102,11 @@ function renderCart(context: ConversationContext) {
 async function showWelcome(to: string, storeName: string) {
   await sendButtons(
     to,
-    `Olá! Bem-vindo à *${storeName}*.\nPosso te ajudar com o cardápio, um novo pedido ou o status de um pedido.`,
+    [
+      `Olá! Bem-vindo à *${storeName}*.`,
+      "Posso te ajudar com o cardápio, um novo pedido ou o status de um pedido.",
+      'Caso queira encerrar a conversa sem finalizar o pedido, digite *Sair*.',
+    ].join("\n"),
     [
       { id: "menu", title: "Ver cardápio" },
       { id: "order", title: "Fazer pedido" },
@@ -203,7 +216,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   const price = unitPriceCents(product, extras);
   await sendButtons(
     to,
-    `*${name}*\n${formatReais(price / 100)}\nQuantas unidades?`,
+    `*${name}*\n${formatReais(price / 100)}\nQuantas unidades?\nOu digite um número de 1 a 20.`,
     [
       { id: "qty:1", title: "1" },
       { id: "qty:2", title: "2" },
@@ -328,6 +341,68 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
+    if (incoming.startsWith("opt:")) {
+      const optionId = incoming.slice(4);
+      const openGroup = groupWantingMore(product, drafts);
+      const group =
+        (openGroup?.options.some((item) => item.id === optionId)
+          ? openGroup
+          : null) ??
+        (pending.type === "options" &&
+        pending.group.options.some((item) => item.id === optionId)
+          ? pending.group
+          : null) ??
+        activeGroups(product).find(
+          (item) =>
+            item.options.some((option) => option.id === optionId) &&
+            drafts.some((draft) => draft.groupId === item.id),
+        ) ??
+        activeGroups(product).find((item) =>
+          item.options.some((option) => option.id === optionId),
+        );
+      const option = group?.options.find((item) => item.id === optionId);
+      if (!group || !option) {
+        await sendText(input.from, "Não encontrei essa opção.");
+        await askAssembly(input.from, product, context);
+        return;
+      }
+      const current =
+        drafts.find((item) => item.groupId === group.id) ??
+        {
+          groupId: group.id,
+          groupName: group.name,
+          priceMode: group.priceMode,
+          options: [] as CartSelection["options"],
+        };
+      if (!drafts.some((item) => item.groupId === group.id)) drafts.push(current);
+      if (!current.options.some((item) => item.id === option.id)) {
+        current.options.push({
+          id: option.id,
+          name: option.name,
+          extraPrice: option.extraPrice,
+        });
+      }
+      await persist("awaiting_option", context);
+
+      if (current.options.length >= group.maxSelect) {
+        await goNext();
+        return;
+      }
+      if (current.options.length >= Math.max(group.required ? 1 : 0, group.minSelect)) {
+        await sendButtons(
+          input.from,
+          `*${group.name}:* ${current.options.map((item) => item.name).join(" + ")}`,
+          [
+            { id: "more_options", title: "Mais um" },
+            { id: "done_options", title: "Pronto" },
+          ],
+        );
+        return;
+      }
+      await askGroupOptions(input.from, product, group, drafts);
+      return;
+    }
+
     if (pending.type === "variant") {
       const group = findVariant(incoming, normalized, pending.groups);
       if (!group) {
@@ -377,47 +452,6 @@ export async function handleIncomingMessage(input: {
         return;
       }
 
-      if (incoming === "more_options" || normalized === "mais um") {
-        const finished = await askGroupOptions(input.from, product, group, drafts);
-        if (finished) await goNext();
-        return;
-      }
-
-      if (incoming.startsWith("opt:")) {
-        const option = group.options.find((item) => item.id === incoming.slice(4));
-        if (!option) {
-          await sendText(input.from, "Não encontrei essa opção.");
-          await askAssembly(input.from, product, context);
-          return;
-        }
-        if (!current.options.some((item) => item.id === option.id)) {
-          current.options.push({
-            id: option.id,
-            name: option.name,
-            extraPrice: option.extraPrice,
-          });
-        }
-        await persist("awaiting_option", context);
-
-        if (current.options.length >= group.maxSelect) {
-          await goNext();
-          return;
-        }
-        if (current.options.length >= Math.max(group.required ? 1 : 0, group.minSelect)) {
-          await sendButtons(
-            input.from,
-            `*${group.name}:* ${current.options.map((item) => item.name).join(", ")}`,
-            [
-              { id: "more_options", title: "Mais um" },
-              { id: "done_options", title: "Pronto" },
-            ],
-          );
-          return;
-        }
-        await askAssembly(input.from, product, context);
-        return;
-      }
-
       const finished = await askAssembly(input.from, product, context);
       if (finished) await goNext();
       return;
@@ -457,14 +491,13 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_quantity") {
-    const raw = incoming.startsWith("qty:") ? incoming.slice(4) : incoming;
-    const quantity = Number.parseInt(raw, 10);
+    const quantity = parseQuantity(incoming);
     const product = context.selectedProductId
       ? await getProduct(context.selectedProductId)
       : null;
 
-    if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
-      await sendText(input.from, "Envie um número de 1 a 20.");
+    if (!product || quantity == null) {
+      await sendText(input.from, "Envie um número de 1 a 20, ou toque em 1, 2 ou 3.");
       return;
     }
 
