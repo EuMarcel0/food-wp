@@ -19,6 +19,7 @@ import {
   nextAssembly,
   optionDescription,
   selectionKey,
+  soleGroupPick,
   unitPriceCents,
   variantPriceLabel,
   variantPrompt,
@@ -30,6 +31,7 @@ import type {
   Fulfillment,
   PaymentMethod,
   Product,
+  ProductOptionGroup,
 } from "../types.js";
 
 const GREETING_KEYS = ["oi", "olá", "ola", "menu", "inicio", "início", "hi", "hello"];
@@ -50,6 +52,21 @@ function normalize(text: string) {
     .replace(/\p{Diacritic}/gu, "")
     .trim()
     .toLowerCase();
+}
+
+function findVariant(
+  incoming: string,
+  normalized: string,
+  groups: ProductOptionGroup[],
+) {
+  if (incoming.startsWith("var:")) {
+    const match = groups.find((group) => group.id === incoming.slice(4));
+    if (match) return match;
+  }
+  return groups.find((group) => {
+    const name = normalize(group.name);
+    return normalized === name || normalized.startsWith(`${name} `);
+  });
 }
 
 function emptyContext(): ConversationContext {
@@ -269,14 +286,16 @@ export async function handleIncomingMessage(input: {
         return;
       }
       await persist("awaiting_option", context);
-      await askAssembly(input.from, product, context);
+      const finished = await askAssembly(input.from, product, context);
+      if (finished) {
+        context.optionGroupIndex = undefined;
+        await persist("awaiting_quantity", context);
+        await askQuantity(input.from, product, drafts);
+      }
     };
 
     if (pending.type === "variant") {
-      const variantId = incoming.startsWith("var:")
-        ? incoming.slice(4)
-        : pending.groups.find((group) => normalize(group.name) === normalized)?.id;
-      const group = pending.groups.find((item) => item.id === variantId);
+      const group = findVariant(incoming, normalized, pending.groups);
       if (!group) {
         await sendText(input.from, "Escolha um tamanho da lista.");
         await askAssembly(input.from, product, context);
@@ -287,11 +306,10 @@ export async function handleIncomingMessage(input: {
           groupId: group.id,
           groupName: group.name,
           priceMode: group.priceMode,
-          options: [],
+          options: soleGroupPick(group),
         });
       }
-      await persist("awaiting_option", context);
-      await askAssembly(input.from, product, context);
+      await goNext();
       return;
     }
 
@@ -366,7 +384,8 @@ export async function handleIncomingMessage(input: {
         return;
       }
 
-      await askAssembly(input.from, product, context);
+      const finished = await askAssembly(input.from, product, context);
+      if (finished) await goNext();
       return;
     }
 

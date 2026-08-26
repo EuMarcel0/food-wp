@@ -99,7 +99,12 @@ export function nextAssembly(
       const group = chosen;
       const draft = drafts.find((item) => item.groupId === group.id);
       const count = draft?.options.length ?? 0;
-      if (count < Math.max(group.required ? 1 : 0, group.minSelect)) {
+      const need = Math.max(group.required ? 1 : 0, group.minSelect);
+      if (count < need) {
+        if (!group.options.length) continue;
+        return { type: "options", group };
+      }
+      if (count === 0 && group.options.length > 1) {
         return { type: "options", group };
       }
       continue;
@@ -142,6 +147,12 @@ export function variantPriceLabel(product: Product, group: ProductOptionGroup) {
   const varied = extras.length > 1 && extras.some((value) => value !== extras[0]);
   const formatted = formatReais(price);
   return varied ? `a partir de ${formatted}` : formatted;
+}
+
+export function soleGroupPick(group: ProductOptionGroup) {
+  if (group.options.length !== 1) return [];
+  const option = group.options[0];
+  return [{ id: option.id, name: option.name, extraPrice: option.extraPrice }];
 }
 
 export function unitPriceCents(product: Product, selections: CartSelection[]) {
