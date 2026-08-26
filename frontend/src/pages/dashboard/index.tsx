@@ -1,48 +1,48 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../../components/PageHeader";
 import { api } from "../../lib/api";
 import { formatBRL } from "../../lib/format";
-import type { OrderStats, Store } from "../../types";
+import { queryKeys } from "../../lib/queryKeys";
+import type { OrderStats } from "../../types";
 
 const SUBTITLE_SUFFIX =
   "o bot responde o cliente no WhatsApp e esta tela atualiza o status da cozinha.";
 
+const emptyStats: OrderStats = { total: 0, open: 0, totalCents: 0 };
+
 export function DashboardPage() {
-  const [stats, setStats] = useState<OrderStats | null>(null);
-  const [store, setStore] = useState<Store | null>(null);
-  const [storeReady, setStoreReady] = useState(false);
+  const storeQuery = useQuery({
+    queryKey: queryKeys.store,
+    queryFn: api.store,
+  });
+  const statsQuery = useQuery({
+    queryKey: queryKeys.stats,
+    queryFn: api.orderStats,
+  });
 
-  useEffect(() => {
-    api.orderStats().then(setStats).catch(() =>
-      setStats({ total: 0, open: 0, totalCents: 0 }),
-    );
-    api
-      .store()
-      .then(setStore)
-      .catch(() => setStore(null))
-      .finally(() => setStoreReady(true));
-  }, []);
-
+  const store = storeQuery.data;
+  const showHeader = Boolean(store) || storeQuery.isFetched;
+  const stats = statsQuery.data ?? emptyStats;
   const title = store?.name ?? "Estabelecimento";
   const subtitle = `Segmento: ${store?.segment ?? "food"} · ${SUBTITLE_SUFFIX}`;
 
   return (
     <>
-      <div className={storeReady ? undefined : "page-header-pending"}>
+      <div className={showHeader ? undefined : "page-header-pending"}>
         <PageHeader title={title} subtitle={subtitle} />
       </div>
       <div className="stat-grid">
         <article className="stat-card">
           <span className="stat-label">Pedidos em aberto</span>
-          <strong className="stat-value">{stats?.open ?? 0}</strong>
+          <strong className="stat-value">{stats.open}</strong>
         </article>
         <article className="stat-card">
           <span className="stat-label">Pedidos no painel</span>
-          <strong className="stat-value">{stats?.total ?? 0}</strong>
+          <strong className="stat-value">{stats.total}</strong>
         </article>
         <article className="stat-card">
           <span className="stat-label">Total listado</span>
-          <strong className="stat-value">{formatBRL(stats?.totalCents ?? 0)}</strong>
+          <strong className="stat-value">{formatBRL(stats.totalCents)}</strong>
         </article>
       </div>
     </>

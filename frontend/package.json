@@ -13,6 +13,7 @@
     "@dicebear/adventurer-neutral": "^9.4.2",
     "@dicebear/core": "^9.4.3",
     "@supabase/supabase-js": "^2.57.4",
+    "@tanstack/react-query": "^5.102.5",
     "antd": "^5.27.1",
     "dayjs": "^1.11.18",
     "formik": "^2.4.9",

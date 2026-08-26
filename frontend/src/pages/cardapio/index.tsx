@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Table, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
@@ -10,105 +11,84 @@ import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { formatReais } from "../../lib/format";
-import {
-  PAGE_SIZE,
-  clampPage,
-  serverPagination,
-} from "../../lib/pagination";
-import type { Category, Product } from "../../types";
+import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
+import { queryKeys } from "../../lib/queryKeys";
+import type { Product } from "../../types";
 import { ProductForm, toProductPayload } from "./ProductForm";
 import type { ProductValues } from "../../lib/validation";
 
 export function CatalogPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
-  const [saving, setSaving] = useState(false);
   const [qInput, setQInput] = useState("");
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [active, setActive] = useState<boolean | undefined>();
   const q = useDebouncedValue(qInput.trim(), 300);
+  const filters = { q: q || undefined, categoryId, active };
   const activeCount = [q, categoryId, active !== undefined].filter(Boolean).length;
-  const filterKey = `${q}|${categoryId ?? ""}|${active ?? ""}`;
-  const filterKeyRef = useRef(filterKey);
 
-  const loadProducts = useCallback(async () => {
-    const result = await api.products(page, limit, {
-      q: q || undefined,
-      categoryId,
-      active,
-    });
+  useEffect(() => {
+    setPage(1);
+  }, [q, categoryId, active]);
+
+  const categoriesQuery = useQuery({
+    queryKey: queryKeys.categories.options,
+    queryFn: () => api.categories(true),
+  });
+  const categories = categoriesQuery.data ?? [];
+
+  const listQuery = useQuery({
+    queryKey: queryKeys.products.list(page, limit, filters),
+    queryFn: () => api.products(page, limit, filters),
+    placeholderData: keepPreviousData,
+  });
+
+  const result = listQuery.data;
+  const products = result?.items ?? [];
+  const total = result?.total ?? 0;
+
+  useEffect(() => {
+    if (!result) return;
     const nextPage = clampPage(page, limit, result.total);
-    setProducts(result.items);
-    setTotal(result.total);
     if (nextPage !== page) setPage(nextPage);
-  }, [page, limit, q, categoryId, active]);
+  }, [limit, page, result]);
 
-  useEffect(() => {
-    api
-      .categories(true)
-      .then(setCategories)
-      .catch(() => setCategories([]));
-  }, []);
-
-  useEffect(() => {
-    if (filterKeyRef.current !== filterKey) {
-      filterKeyRef.current = filterKey;
-      if (page !== 1) {
-        setPage(1);
-        return;
-      }
-    }
-    setLoading(true);
-    loadProducts()
-      .catch(() => {
-        setProducts([]);
-        setTotal(0);
-      })
-      .finally(() => setLoading(false));
-  }, [filterKey, loadProducts, page]);
-
-  function openCreate() {
-    setEditing(null);
-    setOpen(true);
+  async function refreshCatalog() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
+    ]);
   }
 
-  function openEdit(product: Product) {
-    setEditing(product);
-    setOpen(true);
-  }
-
-  async function handleSave(values: ProductValues) {
-    setSaving(true);
-    try {
+  const saveMutation = useMutation({
+    mutationFn: async (values: ProductValues) => {
       const payload = toProductPayload(values);
-      if (editing) {
-        await api.updateProduct(editing.id, payload);
-        toast.success("Item atualizado.");
-      } else {
-        await api.createProduct(payload);
-        toast.success("Item incluído no cardápio.");
-      }
+      if (editing) return api.updateProduct(editing.id, payload);
+      return api.createProduct(payload);
+    },
+    onSuccess: async () => {
+      toast.success(editing ? "Item atualizado." : "Item incluído no cardápio.");
       setOpen(false);
       setEditing(null);
-      await loadProducts();
-    } finally {
-      setSaving(false);
-    }
-  }
+      await refreshCatalog();
+    },
+  });
 
-  async function toggleActive(product: Product) {
-    await api.updateProduct(product.id, { active: !product.active });
-    toast.success(
-      product.active ? "Item desativado no WhatsApp." : "Item ativado no WhatsApp.",
-    );
-    await loadProducts();
-  }
+  const toggleMutation = useMutation({
+    mutationFn: (product: Product) =>
+      api.updateProduct(product.id, { active: !product.active }),
+    onSuccess: async (_updated, product) => {
+      toast.success(
+        product.active
+          ? "Item desativado no WhatsApp."
+          : "Item ativado no WhatsApp.",
+      );
+      await refreshCatalog();
+    },
+  });
 
   return (
     <>
@@ -116,7 +96,14 @@ export function CatalogPage() {
         title="Cardápio"
         subtitle="Os itens ativos aparecem para o cliente no WhatsApp."
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
             Incluir
           </Button>
         }
@@ -166,7 +153,7 @@ export function CatalogPage() {
       <div className="table-wrap list-table">
         <Table
           rowKey="id"
-          loading={loading}
+          loading={listQuery.isPending && !result}
           dataSource={products}
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);
@@ -203,12 +190,15 @@ export function CatalogPage() {
                     {
                       key: "edit",
                       label: "Editar",
-                      onClick: () => openEdit(product),
+                      onClick: () => {
+                        setEditing(product);
+                        setOpen(true);
+                      },
                     },
                     {
                       key: "toggle",
                       label: product.active ? "Desativar" : "Ativar",
-                      onClick: () => toggleActive(product),
+                      onClick: () => toggleMutation.mutate(product),
                     },
                   ]}
                 />
@@ -219,7 +209,7 @@ export function CatalogPage() {
       </div>
       <div className="list-cards">
         <MobileCardList
-          loading={loading}
+          loading={listQuery.isPending && !result}
           isEmpty={products.length === 0}
           empty={
             activeCount > 0
@@ -235,8 +225,11 @@ export function CatalogPage() {
             <ProductCard
               key={product.id}
               product={product}
-              onEdit={openEdit}
-              onToggle={toggleActive}
+              onEdit={(item) => {
+                setEditing(item);
+                setOpen(true);
+              }}
+              onToggle={(item) => toggleMutation.mutate(item)}
             />
           ))}
         </MobileCardList>
@@ -247,12 +240,14 @@ export function CatalogPage() {
         categories={categories.filter(
           (category) => category.active || category.id === editing?.categoryId,
         )}
-        submitting={saving}
+        submitting={saveMutation.isPending}
         onCancel={() => {
           setOpen(false);
           setEditing(null);
         }}
-        onSubmit={handleSave}
+        onSubmit={async (values) => {
+          await saveMutation.mutateAsync(values);
+        }}
       />
     </>
   );

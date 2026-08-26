@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Input, Select, Table, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
@@ -7,11 +13,8 @@ import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
-import {
-  PAGE_SIZE,
-  clampPage,
-  serverPagination,
-} from "../../lib/pagination";
+import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
+import { queryKeys } from "../../lib/queryKeys";
 import { toast } from "../../lib/toast";
 import { supabase } from "../../lib/supabase";
 import {
@@ -31,12 +34,9 @@ const STATUS_OPTIONS = (
 
 export function OrdersPage() {
   const { user } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [total, setTotal] = useState(0);
-  const [updating, setUpdating] = useState<string | null>(null);
   const [qInput, setQInput] = useState("");
   const [status, setStatus] = useState<OrderStatus | undefined>();
   const [fulfillment, setFulfillment] = useState<
@@ -45,51 +45,39 @@ export function OrdersPage() {
   const q = useDebouncedValue(qInput.trim(), 300);
   const filters = { q: q || undefined, status, fulfillment };
   const activeCount = [q, status, fulfillment].filter(Boolean).length;
-  const filterKey = `${q}|${status ?? ""}|${fulfillment ?? ""}`;
-  const filterKeyRef = useRef(filterKey);
-  const pageRef = useRef({ page, limit, filters });
-  pageRef.current = { page, limit, filters };
-
-  const load = useCallback(async (silent = false) => {
-    const {
-      page: currentPage,
-      limit: currentLimit,
-      filters: currentFilters,
-    } = pageRef.current;
-    const result = await api.orders(
-      currentPage,
-      currentLimit,
-      silent,
-      currentFilters,
-    );
-    const nextPage = clampPage(currentPage, currentLimit, result.total);
-    setOrders(result.items);
-    setTotal(result.total);
-    if (nextPage !== currentPage) setPage(nextPage);
-    setLoading(false);
-  }, []);
 
   useEffect(() => {
-    if (filterKeyRef.current !== filterKey) {
-      filterKeyRef.current = filterKey;
-      if (page !== 1) {
-        setPage(1);
-        return;
-      }
+    setPage(1);
+  }, [q, status, fulfillment]);
+
+  const listQuery = useQuery({
+    queryKey: queryKeys.orders.list(page, limit, filters),
+    queryFn: () => api.orders(page, limit, true, filters),
+    placeholderData: keepPreviousData,
+  });
+
+  const result = listQuery.data;
+  const orders = result?.items ?? [];
+  const total = result?.total ?? 0;
+
+  useEffect(() => {
+    if (!result) return;
+    const nextPage = clampPage(page, limit, result.total);
+    if (nextPage !== page) setPage(nextPage);
+  }, [limit, page, result]);
+
+  useEffect(() => {
+    async function refresh() {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
+      ]);
     }
-    setLoading(true);
-    load().catch(() => {
-      setOrders([]);
-      setTotal(0);
-      setLoading(false);
-    });
-  }, [page, limit, filterKey, load]);
 
-  useEffect(() => {
     const client = supabase;
     if (!client) {
       const timer = window.setInterval(() => {
-        load(true).catch(() => undefined);
+        void refresh();
       }, 8000);
       return () => window.clearInterval(timer);
     }
@@ -100,7 +88,7 @@ export function OrdersPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "orders" },
         () => {
-          load(true).catch(() => undefined);
+          void refresh();
         },
       )
       .subscribe();
@@ -108,26 +96,28 @@ export function OrdersPage() {
     return () => {
       void client.removeChannel(channel);
     };
-  }, [load]);
+  }, [queryClient]);
 
-  async function changeStatus(order: Order, status: OrderStatus) {
-    setUpdating(order.id);
-    try {
-      const updated = await api.updateOrderStatus(
-        order.id,
-        status,
-        displayName(user),
-      );
-      setOrders((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
+  const statusMutation = useMutation({
+    mutationFn: ({ order, next }: { order: Order; next: OrderStatus }) =>
+      api.updateOrderStatus(order.id, next, displayName(user)),
+    onSuccess: async (updated) => {
       toast.success(`Pedido #${updated.code} → ${STATUS_LABEL[updated.status]}`);
-    } catch {
-      // o toast de erro já vem da API
-    } finally {
-      setUpdating(null);
-    }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
+      ]);
+    },
+  });
+
+  function changeStatus(order: Order, next: OrderStatus) {
+    statusMutation.mutate({ order, next });
   }
+
+  const updatingId =
+    statusMutation.isPending && statusMutation.variables
+      ? statusMutation.variables.order.id
+      : null;
 
   return (
     <>
@@ -173,7 +163,7 @@ export function OrdersPage() {
       <div className="table-wrap list-table">
       <Table
         rowKey="id"
-        loading={loading}
+        loading={listQuery.isPending && !result}
         dataSource={orders}
         pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
           setPage(nextPage);
@@ -233,7 +223,7 @@ export function OrdersPage() {
                       ? {
                           key: "next",
                           label: STATUS_LABEL[next],
-                          disabled: updating === order.id,
+                          disabled: updatingId === order.id,
                           onClick: () => changeStatus(order, next),
                         }
                       : null,
@@ -242,7 +232,7 @@ export function OrdersPage() {
                           key: "cancel",
                           label: "Cancelar",
                           danger: true,
-                          disabled: updating === order.id,
+                          disabled: updatingId === order.id,
                           onClick: () => changeStatus(order, "cancelled"),
                         }
                       : null,
@@ -256,7 +246,7 @@ export function OrdersPage() {
       </div>
       <div className="list-cards">
         <MobileCardList
-          loading={loading}
+          loading={listQuery.isPending && !result}
           isEmpty={orders.length === 0}
           empty={
             activeCount > 0
@@ -272,7 +262,7 @@ export function OrdersPage() {
             <OrderCard
               key={order.id}
               order={order}
-              updating={updating === order.id}
+              updating={updatingId === order.id}
               onChangeStatus={changeStatus}
             />
           ))}

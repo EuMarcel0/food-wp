@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Modal, Select, Table, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
@@ -9,93 +10,65 @@ import { CategoryCard } from "./CategoryCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
-import {
-  PAGE_SIZE,
-  clampPage,
-  serverPagination,
-} from "../../lib/pagination";
+import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
+import { queryKeys } from "../../lib/queryKeys";
 import type { Category } from "../../types";
 import type { CategoryValues } from "../../lib/validation";
 import { CategoryForm, toCategoryPayload } from "./CategoryForm";
 
 export function CategoriesPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
-  const [saving, setSaving] = useState(false);
   const [qInput, setQInput] = useState("");
   const [active, setActive] = useState<boolean | undefined>();
   const q = useDebouncedValue(qInput.trim(), 300);
+  const filters = { q: q || undefined, active };
   const activeCount = [q, active !== undefined].filter(Boolean).length;
-  const filterKey = `${q}|${active ?? ""}`;
-  const filterKeyRef = useRef(filterKey);
-
-  const load = useCallback(async () => {
-    const result = await api.listCategories(page, limit, {
-      q: q || undefined,
-      active,
-    });
-    const nextPage = clampPage(page, limit, result.total);
-    setCategories(result.items);
-    setTotal(result.total);
-    if (nextPage !== page) setPage(nextPage);
-  }, [page, limit, q, active]);
 
   useEffect(() => {
-    if (filterKeyRef.current !== filterKey) {
-      filterKeyRef.current = filterKey;
-      if (page !== 1) {
-        setPage(1);
-        return;
-      }
-    }
-    setLoading(true);
-    load()
-      .catch(() => {
-        setCategories([]);
-        setTotal(0);
-      })
-      .finally(() => setLoading(false));
-  }, [filterKey, load, page]);
+    setPage(1);
+  }, [q, active]);
 
-  function openCreate() {
-    setEditing(null);
-    setOpen(true);
-  }
+  const listQuery = useQuery({
+    queryKey: queryKeys.categories.list(page, limit, filters),
+    queryFn: () => api.listCategories(page, limit, filters),
+    placeholderData: keepPreviousData,
+  });
 
-  function openEdit(category: Category) {
-    setEditing(category);
-    setOpen(true);
-  }
+  const result = listQuery.data;
+  const categories = result?.items ?? [];
+  const total = result?.total ?? 0;
 
-  async function handleSave(values: CategoryValues) {
-    setSaving(true);
-    try {
+  useEffect(() => {
+    if (!result) return;
+    const nextPage = clampPage(page, limit, result.total);
+    if (nextPage !== page) setPage(nextPage);
+  }, [limit, page, result]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (values: CategoryValues) => {
       const payload = toCategoryPayload(values);
-      if (editing) {
-        await api.updateCategory(editing.id, payload);
-        toast.success("Categoria atualizada.");
-      } else {
-        await api.createCategory(payload);
-        toast.success("Categoria incluída.");
-      }
+      if (editing) return api.updateCategory(editing.id, payload);
+      return api.createCategory(payload);
+    },
+    onSuccess: async (_data, _values, _ctx) => {
+      toast.success(editing ? "Categoria atualizada." : "Categoria incluída.");
       setOpen(false);
       setEditing(null);
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+    },
+  });
 
-  async function handleDelete(category: Category) {
-    await api.deleteCategory(category.id);
-    toast.success("Categoria excluída.");
-    await load();
-  }
+  const deleteMutation = useMutation({
+    mutationFn: (category: Category) => api.deleteCategory(category.id),
+    onSuccess: async () => {
+      toast.success("Categoria excluída.");
+      await queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+    },
+  });
 
   return (
     <>
@@ -103,7 +76,10 @@ export function CategoriesPage() {
         title="Categorias"
         subtitle="Organize o cardápio. Só as ativas aparecem no WhatsApp e no cadastro de itens."
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}>
             Incluir
           </Button>
         }
@@ -139,7 +115,7 @@ export function CategoriesPage() {
       <div className="table-wrap list-table">
         <Table
           rowKey="id"
-          loading={loading}
+          loading={listQuery.isPending && !result}
           dataSource={categories}
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);
@@ -169,7 +145,10 @@ export function CategoriesPage() {
                     {
                       key: "edit",
                       label: "Editar",
-                      onClick: () => openEdit(category),
+                      onClick: () => {
+                        setEditing(category);
+                        setOpen(true);
+                      },
                     },
                     {
                       key: "delete",
@@ -181,7 +160,7 @@ export function CategoriesPage() {
                           okText: "Excluir",
                           cancelText: "Cancelar",
                           okButtonProps: { danger: true },
-                          onOk: () => handleDelete(category),
+                          onOk: () => deleteMutation.mutateAsync(category),
                         });
                       },
                     },
@@ -194,7 +173,7 @@ export function CategoriesPage() {
       </div>
       <div className="list-cards">
         <MobileCardList
-          loading={loading}
+          loading={listQuery.isPending && !result}
           isEmpty={categories.length === 0}
           empty={
             activeCount > 0
@@ -210,14 +189,17 @@ export function CategoriesPage() {
             <CategoryCard
               key={category.id}
               category={category}
-              onEdit={openEdit}
+              onEdit={(item) => {
+                setEditing(item);
+                setOpen(true);
+              }}
               onDelete={(item) => {
                 Modal.confirm({
                   title: "Excluir esta categoria?",
                   okText: "Excluir",
                   cancelText: "Cancelar",
                   okButtonProps: { danger: true },
-                  onOk: () => handleDelete(item),
+                  onOk: () => deleteMutation.mutateAsync(item),
                 });
               }}
             />
@@ -227,12 +209,14 @@ export function CategoriesPage() {
       <CategoryForm
         open={open}
         category={editing}
-        submitting={saving}
+        submitting={saveMutation.isPending}
         onCancel={() => {
           setOpen(false);
           setEditing(null);
         }}
-        onSubmit={handleSave}
+        onSubmit={async (values) => {
+          await saveMutation.mutateAsync(values);
+        }}
       />
     </>
   );

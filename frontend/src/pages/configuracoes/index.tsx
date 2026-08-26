@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, List, Tag, Typography } from "antd";
 import { api } from "../../lib/api";
-import type { Health } from "../../types";
+import { queryKeys } from "../../lib/queryKeys";
 
 const backendVars = [
   "SUPABASE_URL",
@@ -20,12 +21,14 @@ const frontendVars = [
 ];
 
 export function SettingsPage() {
-  const [health, setHealth] = useState<Health | null>(null);
+  const { data: health } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: api.health,
+  });
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null));
     const onPrompt = (event: Event) => {
       event.preventDefault();
       setInstallEvent(event as BeforeInstallPromptEvent);
