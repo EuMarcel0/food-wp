@@ -1,0 +1,37 @@
+.filter-bar-desktop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.filter-bar-desktop .filter-search {
+  width: min(280px, 100%);
+}
+
+.filter-bar-desktop .filter-select {
+  min-width: 160px;
+}
+
+.filter-bar-mobile {
+  display: flex;
+  margin-bottom: 14px;
+}
+
+.filter-modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-modal-fields .filter-search,
+.filter-modal-fields .filter-select {
+  width: 100%;
+}
+
+.filter-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

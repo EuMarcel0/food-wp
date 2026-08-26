@@ -1,0 +1,101 @@
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-bell.ant-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.notification-popover .ant-popover-inner {
+  padding: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.notification-panel {
+  width: min(360px, calc(100vw - 24px));
+}
+
+.notification-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--food-card-border);
+}
+
+.notification-panel-head strong {
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.notification-panel-head span {
+  color: var(--food-muted);
+  font-size: 12px;
+}
+
+.notification-list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 380px;
+  overflow: auto;
+}
+
+.notification-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  background: var(--food-chip-bg);
+}
+
+.notification-item.is-read {
+  opacity: 0.58;
+}
+
+.notification-kind {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.notification-kind.is-created {
+  color: #22c55e;
+}
+
+.notification-kind.is-updated {
+  color: #e85d04;
+}
+
+.notification-item strong {
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}
+
+.notification-item em {
+  font-style: normal;
+  color: var(--food-text);
+  font-size: 13px;
+}
+
+.notification-meta {
+  color: var(--food-muted);
+  font-size: 12px;
+}

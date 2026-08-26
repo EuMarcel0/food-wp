@@ -1,0 +1,392 @@
+-- Food WP · aplicar tudo de uma vez no SQL Editor do Supabase
+-- Ordem: 001 → 008
+
+-- ========== 001_extensions ==========
+create extension if not exists pgcrypto;
+create extension if not exists pg_trgm;
+
+-- ========== 002_stores_catalog ==========
+create table if not exists public.stores (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  segment text not null default 'generic',
+  phone text,
+  timezone text not null default 'America/Sao_Paulo',
+  delivery_enabled boolean not null default true,
+  pickup_enabled boolean not null default true,
+  delivery_fee_cents integer not null default 0 check (delivery_fee_cents >= 0),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.categories (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  name text not null,
+  sort_order integer not null default 0,
+  active boolean not null default true
+);
+
+create table if not exists public.products (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  category_id uuid not null references public.categories(id) on delete restrict,
+  name text not null,
+  description text,
+  price numeric(12, 2) not null default 0 check (price >= 0),
+  image_url text,
+  active boolean not null default true
+);
+
+-- ========== 003_customers_conversations ==========
+create table if not exists public.customers (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  wa_phone text not null,
+  name text,
+  created_at timestamptz not null default now(),
+  unique (store_id, wa_phone)
+);
+
+create table if not exists public.conversations (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  customer_id uuid not null references public.customers(id) on delete cascade,
+  state text not null default 'welcome',
+  context jsonb not null default '{"cart":[]}'::jsonb,
+  last_message_at timestamptz not null default now(),
+  unique (customer_id)
+);
+
+-- ========== 004_orders ==========
+create table if not exists public.orders (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  customer_id uuid not null references public.customers(id) on delete restrict,
+  code text not null,
+  status text not null default 'received'
+    check (status in (
+      'received',
+      'preparing',
+      'ready',
+      'out_for_delivery',
+      'delivered',
+      'cancelled'
+    )),
+  fulfillment text not null
+    check (fulfillment in ('delivery', 'pickup')),
+  payment_method text
+    check (payment_method in ('pix', 'cash', 'card')),
+  address_text text,
+  notes text,
+  subtotal_cents integer not null default 0 check (subtotal_cents >= 0),
+  delivery_fee_cents integer not null default 0 check (delivery_fee_cents >= 0),
+  total_cents integer not null default 0 check (total_cents >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, code)
+);
+
+create table if not exists public.order_items (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.orders(id) on delete cascade,
+  product_id uuid references public.products(id) on delete set null,
+  name text not null,
+  quantity integer not null check (quantity > 0),
+  unit_price_cents integer not null check (unit_price_cents >= 0),
+  extras jsonb not null default '[]'::jsonb
+);
+
+-- ========== 005_indexes_triggers ==========
+create index if not exists stores_segment_idx
+  on public.stores (segment);
+
+create index if not exists categories_store_sort_idx
+  on public.categories (store_id, sort_order);
+
+create index if not exists products_store_active_idx
+  on public.products (store_id, active);
+
+create index if not exists products_category_idx
+  on public.products (category_id);
+
+create index if not exists customers_store_phone_idx
+  on public.customers (store_id, wa_phone);
+
+create index if not exists conversations_store_idx
+  on public.conversations (store_id, last_message_at desc);
+
+create index if not exists orders_store_created_idx
+  on public.orders (store_id, created_at desc);
+
+create index if not exists orders_store_status_idx
+  on public.orders (store_id, status);
+
+create index if not exists orders_code_idx
+  on public.orders (code);
+
+create index if not exists order_items_order_idx
+  on public.order_items (order_id);
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists orders_set_updated_at on public.orders;
+create trigger orders_set_updated_at
+  before update on public.orders
+  for each row
+  execute function public.set_updated_at();
+
+-- ========== 006_rls ==========
+alter table public.stores enable row level security;
+alter table public.categories enable row level security;
+alter table public.products enable row level security;
+alter table public.customers enable row level security;
+alter table public.conversations enable row level security;
+alter table public.orders enable row level security;
+alter table public.order_items enable row level security;
+
+drop policy if exists "stores_read" on public.stores;
+drop policy if exists "catalog_read" on public.stores;
+drop policy if exists "categories_read" on public.categories;
+drop policy if exists "products_read" on public.products;
+drop policy if exists "customers_read" on public.customers;
+drop policy if exists "orders_read" on public.orders;
+drop policy if exists "order_items_read" on public.order_items;
+
+create policy "stores_read"
+  on public.stores for select
+  to anon, authenticated
+  using (true);
+
+create policy "categories_read"
+  on public.categories for select
+  to anon, authenticated
+  using (true);
+
+create policy "products_read"
+  on public.products for select
+  to anon, authenticated
+  using (true);
+
+create policy "customers_read"
+  on public.customers for select
+  to authenticated
+  using (true);
+
+create policy "orders_read"
+  on public.orders for select
+  to anon, authenticated
+  using (true);
+
+create policy "order_items_read"
+  on public.order_items for select
+  to anon, authenticated
+  using (true);
+
+grant usage on schema public to anon, authenticated;
+
+grant select on public.stores, public.categories, public.products,
+  public.orders, public.order_items
+  to anon, authenticated;
+
+grant select on public.customers to authenticated;
+
+-- ========== 007_realtime ==========
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_rel prel
+    join pg_publication pub on pub.oid = prel.prpubid
+    join pg_class rel on rel.oid = prel.prrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where pub.pubname = 'supabase_realtime'
+      and nsp.nspname = 'public'
+      and rel.relname = 'orders'
+  ) then
+    alter publication supabase_realtime add table public.orders;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_rel prel
+    join pg_publication pub on pub.oid = prel.prpubid
+    join pg_class rel on rel.oid = prel.prrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where pub.pubname = 'supabase_realtime'
+      and nsp.nspname = 'public'
+      and rel.relname = 'order_items'
+  ) then
+    alter publication supabase_realtime add table public.order_items;
+  end if;
+end $$;
+
+-- ========== 008_seed ==========
+insert into public.stores (
+  id, name, segment, delivery_enabled, pickup_enabled, delivery_fee_cents
+) values (
+  '00000000-0000-0000-0000-000000000001',
+  'Estabelecimento Demo',
+  'lanches',
+  true,
+  true,
+  700
+) on conflict (id) do update set
+  name = excluded.name,
+  segment = excluded.segment,
+  delivery_enabled = excluded.delivery_enabled,
+  pickup_enabled = excluded.pickup_enabled,
+  delivery_fee_cents = excluded.delivery_fee_cents;
+
+insert into public.categories (id, store_id, name, sort_order, active) values
+  ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000001', 'Lanches', 1, true),
+  ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000001', 'Acompanhamentos', 2, true),
+  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'Bebidas', 3, true)
+on conflict (id) do update set
+  name = excluded.name,
+  sort_order = excluded.sort_order,
+  active = excluded.active;
+
+insert into public.products (
+  id, store_id, category_id, name, description, price, active
+) values
+  (
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000011',
+    'X-Burguer',
+    'Pão, carne e queijo',
+    22.00,
+    true
+  ),
+  (
+    '00000000-0000-0000-0000-000000000102',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000011',
+    'X-Salada',
+    'Pão, carne, queijo e salada',
+    25.00,
+    true
+  ),
+  (
+    '00000000-0000-0000-0000-000000000103',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000012',
+    'Batata frita',
+    'Porção média',
+    14.00,
+    true
+  ),
+  (
+    '00000000-0000-0000-0000-000000000104',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000013',
+    'Refrigerante lata',
+    '350ml',
+    7.00,
+    true
+  )
+on conflict (id) do update set
+  name = excluded.name,
+  description = excluded.description,
+  price = excluded.price,
+  active = excluded.active;
+
+-- ========== 010_notifications ==========
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  type text not null check (type in ('order_created', 'order_updated')),
+  order_id uuid references public.orders(id) on delete cascade,
+  order_code text not null,
+  title text not null,
+  change_summary text,
+  actor_name text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.notification_reads (
+  notification_id uuid not null references public.notifications(id) on delete cascade,
+  reader_key text not null,
+  read_at timestamptz not null default now(),
+  primary key (notification_id, reader_key)
+);
+
+create index if not exists notifications_store_created_idx
+  on public.notifications (store_id, created_at desc);
+
+alter table public.notifications enable row level security;
+alter table public.notification_reads enable row level security;
+
+drop policy if exists "notifications_read" on public.notifications;
+create policy "notifications_read"
+  on public.notifications for select
+  to anon, authenticated
+  using (true);
+
+grant select on public.notifications to anon, authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_rel prel
+    join pg_publication pub on pub.oid = prel.prpubid
+    join pg_class rel on rel.oid = prel.prrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where pub.pubname = 'supabase_realtime'
+      and nsp.nspname = 'public'
+      and rel.relname = 'notifications'
+  ) then
+    alter publication supabase_realtime add table public.notifications;
+  end if;
+end $$;
+
+-- ========== 011_avatars_storage ==========
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'avatars',
+  'avatars',
+  true,
+  2097152,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "avatars_public_read" on storage.objects;
+create policy "avatars_public_read"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'avatars');
+
+drop policy if exists "avatars_own_insert" on storage.objects;
+create policy "avatars_own_insert"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "avatars_own_update" on storage.objects;
+create policy "avatars_own_update"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
