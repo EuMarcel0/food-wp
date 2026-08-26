@@ -130,26 +130,18 @@ function cheapestSum(group: ProductOptionGroup, count: number) {
     .reduce((sum, value) => sum + value, 0);
 }
 
-export function startingPrice(product: Product) {
-  if (!isCustomizable(product)) return product.price;
-  let from = product.price;
-  for (const cluster of exclusiveClusters(activeGroups(product))) {
-    if (cluster.length > 1) {
-      const mins = cluster.map((group) =>
-        cheapestSum(group, Math.max(1, group.minSelect)),
-      );
-      const lowest = Math.min(...mins);
-      if (cluster[0].priceMode === "replace") from = lowest;
-      else from += lowest;
-      continue;
-    }
-    const group = cluster[0];
-    if (!group.required) continue;
-    const add = cheapestSum(group, Math.max(1, group.minSelect));
-    if (group.priceMode === "replace") from = add;
-    else from += add;
-  }
-  return Math.max(0, from);
+export function variantStartingPrice(product: Product, group: ProductOptionGroup) {
+  const add = cheapestSum(group, Math.max(1, group.minSelect));
+  if (group.priceMode === "replace") return Math.max(0, add);
+  return Math.max(0, product.price + add);
+}
+
+export function variantPriceLabel(product: Product, group: ProductOptionGroup) {
+  const price = variantStartingPrice(product, group);
+  const extras = group.options.map((option) => option.extraPrice);
+  const varied = extras.length > 1 && extras.some((value) => value !== extras[0]);
+  const formatted = formatReais(price);
+  return varied ? `a partir de ${formatted}` : formatted;
 }
 
 export function unitPriceCents(product: Product, selections: CartSelection[]) {

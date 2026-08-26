@@ -19,8 +19,8 @@ import {
   nextAssembly,
   optionDescription,
   selectionKey,
-  startingPrice,
   unitPriceCents,
+  variantPriceLabel,
   variantPrompt,
 } from "./assemble.js";
 import type {
@@ -98,13 +98,10 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
     rows: items.map((product) => ({
       id: `product:${product.id}`,
       title: product.name,
-      description: `${
-        product.customizable
-          ? `a partir de ${formatReais(startingPrice(product))}`
-          : formatReais(product.price)
-      }${product.customizable ? " · montável" : ""}${
-        product.description ? ` · ${product.description}` : ""
-      }`,
+      description: product.customizable
+        ? product.description || undefined
+        : [formatReais(product.price), product.description].filter(Boolean).join(" · ") ||
+          undefined,
     })),
   }));
 
@@ -131,6 +128,7 @@ async function askAssembly(
         rows: next.groups.slice(0, 10).map((group) => ({
           id: `var:${group.id}`,
           title: group.name.slice(0, 24),
+          description: variantPriceLabel(product, group),
         })),
       },
     ]);
