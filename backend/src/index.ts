@@ -6,6 +6,8 @@ import { ordersRouter } from "./routes/orders.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { legalRouter } from "./routes/legal.js";
+import { checkWhatsAppToken, subscribeWhatsAppApp } from "./lib/whatsapp.js";
+import { webhookStats } from "./lib/webhookStats.js";
 
 const app = express();
 
@@ -51,11 +53,14 @@ app.use(
   }),
 );
 
-app.get("/health", (_req, res) => {
+app.get("/health", async (_req, res) => {
   res.json({
     ok: true,
     supabase: flags.supabaseReady,
     whatsapp: flags.whatsappReady,
+    tokenValid: flags.whatsappReady ? await checkWhatsAppToken() : false,
+    lastWebhookAt: webhookStats.lastAt,
+    lastWebhookMessages: webhookStats.lastMessages,
   });
 });
 
@@ -73,4 +78,5 @@ app.listen(env.port, "0.0.0.0", () => {
   console.log(
     `WhatsApp: ${flags.whatsappReady ? "pronto" : "dry-run (preencha o .env)"}`,
   );
+  void subscribeWhatsAppApp();
 });

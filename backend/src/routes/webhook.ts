@@ -2,10 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { env } from "../config/env.js";
 import { handleIncomingMessage } from "../conversation/engine.js";
+import { noteWebhook } from "../lib/webhookStats.js";
 
 export const webhookRouter = Router();
 
 type WhatsAppChange = {
+  field?: string;
   value?: {
     messages?: Array<{
       from: string;
@@ -52,6 +54,7 @@ function validSignature(rawBody: string | undefined, header: string | undefined)
 webhookRouter.post("/whatsapp", (req, res) => {
   const rawBody = (req as typeof req & { rawBody?: string }).rawBody;
   if (!validSignature(rawBody, req.header("x-hub-signature-256"))) {
+    console.warn("WhatsApp webhook: assinatura inválida");
     res.sendStatus(401);
     return;
   }
@@ -59,9 +62,11 @@ webhookRouter.post("/whatsapp", (req, res) => {
   res.sendStatus(200);
 
   const entries = (req.body?.entry ?? []) as Array<{ changes?: WhatsAppChange[] }>;
+  let incoming = 0;
   for (const entry of entries) {
     for (const change of entry.changes ?? []) {
       const messages = change.value?.messages ?? [];
+      noteWebhook(change.field, messages.length);
       const name = change.value?.contacts?.[0]?.profile?.name;
       for (const message of messages) {
         const replyId =
@@ -73,6 +78,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
           message.interactive?.list_reply?.title ??
           "";
         if (!message.from || (!text && !replyId)) continue;
+        incoming += 1;
 
         handleIncomingMessage({
           from: message.from,
@@ -85,4 +91,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
       }
     }
   }
+  console.log(
+    `WhatsApp webhook: ${incoming} mensagem(ns) processada(s)`,
+  );
 });

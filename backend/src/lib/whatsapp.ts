@@ -39,6 +39,33 @@ async function send(payload: Record<string, unknown>) {
   return response.json();
 }
 
+export async function checkWhatsAppToken() {
+  if (!flags.whatsappReady) return false;
+  try {
+    const response = await fetch(
+      `${GRAPH}/${env.whatsappPhoneNumberId}?fields=display_phone_number`,
+      { headers: { Authorization: `Bearer ${env.whatsappToken}` } },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function subscribeWhatsAppApp() {
+  if (!flags.whatsappReady || !env.whatsappWabaId) return;
+  const response = await fetch(`${GRAPH}/${env.whatsappWabaId}/subscribed_apps`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.whatsappToken}` },
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    console.error("WhatsApp: falha ao inscrever o app na WABA", response.status, body);
+    return;
+  }
+  console.log("WhatsApp: app inscrito na WABA");
+}
+
 export async function sendText(to: string, body: string) {
   return send({ to, type: "text", text: { preview_url: false, body } });
 }
