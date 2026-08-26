@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
-import { Button, Input, Modal, Select, Table, Tag } from "antd";
+import { Button, Input, Select, Table, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
+import { useDialog } from "../../dialog";
 import { CategoryCard } from "./CategoryCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
@@ -17,6 +18,7 @@ import type { CategoryValues } from "../../lib/validation";
 import { CategoryForm, toCategoryPayload } from "./CategoryForm";
 
 export function CategoriesPage() {
+  const dialog = useDialog();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -54,7 +56,7 @@ export function CategoriesPage() {
       if (editing) return api.updateCategory(editing.id, payload);
       return api.createCategory(payload);
     },
-    onSuccess: async (_data, _values, _ctx) => {
+    onSuccess: async () => {
       toast.success(editing ? "Categoria atualizada." : "Categoria incluída.");
       setOpen(false);
       setEditing(null);
@@ -66,9 +68,26 @@ export function CategoriesPage() {
     mutationFn: (category: Category) => api.deleteCategory(category.id),
     onSuccess: async () => {
       toast.success("Categoria excluída.");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
+      ]);
     },
   });
+
+  function askDelete(category: Category) {
+    void dialog.delete({
+      title: "Excluir categoria",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{category.name}</strong>? Esta
+          ação não pode ser desfeita. Se houver itens do cardápio nesta
+          categoria, a exclusão será recusada.
+        </>
+      ),
+      onConfirm: () => deleteMutation.mutateAsync(category),
+    });
+  }
 
   return (
     <>
@@ -154,15 +173,7 @@ export function CategoriesPage() {
                       key: "delete",
                       label: "Excluir",
                       danger: true,
-                      onClick: () => {
-                        Modal.confirm({
-                          title: "Excluir esta categoria?",
-                          okText: "Excluir",
-                          cancelText: "Cancelar",
-                          okButtonProps: { danger: true },
-                          onOk: () => deleteMutation.mutateAsync(category),
-                        });
-                      },
+                      onClick: () => askDelete(category),
                     },
                   ]}
                 />
@@ -193,15 +204,7 @@ export function CategoriesPage() {
                 setEditing(item);
                 setOpen(true);
               }}
-              onDelete={(item) => {
-                Modal.confirm({
-                  title: "Excluir esta categoria?",
-                  okText: "Excluir",
-                  cancelText: "Cancelar",
-                  okButtonProps: { danger: true },
-                  onOk: () => deleteMutation.mutateAsync(item),
-                });
-              }}
+              onDelete={askDelete}
             />
           ))}
         </MobileCardList>

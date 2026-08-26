@@ -8,6 +8,7 @@ import {
 } from "react";
 import { App, ConfigProvider } from "antd";
 import ptBR from "antd/locale/pt_BR";
+import { DialogProvider } from "../dialog";
 import { ToastBridge } from "../components/ToastBridge";
 import {
   THEME_STORAGE_KEY,
@@ -83,7 +84,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           }}
         >
           <ToastBridge />
-          {children}
+          <DialogProvider>{children}</DialogProvider>
         </App>
       </ConfigProvider>
     </ThemeContext.Provider>
