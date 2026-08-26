@@ -166,46 +166,59 @@ export function OrdersPage() {
       <div className="table-wrap list-table">
       <Table
         rowKey="id"
+        className="orders-table"
         loading={listQuery.isPending && !result}
         dataSource={orders}
+        tableLayout="fixed"
         pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
           setPage(nextPage);
           setLimit(nextSize);
         })}
-        scroll={{ x: 1080 }}
+        scroll={{ x: 1280 }}
         columns={[
-          { title: "Código", dataIndex: "code", width: 100 },
+          { title: "Código", dataIndex: "code", width: 88 },
           {
             title: "Cliente",
+            width: 160,
+            ellipsis: true,
             render: (_, order) => order.customerName || order.customerPhone || "—",
           },
           {
             title: "Itens",
-            render: (_, order) =>
-              (order.items ?? [])
-                .map((item) => {
-                  const line = `${item.quantity}x ${item.name}`;
-                  return item.notes ? `${line} (obs.: ${item.notes})` : line;
-                })
-                .join(", ") || "—",
+            render: (_, order) => {
+              const text =
+                (order.items ?? [])
+                  .map((item) => {
+                    const line = `${item.quantity}x ${item.name}`;
+                    return item.notes ? `${line} (obs.: ${item.notes})` : line;
+                  })
+                  .join(", ") || "—";
+              return (
+                <span className="orders-items-cell" title={text}>
+                  {text}
+                </span>
+              );
+            },
           },
           {
             title: "Obs.",
             ellipsis: true,
-            width: 180,
+            width: 140,
             render: (_, order) => order.notes || "—",
           },
           {
             title: "Tipo",
             dataIndex: "fulfillment",
-            width: 110,
+            width: 108,
+            align: "center",
             render: (value: Order["fulfillment"]) =>
               value === "delivery" ? "Entrega" : "Retirada",
           },
           {
             title: "Pagamento",
             dataIndex: "paymentMethod",
-            width: 130,
+            width: 120,
+            align: "center",
             render: (value: Order["paymentMethod"]) =>
               value ? (
                 <Tag color={PAYMENT_COLOR[value]}>{PAYMENT_LABEL[value]}</Tag>
@@ -216,13 +229,15 @@ export function OrdersPage() {
           {
             title: "Total",
             dataIndex: "totalCents",
-            width: 120,
+            width: 112,
+            align: "center",
             render: (value: number) => formatBRL(value),
           },
           {
             title: "Status",
             dataIndex: "status",
-            width: 150,
+            width: 148,
+            align: "center",
             render: (value: OrderStatus) => (
               <Tag color={STATUS_COLOR[value]}>{STATUS_LABEL[value]}</Tag>
             ),
@@ -230,13 +245,15 @@ export function OrdersPage() {
           {
             title: "Quando",
             dataIndex: "createdAt",
-            width: 120,
+            width: 112,
+            align: "center",
             render: (value: string) => formatDate(value),
           },
           {
             title: "Ações",
-            width: 72,
+            width: 76,
             align: "center",
+            fixed: "right",
             render: (_, order) => {
               const next = nextStatus(order.status, order.fulfillment);
               return (

@@ -386,6 +386,32 @@ button:focus-visible,
 
 .table-wrap .ant-table-tbody > tr > td {
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+
+.table-wrap .ant-table-cell-align-center .ant-tag {
+  margin-inline: 0;
+}
+
+.orders-items-cell {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.orders-table .ant-table-cell-align-center {
+  white-space: nowrap;
+}
+
+.orders-table .ant-table-cell-fix-right {
+  background: var(--food-surface) !important;
+}
+
+.orders-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
+  background: var(--food-chip-bg) !important;
 }
 
 .table-wrap .ant-pagination {
