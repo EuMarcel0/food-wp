@@ -10,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { Button, Drawer, Grid, Layout, Menu, Tooltip, Typography, theme } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { ConnectionStatus } from "./ConnectionStatus";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { NotificationProvider } from "../notifications/NotificationProvider";
 import { UserMenu } from "./UserMenu";
@@ -151,6 +152,7 @@ export function AppLayout() {
             </Typography.Text>
           </div>
           <div className="app-header-right">
+            <ConnectionStatus />
             <NotificationBell />
             <UserMenu />
           </div>

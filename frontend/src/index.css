@@ -269,17 +269,24 @@ body {
   margin-bottom: 20px;
 }
 
+.page-header-pending {
+  visibility: hidden;
+  min-height: 76px;
+}
+
 .page-title.ant-typography,
 .app-page h3.ant-typography {
   margin-top: 0 !important;
   margin-bottom: 4px !important;
   letter-spacing: -0.04em;
   font-weight: 750;
+  min-height: 1.35em;
 }
 
 .page-subtitle.ant-typography {
   margin-bottom: 0 !important;
   max-width: 42rem;
+  min-height: 1.5em;
 }
 
 .page-header-extra {

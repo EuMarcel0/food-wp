@@ -1,29 +1,36 @@
 import { useEffect, useState } from "react";
-import { Tag } from "antd";
 import { PageHeader } from "../../components/PageHeader";
 import { api } from "../../lib/api";
 import { formatBRL } from "../../lib/format";
-import type { Health, OrderStats, Store } from "../../types";
+import type { OrderStats, Store } from "../../types";
+
+const SUBTITLE_SUFFIX =
+  "o bot responde o cliente no WhatsApp e esta tela atualiza o status da cozinha.";
 
 export function DashboardPage() {
   const [stats, setStats] = useState<OrderStats | null>(null);
   const [store, setStore] = useState<Store | null>(null);
-  const [health, setHealth] = useState<Health | null>(null);
+  const [storeReady, setStoreReady] = useState(false);
 
   useEffect(() => {
     api.orderStats().then(setStats).catch(() =>
       setStats({ total: 0, open: 0, totalCents: 0 }),
     );
-    api.store().then(setStore).catch(() => setStore(null));
-    api.health().then(setHealth).catch(() => setHealth(null));
+    api
+      .store()
+      .then(setStore)
+      .catch(() => setStore(null))
+      .finally(() => setStoreReady(true));
   }, []);
+
+  const title = store?.name ?? "Estabelecimento";
+  const subtitle = `Segmento: ${store?.segment ?? "food"} · ${SUBTITLE_SUFFIX}`;
 
   return (
     <>
-      <PageHeader
-        title={store?.name ?? "Estabelecimento"}
-        subtitle={`Segmento: ${store?.segment ?? "food"} · o bot responde o cliente no WhatsApp e esta tela atualiza o status da cozinha.`}
-      />
+      <div className={storeReady ? undefined : "page-header-pending"}>
+        <PageHeader title={title} subtitle={subtitle} />
+      </div>
       <div className="stat-grid">
         <article className="stat-card">
           <span className="stat-label">Pedidos em aberto</span>
@@ -38,15 +45,6 @@ export function DashboardPage() {
           <strong className="stat-value">{formatBRL(stats?.totalCents ?? 0)}</strong>
         </article>
       </div>
-      <section className="panel-card">
-        <h4>Conexões</h4>
-        <Tag color={health?.whatsapp ? "green" : "orange"}>
-          WhatsApp {health?.whatsapp ? "pronto" : "aguardando .env"}
-        </Tag>
-        <Tag color={health?.supabase ? "green" : "orange"}>
-          Supabase {health?.supabase ? "conectado" : "modo memória"}
-        </Tag>
-      </section>
     </>
   );
 }

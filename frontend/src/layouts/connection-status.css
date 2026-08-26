@@ -1,0 +1,81 @@
+.connection-status {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.connection-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--food-muted);
+}
+
+.connection-dot.is-ok {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
+  animation: connection-pulse 2.4s ease-in-out infinite;
+}
+
+.connection-dot.is-warn {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22);
+  animation: connection-bounce 1.1s ease-in-out infinite;
+}
+
+.connection-dot.is-bad {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22);
+  animation: connection-bounce 0.8s ease-in-out infinite;
+}
+
+.connection-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connection-tooltip p,
+.connection-tooltip li {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.connection-tooltip ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+@keyframes connection-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes connection-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-dot.is-ok,
+  .connection-dot.is-warn,
+  .connection-dot.is-bad {
+    animation: none;
+  }
+}
