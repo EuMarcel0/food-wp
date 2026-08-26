@@ -168,12 +168,58 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
   return Math.max(0, cents);
 }
 
+function originalFlavorLabel(productName: string) {
+  const stripped = productName.replace(/^pizza\s+(salgada|doce)\s+/i, "").trim();
+  return stripped || productName;
+}
+
+function extraFlavorNames(productName: string, names: string[]) {
+  const original = normalizeName(originalFlavorLabel(productName));
+  const full = normalizeName(productName);
+  return names.filter((name) => {
+    const current = normalizeName(name);
+    return current !== original && current !== full && !full.includes(current);
+  });
+}
+
+export function flavorShareLine(productName: string, extraNames: string[]) {
+  const extras = extraFlavorNames(productName, extraNames);
+  if (!extras.length) return "";
+  const slices = extras.length + 1;
+  const original = originalFlavorLabel(productName);
+  return [`1/${slices} ${original}`, ...extras.map((name) => `1/${slices} ${name}`)].join(
+    " + ",
+  );
+}
+
+function isShareGroup(group: ProductOptionGroup | undefined) {
+  if (!group) return false;
+  return group.maxSelect > 1 || Boolean(group.exclusiveSet?.trim());
+}
+
 export function assembledName(product: Product, selections: CartSelection[]) {
-  const parts = selections
-    .filter((selection) => selection.options.length)
-    .map((selection) =>
-      selection.options.map((option) => option.name).join(" + "),
-    );
+  const groups = activeGroups(product);
+  const flavorNames: string[] = [];
+  const otherParts: string[] = [];
+  let sizeName = "";
+
+  for (const selection of selections) {
+    if (!selection.options.length) continue;
+    const group = groups.find((item) => item.id === selection.groupId);
+    const names = selection.options.map((option) => option.name);
+    if (isShareGroup(group)) {
+      flavorNames.push(...names);
+      if (group?.exclusiveSet?.trim()) sizeName = selection.groupName;
+      continue;
+    }
+    otherParts.push(names.join(" + "));
+  }
+
+  const shares = flavorShareLine(product.name, flavorNames);
+  if (shares) {
+    return [sizeName, shares, ...otherParts].filter(Boolean).join(" · ");
+  }
+  const parts = [...flavorNames, ...otherParts];
   return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
 }
 
@@ -193,6 +239,7 @@ export function groupPrompt(product: Product, group: ProductOptionGroup, picked:
   const chosen = group.options
     .filter((option) => picked.includes(option.id))
     .map((option) => option.name);
+  const shares = flavorShareLine(product.name, chosen);
   const lines = [
     `*${product.name}*`,
     `Escolha: *${group.name}*`,
@@ -201,7 +248,7 @@ export function groupPrompt(product: Product, group: ProductOptionGroup, picked:
       : group.required
         ? "Escolha 1 opção."
         : "Opcional — pode pular.",
-    chosen.length ? `Já escolheu: ${chosen.join(", ")}.` : "",
+    chosen.length ? `Já escolheu: ${shares || chosen.join(" + ")}.` : "",
   ];
   return lines.filter(Boolean).join("\n");
 }

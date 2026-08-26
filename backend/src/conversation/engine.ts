@@ -14,6 +14,7 @@ import {
 import { describeOrderStatus } from "./status.js";
 import {
   assembledName,
+  flavorShareLine,
   groupPrompt,
   isCustomizable,
   nextAssembly,
@@ -389,9 +390,14 @@ export async function handleIncomingMessage(input: {
         return;
       }
       if (current.options.length >= Math.max(group.required ? 1 : 0, group.minSelect)) {
+        const shares =
+          flavorShareLine(
+            product.name,
+            current.options.map((item) => item.name),
+          ) || current.options.map((item) => item.name).join(" + ");
         await sendButtons(
           input.from,
-          `*${group.name}:* ${current.options.map((item) => item.name).join(" + ")}`,
+          `*${group.name}:*\n${shares}`,
           [
             { id: "more_options", title: "Mais um" },
             { id: "done_options", title: "Pronto" },
