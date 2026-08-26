@@ -70,6 +70,12 @@ async function send(payload: Record<string, unknown>) {
     console.warn(`WhatsApp 131030 para ${to}; tentando outro formato`);
   }
 
+  if (lastStatus === 401 || lastBody.includes('"code":190')) {
+    throw new Error(
+      "WhatsApp API 401: token expirado ou inválido. Gere um novo Access Token no Meta e atualize WHATSAPP_TOKEN no Railway (e no backend/.env local).",
+    );
+  }
+
   throw new Error(`WhatsApp API ${lastStatus}: ${lastBody}`);
 }
 
