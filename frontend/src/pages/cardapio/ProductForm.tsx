@@ -19,6 +19,7 @@ function groupsFromProduct(product: Product | null): ProductValues["optionGroups
     minSelect: group.minSelect,
     maxSelect: group.maxSelect,
     priceMode: group.priceMode,
+    exclusiveSet: group.exclusiveSet ?? null,
     options: group.options.map((option) => ({
       id: option.id,
       name: option.name,
@@ -147,7 +148,7 @@ export function ProductForm({
                   name="price"
                   label={
                     values.customizable
-                      ? "Preço base"
+                      ? "Preço base (opcional)"
                       : "Preço"
                   }
                 >
@@ -155,16 +156,23 @@ export function ProductForm({
                     <Input
                       prefix="R$"
                       inputMode="numeric"
-                      placeholder="0,00"
+                      placeholder={values.customizable ? "0,00" : "0,00"}
                       value={String(value ?? "")}
-                      onChange={(event) => setValue(maskBRL(event.target.value))}
+                      onChange={(event) => {
+                        const digits = event.target.value.replace(/\D/g, "");
+                        if (values.customizable && !digits) {
+                          setValue("");
+                          return;
+                        }
+                        setValue(maskBRL(event.target.value));
+                      }}
                       onBlur={setTouched}
                     />
                   )}
                 </FormControl>
                 {values.customizable ? (
                   <p className="product-form-hint product-form-hint--tight">
-                    Usado se nenhuma opção substituir o valor.
+                    Pode deixar vazio. O WhatsApp soma o tamanho e os sabores escolhidos.
                   </p>
                 ) : null}
                 <div className="product-form-toggles">
@@ -206,7 +214,7 @@ export function ProductForm({
                 {values.customizable ? (
                   <>
                     <p className="product-form-hint">
-                      Cada grupo vira uma pergunta no WhatsApp. A ordem da lista é a ordem da conversa.
+                      Use + Tamanho uma vez por tamanho se cada um tiver os próprios sabores. O cliente escolhe o tamanho e, na sequência, marca os sabores de uma vez.
                     </p>
                     {typeof errors.optionGroups === "string" && touched.optionGroups ? (
                       <Alert
@@ -254,7 +262,8 @@ export function ProductForm({
 }
 
 export function toProductPayload(values: ProductValues) {
-  const price = parseReais(values.price);
+  const parsed = parseReais(values.price);
+  const price = parsed === null && values.customizable ? 0 : parsed;
   if (price === null) {
     throw new Error("Informe um preço válido.");
   }
@@ -266,6 +275,7 @@ export function toProductPayload(values: ProductValues) {
         minSelect: group.required ? Math.max(1, group.minSelect) : 0,
         maxSelect: Math.max(1, group.maxSelect),
         priceMode: group.priceMode,
+        exclusiveSet: group.exclusiveSet || null,
         sortOrder: index,
         options: group.options.map((option, optionIndex) => ({
           id: option.id,

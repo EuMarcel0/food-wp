@@ -10,7 +10,7 @@ import { ProductCard } from "./ProductCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
-import { formatReais } from "../../lib/format";
+import { catalogPriceLabel } from "../../lib/format";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
 import type { Product } from "../../types";
@@ -179,7 +179,7 @@ export function CatalogPage() {
               title: "Preço",
               dataIndex: "price",
               width: 120,
-              render: (value: number) => formatReais(value),
+              render: (_, product) => catalogPriceLabel(product),
             },
             {
               title: "Ativo",

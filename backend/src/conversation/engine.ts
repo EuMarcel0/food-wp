@@ -13,13 +13,17 @@ import {
 } from "../data/repository.js";
 import { describeOrderStatus } from "./status.js";
 import {
-  activeGroups,
   assembledName,
   groupPrompt,
   isCustomizable,
+  nextAssembly,
+  numberedOptionsText,
   optionDescription,
+  parseOptionPicks,
   selectionKey,
+  startingPrice,
   unitPriceCents,
+  variantPrompt,
 } from "./assemble.js";
 import type {
   CartSelection,
@@ -86,9 +90,13 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
     rows: items.map((product) => ({
       id: `product:${product.id}`,
       title: product.name,
-      description: `${formatReais(product.price)}${
-        product.customizable ? " · montável" : ""
-      }${product.description ? ` · ${product.description}` : ""}`,
+      description: `${
+        product.customizable
+          ? `a partir de ${formatReais(startingPrice(product))}`
+          : formatReais(product.price)
+      }${product.customizable ? " · montável" : ""}${
+        product.description ? ` · ${product.description}` : ""
+      }`,
     })),
   }));
 
@@ -100,34 +108,51 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
   await sendList(to, intro, "Ver itens", sections);
 }
 
-async function askOptionGroup(
+async function askAssembly(
   to: string,
   product: Product,
   context: ConversationContext,
 ) {
-  const groups = activeGroups(product);
-  const group = groups[context.optionGroupIndex ?? 0];
-  if (!group) return false;
-  const current = context.draftSelections?.find((item) => item.groupId === group.id);
-  const picked = current?.options.map((option) => option.id) ?? [];
-  const remaining = group.options.filter((option) => !picked.includes(option.id));
-  if (!remaining.length) return true;
-  await sendList(
-    to,
-    groupPrompt(product, group, picked),
-    "Escolher",
-    [
+  const next = nextAssembly(product, context.draftSelections ?? []);
+  if (next.type === "done") return true;
+
+  if (next.type === "variant") {
+    await sendList(to, variantPrompt(product, next.groups), "Tamanhos", [
       {
-        title: group.name.slice(0, 24),
-        rows: remaining.slice(0, 10).map((option) => ({
-          id: `opt:${option.id}`,
-          title: option.name.slice(0, 24),
-          description: optionDescription(option.extraPrice),
+        title: "Tamanhos",
+        rows: next.groups.slice(0, 10).map((group) => ({
+          id: `var:${group.id}`,
+          title: group.name.slice(0, 24),
+          description: group.options
+            .map((option) => option.name)
+            .join(", ")
+            .slice(0, 72),
         })),
       },
-    ],
-  );
-  if (!group.required && picked.length === 0) {
+    ]);
+    return false;
+  }
+
+  const group = next.group;
+  if (group.maxSelect > 1) {
+    await sendText(
+      to,
+      `${groupPrompt(product, group)}\n\n${numberedOptionsText(group)}`,
+    );
+    return false;
+  }
+
+  await sendList(to, groupPrompt(product, group), "Escolher", [
+    {
+      title: group.name.slice(0, 24),
+      rows: group.options.slice(0, 10).map((option) => ({
+        id: `opt:${option.id}`,
+        title: option.name.slice(0, 24),
+        description: optionDescription(option.extraPrice),
+      })),
+    },
+  ]);
+  if (!group.required) {
     await sendButtons(to, "Esta etapa é opcional.", [
       { id: "skip_group", title: "Pular" },
     ]);
@@ -209,102 +234,121 @@ export async function handleIncomingMessage(input: {
 
   if (state === "awaiting_option" && context.selectedProductId) {
     const product = await getProduct(context.selectedProductId);
-    const groups = product ? activeGroups(product) : [];
-    const index = context.optionGroupIndex ?? 0;
-    const group = groups[index];
-    if (!product || !group) {
+    if (!product || !isCustomizable(product)) {
       await persist("awaiting_product", context);
       await showMenu(input.from);
       return;
     }
 
     const drafts = context.draftSelections ?? [];
-    const current =
-      drafts.find((item) => item.groupId === group.id) ??
-      {
-        groupId: group.id,
-        groupName: group.name,
-        priceMode: group.priceMode,
-        options: [] as CartSelection["options"],
-      };
-    if (!drafts.some((item) => item.groupId === group.id)) {
-      drafts.push(current);
-    }
     context.draftSelections = drafts;
+    const pending = nextAssembly(product, drafts);
 
-    const nextStep = async () => {
-      const nextIndex = index + 1;
-      if (nextIndex >= groups.length) {
+    const goNext = async () => {
+      const following = nextAssembly(product, drafts);
+      if (following.type === "done") {
         context.optionGroupIndex = undefined;
         await persist("awaiting_quantity", context);
         await askQuantity(input.from, product, drafts);
         return;
       }
-      context.optionGroupIndex = nextIndex;
       await persist("awaiting_option", context);
-      await askOptionGroup(input.from, product, context);
+      await askAssembly(input.from, product, context);
     };
 
-    if (
-      incoming === "skip_group" ||
-      normalized === "pular" ||
-      incoming === "done_options" ||
-      normalized === "pronto"
-    ) {
-      if (current.options.length < group.minSelect) {
-        await sendText(
-          input.from,
-          `Escolha pelo menos ${group.minSelect} em *${group.name}*.`,
-        );
-        await askOptionGroup(input.from, product, context);
+    if (pending.type === "variant") {
+      const variantId = incoming.startsWith("var:")
+        ? incoming.slice(4)
+        : pending.groups.find((group) => normalize(group.name) === normalized)?.id;
+      const group = pending.groups.find((item) => item.id === variantId);
+      if (!group) {
+        await sendText(input.from, "Escolha um tamanho da lista.");
+        await askAssembly(input.from, product, context);
         return;
       }
-      await nextStep();
-      return;
-    }
-
-    if (incoming === "more_options") {
-      await persist("awaiting_option", context);
-      await askOptionGroup(input.from, product, context);
-      return;
-    }
-
-    if (incoming.startsWith("opt:")) {
-      const option = group.options.find((item) => item.id === incoming.slice(4));
-      if (!option) {
-        await sendText(input.from, "Não encontrei essa opção.");
-        await askOptionGroup(input.from, product, context);
-        return;
-      }
-      if (!current.options.some((item) => item.id === option.id)) {
-        current.options.push({
-          id: option.id,
-          name: option.name,
-          extraPrice: option.extraPrice,
+      if (!drafts.some((item) => item.groupId === group.id)) {
+        drafts.push({
+          groupId: group.id,
+          groupName: group.name,
+          priceMode: group.priceMode,
+          options: [],
         });
       }
       await persist("awaiting_option", context);
-
-      if (current.options.length >= group.maxSelect) {
-        await nextStep();
-        return;
-      }
-      if (current.options.length >= group.minSelect) {
-        await sendButtons(
-          input.from,
-          `*${group.name}:* ${current.options.map((item) => item.name).join(", ")}`,
-          [
-            { id: "more_options", title: "Mais um" },
-            { id: "done_options", title: "Pronto" },
-          ],
-        );
-        return;
-      }
-      await askOptionGroup(input.from, product, context);
+      await askAssembly(input.from, product, context);
       return;
     }
 
-    await askOptionGroup(input.from, product, context);
+    if (pending.type === "options") {
+      const group = pending.group;
+      const current =
+        drafts.find((item) => item.groupId === group.id) ??
+        {
+          groupId: group.id,
+          groupName: group.name,
+          priceMode: group.priceMode,
+          options: [] as CartSelection["options"],
+        };
+      if (!drafts.some((item) => item.groupId === group.id)) drafts.push(current);
+
+      if (
+        incoming === "skip_group" ||
+        normalized === "pular" ||
+        incoming === "done_options" ||
+        normalized === "pronto"
+      ) {
+        if (group.required && current.options.length < Math.max(1, group.minSelect)) {
+          await sendText(
+            input.from,
+            `Escolha pelo menos ${Math.max(1, group.minSelect)} em *${group.name}*.`,
+          );
+          await askAssembly(input.from, product, context);
+          return;
+        }
+        await goNext();
+        return;
+      }
+
+      const fromButton = incoming.startsWith("opt:")
+        ? group.options.filter((option) => option.id === incoming.slice(4))
+        : null;
+      const picked =
+        fromButton?.length
+          ? fromButton
+          : parseOptionPicks(input.text || incoming, group.options, group.maxSelect);
+
+      if (!picked?.length) {
+        await sendText(
+          input.from,
+          group.maxSelect > 1
+            ? "Não entendi. Envie os números, ex.: 1, 2"
+            : "Não encontrei essa opção.",
+        );
+        await askAssembly(input.from, product, context);
+        return;
+      }
+
+      current.options = picked.map((option) => ({
+        id: option.id,
+        name: option.name,
+        extraPrice: option.extraPrice,
+      }));
+      await persist("awaiting_option", context);
+
+      if (current.options.length < Math.max(group.required ? 1 : 0, group.minSelect)) {
+        await sendText(
+          input.from,
+          `Faltou opção. Marque pelo menos ${Math.max(1, group.minSelect)}.`,
+        );
+        await askAssembly(input.from, product, context);
+        return;
+      }
+
+      await goNext();
+      return;
+    }
+
+    await goNext();
     return;
   }
 
@@ -328,7 +372,7 @@ export async function handleIncomingMessage(input: {
 
     if (isCustomizable(product)) {
       await persist("awaiting_option", context);
-      await askOptionGroup(input.from, product, context);
+      await askAssembly(input.from, product, context);
       return;
     }
 

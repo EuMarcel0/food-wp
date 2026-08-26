@@ -57,12 +57,22 @@ export const productSchema = Yup.object({
   name: Yup.string().trim().required("Informe o nome do item"),
   categoryId: Yup.string().required("Escolha a categoria"),
   description: Yup.string().trim().default(""),
-  price: Yup.string()
-    .required("Informe o preço")
-    .test("price", "Informe um preço válido", (value) => {
-      const amount = parseReais(value ?? "");
-      return amount !== null && amount >= 0;
-    }),
+  price: Yup.string().default("").when("customizable", {
+    is: true,
+    then: (schema) =>
+      schema.test("price", "Informe um preço válido", (value) => {
+        if (!value || !value.trim()) return true;
+        const amount = parseReais(value);
+        return amount !== null && amount >= 0;
+      }),
+    otherwise: (schema) =>
+      schema
+        .required("Informe o preço")
+        .test("price", "Informe um preço válido", (value) => {
+          const amount = parseReais(value ?? "");
+          return amount !== null && amount >= 0;
+        }),
+  }),
   active: Yup.boolean().default(true),
   customizable: Yup.boolean().default(false),
   optionGroups: Yup.array()
@@ -76,6 +86,7 @@ export const productSchema = Yup.object({
         priceMode: Yup.mixed<"addon" | "replace">()
           .oneOf(["addon", "replace"])
           .default("addon"),
+        exclusiveSet: Yup.string().nullable().default(null),
         options: Yup.array()
           .of(
             Yup.object({

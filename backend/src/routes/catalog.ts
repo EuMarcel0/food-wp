@@ -37,6 +37,7 @@ function parseOptionGroups(raw: unknown): ProductOptionGroup[] | undefined {
       minSelect: Math.min(minSelect, maxSelect),
       maxSelect,
       priceMode,
+      exclusiveSet: String(group.exclusiveSet ?? "").trim() || null,
       sortOrder: Number(group.sortOrder ?? index),
       options: options.map((optionRaw, optionIndex) => {
         const option = optionRaw as Record<string, unknown>;
@@ -144,13 +145,21 @@ catalogRouter.post("/products", async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   const categoryId = String(req.body?.categoryId ?? "").trim();
   const description = String(req.body?.description ?? "").trim() || null;
-  const price = Number(req.body?.price);
+  const rawPrice = req.body?.price;
+  const price =
+    rawPrice === undefined || rawPrice === null || rawPrice === ""
+      ? 0
+      : Number(rawPrice);
   const active = req.body?.active !== false;
   const customizable = Boolean(req.body?.customizable);
   const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
   if (!name || !categoryId || !Number.isFinite(price) || price < 0) {
-    res.status(400).json({ error: "Preencha nome, categoria e preço." });
+    res.status(400).json({
+      error: customizable
+        ? "Preencha nome e categoria."
+        : "Preencha nome, categoria e preço.",
+    });
     return;
   }
   if (customizable && optionGroups.length === 0) {

@@ -17,6 +17,7 @@ function emptyGroup(
   priceMode: "addon" | "replace",
   maxSelect: number,
   required = true,
+  exclusiveSet: string | null = null,
 ): ProductValues["optionGroups"][number] {
   return {
     id: newId(),
@@ -25,6 +26,7 @@ function emptyGroup(
     minSelect: required ? 1 : 0,
     maxSelect,
     priceMode,
+    exclusiveSet,
     options: [emptyOption()],
   };
 }
@@ -60,7 +62,9 @@ export function OptionGroupsEditor({
         <Button
           size="small"
           icon={<PlusOutlined />}
-          onClick={() => onChange([...groups, emptyGroup("Tamanho", "replace", 1)])}
+          onClick={() =>
+            onChange([...groups, emptyGroup("Tamanho", "replace", 1, true, "tamanho")])
+          }
         >
           Tamanho
         </Button>
@@ -177,6 +181,18 @@ export function OptionGroupsEditor({
                 />
               )}
             </FormControl>
+          </label>
+          <label className="product-form-toggle" style={{ marginBottom: 12 }}>
+            <div>
+              <strong>É um tamanho</strong>
+              <p>O cliente escolhe entre os tamanhos e só vê os sabores desse</p>
+            </div>
+            <Switch
+              checked={Boolean(group.exclusiveSet)}
+              onChange={(checked) =>
+                update(groupIndex, { exclusiveSet: checked ? "tamanho" : null })
+              }
+            />
           </label>
           <div className="product-form-options">
             <div className="product-form-options-head">

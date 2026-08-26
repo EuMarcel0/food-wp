@@ -1,7 +1,7 @@
 import { Tag } from "antd";
 import { EntityCard } from "../../components/EntityCard";
 import { RowActions } from "../../components/RowActions";
-import { formatReais } from "../../lib/format";
+import { catalogPriceLabel } from "../../lib/format";
 import type { Product } from "../../types";
 
 export function ProductCard({
@@ -36,7 +36,7 @@ export function ProductCard({
             {product.active ? "Ativo no WhatsApp" : "Inativo"}
           </Tag>
           {product.customizable ? <Tag color="orange">Montável</Tag> : null}
-          <strong className="entity-card-price">{formatReais(product.price)}</strong>
+          <strong className="entity-card-price">{catalogPriceLabel(product)}</strong>
         </>
       }
     >

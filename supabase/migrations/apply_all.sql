@@ -439,3 +439,7 @@ create policy "product_options_read"
 
 grant select on public.product_option_groups, public.product_options
   to anon, authenticated;
+
+-- ========== 013_option_group_exclusive ==========
+alter table public.product_option_groups
+  add column if not exists exclusive_set text;

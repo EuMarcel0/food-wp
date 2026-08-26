@@ -51,6 +51,7 @@ function mapOptionGroups(row: Record<string, unknown>): ProductOptionGroup[] {
         minSelect: Number(group.min_select ?? 1),
         maxSelect: Number(group.max_select ?? 1),
         priceMode: group.price_mode === "replace" ? "replace" : "addon",
+        exclusiveSet: (group.exclusive_set as string | null) ?? null,
         sortOrder: Number(group.sort_order ?? 0),
         options: options
           .sort(
@@ -424,6 +425,7 @@ async function replaceProductOptions(
         min_select: group.minSelect,
         max_select: group.maxSelect,
         price_mode: group.priceMode,
+        exclusive_set: group.exclusiveSet?.trim() || null,
         sort_order: group.sortOrder ?? index,
       })
       .select("id")

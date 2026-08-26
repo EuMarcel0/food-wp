@@ -12,6 +12,20 @@ export function formatReais(value: number) {
   });
 }
 
+export function catalogPriceLabel(product: {
+  price: number;
+  customizable: boolean;
+  optionGroups?: { options: { extraPrice: number }[] }[];
+}) {
+  if (!product.customizable) return formatReais(product.price);
+  const extras = (product.optionGroups ?? []).flatMap((group) =>
+    group.options.map((option) => option.extraPrice),
+  );
+  const candidates = [product.price, ...extras].filter((value) => value > 0);
+  const from = candidates.length ? Math.min(...candidates) : 0;
+  return `a partir de ${formatReais(from)}`;
+}
+
 export function formatDate(value: string) {
   return dayjs(value).format("DD/MM HH:mm");
 }
