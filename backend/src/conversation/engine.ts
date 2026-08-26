@@ -199,7 +199,6 @@ export async function handleIncomingMessage(input: {
       input.from,
       "Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem.",
     );
-    await showWelcome(input.from, store.name);
     return;
   }
 
