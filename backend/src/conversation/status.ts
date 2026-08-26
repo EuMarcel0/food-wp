@@ -1,4 +1,4 @@
-import type { OrderStatus } from "../types.js";
+import type { Fulfillment, OrderStatus } from "../types.js";
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   received: "Recebido",
@@ -11,4 +11,11 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 
 export function describeOrderStatus(status: OrderStatus) {
   return STATUS_LABEL[status];
+}
+
+export function isAllowedOrderStatus(
+  fulfillment: Fulfillment,
+  status: OrderStatus,
+) {
+  return !(fulfillment === "pickup" && status === "out_for_delivery");
 }

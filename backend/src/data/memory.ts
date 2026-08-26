@@ -5,7 +5,7 @@ import type {
   ProductFilter,
 } from "../lib/filters.js";
 import { paginateItems } from "../lib/pagination.js";
-import { STATUS_LABEL } from "../conversation/status.js";
+import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { env } from "../config/env.js";
 import type {
   AppNotification,
@@ -419,6 +419,9 @@ export const memoryStore = {
   updateOrderStatus(id: string, status: OrderStatus, actorName = "Equipe") {
     const order = orders.get(id);
     if (!order) return null;
+    if (!isAllowedOrderStatus(order.fulfillment, status)) {
+      throw new Error("Pedido de retirada não sai para entrega.");
+    }
     const previous = order.status;
     order.status = status;
     this.createNotification({

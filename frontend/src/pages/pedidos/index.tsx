@@ -18,7 +18,9 @@ import { queryKeys } from "../../lib/queryKeys";
 import { toast } from "../../lib/toast";
 import { supabase } from "../../lib/supabase";
 import {
-  NEXT_STATUS,
+  nextStatus,
+  PAYMENT_COLOR,
+  PAYMENT_LABEL,
   STATUS_COLOR,
   STATUS_LABEL,
   formatBRL,
@@ -170,7 +172,7 @@ export function OrdersPage() {
           setPage(nextPage);
           setLimit(nextSize);
         })}
-        scroll={{ x: 960 }}
+        scroll={{ x: 1080 }}
         columns={[
           { title: "Código", dataIndex: "code", width: 100 },
           {
@@ -201,6 +203,17 @@ export function OrdersPage() {
               value === "delivery" ? "Entrega" : "Retirada",
           },
           {
+            title: "Pagamento",
+            dataIndex: "paymentMethod",
+            width: 130,
+            render: (value: Order["paymentMethod"]) =>
+              value ? (
+                <Tag color={PAYMENT_COLOR[value]}>{PAYMENT_LABEL[value]}</Tag>
+              ) : (
+                "—"
+              ),
+          },
+          {
             title: "Total",
             dataIndex: "totalCents",
             width: 120,
@@ -225,7 +238,7 @@ export function OrdersPage() {
             width: 72,
             align: "center",
             render: (_, order) => {
-              const next = NEXT_STATUS[order.status];
+              const next = nextStatus(order.status, order.fulfillment);
               return (
                 <RowActions
                   items={[

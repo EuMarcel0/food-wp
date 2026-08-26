@@ -24,7 +24,7 @@ import type {
   ProductOptionGroup,
   Store,
 } from "../types.js";
-import { STATUS_LABEL } from "../conversation/status.js";
+import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
 
 const PRODUCT_SELECT =
@@ -775,10 +775,13 @@ export async function updateOrderStatus(
 
   const { data: current } = await supabase
     .from("orders")
-    .select("id, code, status, store_id")
+    .select("id, code, status, store_id, fulfillment")
     .eq("id", id)
     .maybeSingle();
   if (!current) return null;
+  if (!isAllowedOrderStatus(current.fulfillment as Fulfillment, status)) {
+    throw new Error("Pedido de retirada não sai para entrega.");
+  }
 
   const previous = current.status as OrderStatus;
   const { data, error } = await supabase

@@ -2,7 +2,9 @@ import { Button, Tag } from "antd";
 import { EntityCard } from "../../components/EntityCard";
 import { RowActions } from "../../components/RowActions";
 import {
-  NEXT_STATUS,
+  nextStatus,
+  PAYMENT_COLOR,
+  PAYMENT_LABEL,
   STATUS_COLOR,
   STATUS_LABEL,
   formatBRL,
@@ -19,14 +21,21 @@ export function OrderCard({
   updating: boolean;
   onChangeStatus: (order: Order, status: OrderStatus) => void;
 }) {
-  const next = NEXT_STATUS[order.status];
+  const next = nextStatus(order.status, order.fulfillment);
   const canCancel =
     order.status !== "cancelled" && order.status !== "delivered";
 
   return (
     <EntityCard
       tone={order.status}
-      kicker={order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
+      kicker={
+        [
+          order.fulfillment === "delivery" ? "Entrega" : "Retirada",
+          order.paymentMethod ? PAYMENT_LABEL[order.paymentMethod] : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      }
       title={`#${order.code}`}
       extra={
         <RowActions
@@ -57,6 +66,11 @@ export function OrderCard({
             <Tag color={STATUS_COLOR[order.status]}>
               {STATUS_LABEL[order.status]}
             </Tag>
+            {order.paymentMethod ? (
+              <Tag color={PAYMENT_COLOR[order.paymentMethod]}>
+                {PAYMENT_LABEL[order.paymentMethod]}
+              </Tag>
+            ) : null}
             <span>{formatDate(order.createdAt)}</span>
           </div>
           <strong className="entity-card-price">{formatBRL(order.totalCents)}</strong>

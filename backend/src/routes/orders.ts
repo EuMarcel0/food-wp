@@ -45,7 +45,15 @@ ordersRouter.patch("/:id/status", async (req, res) => {
   }
 
   const actorName = String(req.body?.actorName ?? "").trim() || "Equipe";
-  const order = await updateOrderStatus(req.params.id, status, actorName);
+  let order;
+  try {
+    order = await updateOrderStatus(req.params.id, status, actorName);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Não foi possível atualizar o status.",
+    });
+    return;
+  }
   if (!order) {
     res.status(404).json({ error: "Pedido não encontrado." });
     return;

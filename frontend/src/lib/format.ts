@@ -48,9 +48,27 @@ export const STATUS_COLOR: Record<OrderStatus, string> = {
   cancelled: "red",
 };
 
-export const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
-  received: "preparing",
-  preparing: "ready",
-  ready: "out_for_delivery",
-  out_for_delivery: "delivered",
-};
+export function nextStatus(
+  status: OrderStatus,
+  fulfillment: "delivery" | "pickup",
+): OrderStatus | undefined {
+  if (status === "received") return "preparing";
+  if (status === "preparing") return "ready";
+  if (status === "ready") {
+    return fulfillment === "pickup" ? "delivered" : "out_for_delivery";
+  }
+  if (status === "out_for_delivery") return "delivered";
+  return undefined;
+}
+
+export const PAYMENT_LABEL = {
+  pix: "Pix",
+  cash: "Dinheiro",
+  card: "Cartão",
+} as const;
+
+export const PAYMENT_COLOR = {
+  pix: "cyan",
+  cash: "green",
+  card: "purple",
+} as const;
