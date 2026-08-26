@@ -111,6 +111,7 @@ export const api = {
     price: number;
     active: boolean;
     customizable: boolean;
+    notesEnabled: boolean;
     optionGroups: Product["optionGroups"];
   }) =>
     request<Product>("/api/products", {
@@ -126,6 +127,7 @@ export const api = {
       price: number;
       active: boolean;
       customizable: boolean;
+      notesEnabled: boolean;
       optionGroups: Product["optionGroups"];
     }>,
   ) =>

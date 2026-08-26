@@ -14,7 +14,9 @@ export type ConversationState =
   | "awaiting_product"
   | "awaiting_option"
   | "awaiting_quantity"
+  | "awaiting_item_note"
   | "cart"
+  | "awaiting_order_note"
   | "awaiting_fulfillment"
   | "awaiting_address"
   | "awaiting_payment"
@@ -53,6 +55,7 @@ export type CartItem = {
   quantity: number;
   unitPriceCents: number;
   extras?: CartSelection[];
+  notes?: string | null;
 };
 
 export type ConversationContext = {
@@ -60,8 +63,10 @@ export type ConversationContext = {
   selectedProductId?: string;
   optionGroupIndex?: number;
   draftSelections?: CartSelection[];
+  draftItem?: CartItem;
   fulfillment?: Fulfillment;
   addressText?: string;
+  orderNotes?: string | null;
 };
 
 export type Store = {
@@ -84,6 +89,7 @@ export type Product = {
   price: number;
   active: boolean;
   customizable: boolean;
+  notesEnabled: boolean;
   optionGroups: ProductOptionGroup[];
 };
 
@@ -134,6 +140,7 @@ export type OrderItem = {
   name: string;
   quantity: number;
   unitPriceCents: number;
+  notes?: string | null;
 };
 
 export type NotificationType = "order_created" | "order_updated";

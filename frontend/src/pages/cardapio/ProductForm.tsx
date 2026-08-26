@@ -51,6 +51,7 @@ export function ProductForm({
     price: product ? maskBRL(String(Math.round(product.price * 100))) : "",
     active: product?.active ?? true,
     customizable: product?.customizable ?? false,
+    notesEnabled: product?.notesEnabled ?? false,
     optionGroups: groupsFromProduct(product),
   };
 
@@ -204,6 +205,20 @@ export function ProductForm({
                       )}
                     </FormControl>
                   </label>
+                  <label className="product-form-toggle">
+                    <div>
+                      <strong>Habilitar observação</strong>
+                      <p>Pergunta no WhatsApp. Deixe desligado em itens padrão, como refrigerante</p>
+                    </div>
+                    <FormControl name="notesEnabled" compact>
+                      {({ value, setValue }) => (
+                        <Switch
+                          checked={Boolean(value)}
+                          onChange={(checked) => setValue(checked)}
+                        />
+                      )}
+                    </FormControl>
+                  </label>
                 </div>
               </section>
               <section
@@ -293,6 +308,7 @@ export function toProductPayload(values: ProductValues) {
     price,
     active: values.active,
     customizable: Boolean(values.customizable),
+    notesEnabled: Boolean(values.notesEnabled),
     optionGroups,
   };
 }

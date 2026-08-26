@@ -75,6 +75,7 @@ export const productSchema = Yup.object({
   }),
   active: Yup.boolean().default(true),
   customizable: Yup.boolean().default(false),
+  notesEnabled: Yup.boolean().default(false),
   optionGroups: Yup.array()
     .of(
       Yup.object({

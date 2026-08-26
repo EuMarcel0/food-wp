@@ -173,6 +173,7 @@ catalogRouter.post("/products", async (req, res) => {
       : Number(rawPrice);
   const active = req.body?.active !== false;
   const customizable = Boolean(req.body?.customizable);
+  const notesEnabled = Boolean(req.body?.notesEnabled);
   const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
   if (!name || !categoryId || !Number.isFinite(price) || price < 0) {
@@ -199,6 +200,7 @@ catalogRouter.post("/products", async (req, res) => {
         price: Math.round(price * 100) / 100,
         active,
         customizable,
+        notesEnabled,
         optionGroups,
       }),
     );
@@ -217,6 +219,7 @@ function productPatch(body: Record<string, unknown>) {
     price?: number;
     active?: boolean;
     customizable?: boolean;
+    notesEnabled?: boolean;
     optionGroups?: ProductOptionGroup[];
   } = {};
 
@@ -243,6 +246,9 @@ function productPatch(body: Record<string, unknown>) {
   }
   if (body.customizable !== undefined) {
     patch.customizable = Boolean(body.customizable);
+  }
+  if (body.notesEnabled !== undefined) {
+    patch.notesEnabled = Boolean(body.notesEnabled);
   }
   if (body.optionGroups !== undefined) {
     patch.optionGroups = parseOptionGroups(body.optionGroups) ?? [];

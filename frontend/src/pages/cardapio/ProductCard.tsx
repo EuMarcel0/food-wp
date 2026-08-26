@@ -36,6 +36,7 @@ export function ProductCard({
             {product.active ? "Ativo no WhatsApp" : "Inativo"}
           </Tag>
           {product.customizable ? <Tag color="orange">Montável</Tag> : null}
+          {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
           <strong className="entity-card-price">{catalogPriceLabel(product)}</strong>
         </>
       }

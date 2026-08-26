@@ -51,6 +51,7 @@ const products: Product[] = [
     price: 22,
     active: true,
     customizable: false,
+    notesEnabled: false,
     optionGroups: [],
   },
   {
@@ -62,6 +63,7 @@ const products: Product[] = [
     price: 25,
     active: true,
     customizable: false,
+    notesEnabled: false,
     optionGroups: [],
   },
   {
@@ -73,6 +75,7 @@ const products: Product[] = [
     price: 14,
     active: true,
     customizable: false,
+    notesEnabled: false,
     optionGroups: [],
   },
   {
@@ -84,6 +87,7 @@ const products: Product[] = [
     price: 7,
     active: true,
     customizable: false,
+    notesEnabled: false,
     optionGroups: [],
   },
 ];
@@ -218,6 +222,7 @@ export const memoryStore = {
     price: number;
     active: boolean;
     customizable?: boolean;
+    notesEnabled?: boolean;
     optionGroups?: ProductOptionGroup[];
   }) {
     const category = categories.find((item) => item.id === input.categoryId);
@@ -230,6 +235,7 @@ export const memoryStore = {
       price: input.price,
       active: input.active,
       customizable: Boolean(input.customizable),
+      notesEnabled: Boolean(input.notesEnabled),
       optionGroups: input.optionGroups ?? [],
     };
     products.push(product);
@@ -245,6 +251,7 @@ export const memoryStore = {
       price: number;
       active: boolean;
       customizable: boolean;
+      notesEnabled: boolean;
       optionGroups: ProductOptionGroup[];
     }>,
   ) {
@@ -261,6 +268,7 @@ export const memoryStore = {
     if (input.price !== undefined) product.price = input.price;
     if (input.active !== undefined) product.active = input.active;
     if (input.customizable !== undefined) product.customizable = input.customizable;
+    if (input.notesEnabled !== undefined) product.notesEnabled = input.notesEnabled;
     if (input.optionGroups !== undefined) product.optionGroups = input.optionGroups;
     return product;
   },
@@ -309,7 +317,13 @@ export const memoryStore = {
     fulfillment: Fulfillment;
     paymentMethod: PaymentMethod;
     addressText?: string;
-    items: { name: string; quantity: number; unitPriceCents: number }[];
+    notes?: string | null;
+    items: {
+      name: string;
+      quantity: number;
+      unitPriceCents: number;
+      notes?: string | null;
+    }[];
     deliveryFeeCents: number;
   }) {
     const subtotalCents = input.items.reduce(
@@ -327,7 +341,7 @@ export const memoryStore = {
       fulfillment: input.fulfillment,
       paymentMethod: input.paymentMethod,
       addressText: input.addressText ?? null,
-      notes: null,
+      notes: input.notes?.trim() || null,
       subtotalCents,
       deliveryFeeCents: input.deliveryFeeCents,
       totalCents: subtotalCents + input.deliveryFeeCents,

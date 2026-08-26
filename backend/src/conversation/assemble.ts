@@ -223,12 +223,14 @@ export function assembledName(product: Product, selections: CartSelection[]) {
   return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
 }
 
-export function selectionKey(item: Pick<CartItem, "productId" | "extras">) {
+export function selectionKey(
+  item: Pick<CartItem, "productId" | "extras" | "notes">,
+) {
   const extras = (item.extras ?? []).map((selection) => ({
     groupId: selection.groupId,
     optionIds: selection.options.map((option) => option.id).sort(),
   }));
-  return `${item.productId}:${JSON.stringify(extras)}`;
+  return `${item.productId}:${JSON.stringify(extras)}:${item.notes ?? ""}`;
 }
 
 export function variantPrompt(product: Product) {

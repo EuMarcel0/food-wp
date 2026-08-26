@@ -447,3 +447,11 @@ alter table public.product_option_groups
 -- ========== 014_store_idle_timeout ==========
 alter table public.stores
   add column if not exists idle_timeout_minutes integer not null default 60;
+
+-- ========== 015_order_item_notes ==========
+alter table public.order_items
+  add column if not exists notes text;
+
+-- ========== 016_product_notes_enabled ==========
+alter table public.products
+  add column if not exists notes_enabled boolean not null default false;

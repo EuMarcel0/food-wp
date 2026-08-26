@@ -181,8 +181,17 @@ export function OrdersPage() {
             title: "Itens",
             render: (_, order) =>
               (order.items ?? [])
-                .map((item) => `${item.quantity}x ${item.name}`)
+                .map((item) => {
+                  const line = `${item.quantity}x ${item.name}`;
+                  return item.notes ? `${line} (obs.: ${item.notes})` : line;
+                })
                 .join(", ") || "—",
+          },
+          {
+            title: "Obs.",
+            ellipsis: true,
+            width: 180,
+            render: (_, order) => order.notes || "—",
           },
           {
             title: "Tipo",

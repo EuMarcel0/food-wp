@@ -71,10 +71,16 @@ export function OrderCard({
           ? order.items?.map((item, index) => (
               <li key={item.id ?? `${item.name}-${index}`}>
                 {item.quantity}x {item.name}
+                {item.notes ? ` · obs.: ${item.notes}` : ""}
               </li>
             ))
           : <li>Sem itens</li>}
       </ul>
+      {order.notes ? (
+        <p style={{ margin: "8px 0 0", color: "var(--food-muted)", fontSize: 13 }}>
+          Pedido: {order.notes}
+        </p>
+      ) : null}
       {next ? (
         <Button
           className="entity-card-action"

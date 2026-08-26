@@ -11,6 +11,7 @@ export type OrderItem = {
   name: string;
   quantity: number;
   unitPriceCents: number;
+  notes?: string | null;
 };
 
 export type Order = {
@@ -20,6 +21,7 @@ export type Order = {
   fulfillment: "delivery" | "pickup";
   paymentMethod: "pix" | "cash" | "card" | null;
   addressText: string | null;
+  notes?: string | null;
   customerPhone?: string;
   customerName?: string | null;
   subtotalCents: number;
@@ -45,6 +47,7 @@ export type Product = {
   price: number;
   active: boolean;
   customizable: boolean;
+  notesEnabled: boolean;
   optionGroups: ProductOptionGroup[];
 };
 

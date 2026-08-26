@@ -100,6 +100,7 @@ function mapProduct(row: Record<string, unknown>): Product {
         : Number(row.price_cents ?? 0) / 100,
     active: Boolean(row.active ?? true),
     customizable: Boolean(row.customizable ?? false),
+    notesEnabled: Boolean(row.notes_enabled ?? false),
     optionGroups: mapOptionGroups(row),
   };
 }
@@ -116,6 +117,7 @@ function mapOrder(row: Record<string, unknown>): Order {
           name: String(typed.name),
           quantity: Number(typed.quantity),
           unitPriceCents: Number(typed.unit_price_cents),
+          notes: (typed.notes as string | null) ?? null,
         };
       })
     : [];
@@ -373,6 +375,7 @@ export async function createProduct(input: {
   price: number;
   active: boolean;
   customizable?: boolean;
+  notesEnabled?: boolean;
   optionGroups?: ProductOptionGroup[];
 }) {
   const supabase = getSupabase();
@@ -389,6 +392,7 @@ export async function createProduct(input: {
       price: input.price,
       active: input.active,
       customizable: Boolean(input.customizable),
+      notes_enabled: Boolean(input.notesEnabled),
     })
     .select(PRODUCT_SELECT)
     .single();
@@ -411,6 +415,7 @@ export async function updateProduct(
     price: number;
     active: boolean;
     customizable: boolean;
+    notesEnabled: boolean;
     optionGroups: ProductOptionGroup[];
   }>,
 ) {
@@ -424,6 +429,7 @@ export async function updateProduct(
   if (input.price !== undefined) payload.price = input.price;
   if (input.active !== undefined) payload.active = input.active;
   if (input.customizable !== undefined) payload.customizable = input.customizable;
+  if (input.notesEnabled !== undefined) payload.notes_enabled = input.notesEnabled;
 
   if (Object.keys(payload).length) {
     const { error } = await supabase.from("products").update(payload).eq("id", id);
@@ -600,12 +606,14 @@ export async function createOrder(input: {
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod;
   addressText?: string;
+  notes?: string | null;
   items: {
     productId?: string;
     name: string;
     quantity: number;
     unitPriceCents: number;
     extras?: CartItem["extras"];
+    notes?: string | null;
   }[];
   deliveryFeeCents: number;
 }) {
@@ -624,6 +632,7 @@ export async function createOrder(input: {
     fulfillment: input.fulfillment,
     payment_method: input.paymentMethod,
     address_text: input.addressText ?? null,
+    notes: input.notes?.trim() || null,
     subtotal_cents: subtotalCents,
     delivery_fee_cents: input.deliveryFeeCents,
     total_cents: subtotalCents + input.deliveryFeeCents,
@@ -644,6 +653,7 @@ export async function createOrder(input: {
       quantity: item.quantity,
       unit_price_cents: item.unitPriceCents,
       extras: "extras" in item ? item.extras ?? [] : [],
+      notes: item.notes?.trim() || null,
     })),
   );
 

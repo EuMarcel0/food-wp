@@ -166,13 +166,17 @@ export function CatalogPage() {
             { title: "Item", dataIndex: "name" },
             {
               title: "Tipo",
-              width: 120,
-              render: (_, product) =>
-                product.customizable ? (
-                  <Tag color="orange">Montável</Tag>
-                ) : (
-                  <Tag>Simples</Tag>
-                ),
+              width: 180,
+              render: (_, product) => (
+                <>
+                  {product.customizable ? (
+                    <Tag color="orange">Montável</Tag>
+                  ) : (
+                    <Tag>Simples</Tag>
+                  )}
+                  {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
+                </>
+              ),
             },
             { title: "Descrição", dataIndex: "description" },
             {
