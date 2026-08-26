@@ -5,6 +5,7 @@ import { useAuth } from "./AuthProvider";
 export function ProtectedRoute() {
   const { ready, loading, session } = useAuth();
   const location = useLocation();
+  const mustAuth = import.meta.env.PROD || ready;
 
   if (loading) {
     return (
@@ -14,7 +15,7 @@ export function ProtectedRoute() {
     );
   }
 
-  if (ready && !session) {
+  if (mustAuth && !session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
