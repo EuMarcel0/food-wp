@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "start": "serve -s dist -l tcp://0.0.0.0:$PORT"
+    "start": "node server.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",

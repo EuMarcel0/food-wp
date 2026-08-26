@@ -3,5 +3,5 @@ builder = "nixpacks"
 buildCommand = "npm install --include=dev && npm run build"
 
 [deploy]
-startCommand = "npx serve -s dist -l tcp://0.0.0.0:$PORT"
+startCommand = "node server.mjs"
 restartPolicyType = "on_failure"
