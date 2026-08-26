@@ -8,15 +8,37 @@ import { catalogRouter } from "./routes/catalog.js";
 
 const app = express();
 
-const corsOrigins = [
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  ...env.frontendOrigins,
-];
+function normalizeOrigin(origin: string) {
+  return origin.trim().replace(/\/$/, "");
+}
+
+const extraOrigins = env.frontendOrigins.map(normalizeOrigin);
+
+function isAllowedOrigin(origin: string | undefined) {
+  if (!origin) return true;
+  const normalized = normalizeOrigin(origin);
+  if (
+    normalized === "http://localhost:5173" ||
+    normalized === "http://127.0.0.1:5173"
+  ) {
+    return true;
+  }
+  if (extraOrigins.includes(normalized)) return true;
+  try {
+    const host = new URL(normalized).hostname;
+    return host.endsWith(".up.railway.app");
+  } catch {
+    return false;
+  }
+}
 
 app.use(
   cors({
-    origin: corsOrigins,
+    origin(origin, callback) {
+      callback(null, isAllowedOrigin(origin));
+    },
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
