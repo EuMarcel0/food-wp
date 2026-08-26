@@ -172,7 +172,7 @@ export function ProductForm({
                 </FormControl>
                 {values.customizable ? (
                   <p className="product-form-hint product-form-hint--tight">
-                    Pode deixar vazio. O WhatsApp soma o tamanho e os sabores escolhidos.
+                    Pode deixar vazio. O bot usa o preço do tamanho; sabores do mesmo grupo não somam entre si.
                   </p>
                 ) : null}
                 <div className="product-form-toggles">

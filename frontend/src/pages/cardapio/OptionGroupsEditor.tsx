@@ -135,7 +135,7 @@ export function OptionGroupsEditor({
                   onChange={(next) => setValue(next)}
                   options={[
                     { value: "replace", label: "Substitui o preço do item" },
-                    { value: "addon", label: "Soma no preço" },
+                    { value: "addon", label: "Soma no preço base (sabores não somam entre si)" },
                   ]}
                 />
               )}
