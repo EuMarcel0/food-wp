@@ -33,6 +33,16 @@ import type {
 } from "../types.js";
 
 const GREETING_KEYS = ["oi", "olá", "ola", "menu", "inicio", "início", "hi", "hello"];
+const CANCEL_KEYS = ["cancelar", "sair"];
+const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
+
+function isConversationIdle(lastMessageAt: string | undefined, minutes: number) {
+  if (!lastMessageAt) return false;
+  const last = Date.parse(lastMessageAt);
+  if (!Number.isFinite(last)) return false;
+  const limit = Math.max(1, minutes) * 60 * 1000;
+  return Date.now() - last > limit;
+}
 
 function normalize(text: string) {
   return text
@@ -115,16 +125,12 @@ async function askAssembly(
   if (next.type === "done") return true;
 
   if (next.type === "variant") {
-    await sendList(to, variantPrompt(product, next.groups), "Tamanhos", [
+    await sendList(to, variantPrompt(product), "Tamanhos", [
       {
         title: "Tamanhos",
         rows: next.groups.slice(0, 10).map((group) => ({
           id: `var:${group.id}`,
           title: group.name.slice(0, 24),
-          description: group.options
-            .map((option) => option.name)
-            .join(", ")
-            .slice(0, 72),
         })),
       },
     ]);
@@ -182,9 +188,27 @@ export async function handleIncomingMessage(input: {
   const context = existing?.context ?? emptyContext();
   const incoming = input.replyId || input.text;
   const normalized = normalize(incoming);
+  const command = normalized.replace(/[!?.,]+$/g, "").trim();
 
   const persist = (nextState: ConversationState, nextContext = context) =>
     saveConversation(customer, nextState, nextContext);
+
+  if (CANCEL_KEYS.includes(command)) {
+    await persist("welcome", emptyContext());
+    await sendText(
+      input.from,
+      "Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem.",
+    );
+    await showWelcome(input.from, store.name);
+    return;
+  }
+
+  const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
+  if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
+    await persist("welcome", emptyContext());
+    await showWelcome(input.from, store.name);
+    return;
+  }
 
   if (["menu", "ver cardapio", "cardapio"].includes(normalized)) {
     await persist("awaiting_product", context);

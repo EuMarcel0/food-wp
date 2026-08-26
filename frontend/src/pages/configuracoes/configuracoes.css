@@ -1,0 +1,34 @@
+.settings-bot-card .ant-card-body {
+  max-width: 36rem;
+}
+
+.settings-bot-copy {
+  margin: 0 0 16px;
+  color: var(--food-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.settings-timeout-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 20px;
+  margin-bottom: 8px;
+}
+
+.settings-timeout-preview {
+  margin: 0 0 12px;
+  color: var(--food-accent);
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.settings-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

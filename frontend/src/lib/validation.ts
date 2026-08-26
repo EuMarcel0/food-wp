@@ -123,11 +123,21 @@ export const categorySchema = Yup.object({
   active: Yup.boolean().default(true),
 });
 
+export const botSettingsSchema = Yup.object({
+  idleTimeoutMinutes: Yup.number()
+    .typeError("Informe o tempo em minutos")
+    .required("Informe o tempo em minutos")
+    .integer("Use um número inteiro")
+    .min(1, "Mínimo de 1 minuto")
+    .max(10080, "Máximo de 7 dias"),
+});
+
 export type LoginValues = Yup.InferType<typeof loginSchema>;
 export type SignupValues = Yup.InferType<typeof signupSchema>;
 export type SettingsValues = Yup.InferType<typeof settingsSchema>;
 export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
+export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
 
 export function parseReais(value: string) {
   const normalized = value.trim().replace(/\./g, "").replace(",", ".");

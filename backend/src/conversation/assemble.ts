@@ -180,12 +180,8 @@ export function selectionKey(item: Pick<CartItem, "productId" | "extras">) {
   return `${item.productId}:${JSON.stringify(extras)}`;
 }
 
-export function variantPrompt(product: Product, groups: ProductOptionGroup[]) {
-  return [
-    `*${product.name}*`,
-    "Escolha o tamanho.",
-    groups.map((group) => `• ${group.name}`).join("\n"),
-  ].join("\n");
+export function variantPrompt(product: Product) {
+  return `*${product.name}*\nEscolha o tamanho.`;
 }
 
 export function groupPrompt(product: Product, group: ProductOptionGroup, picked: string[]) {

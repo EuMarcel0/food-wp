@@ -10,6 +10,7 @@ import {
   listProductsPage,
   updateCategory,
   updateProduct,
+  updateStore,
 } from "../data/repository.js";
 import {
   parseOptionalBoolean,
@@ -65,6 +66,26 @@ function categoryPayload(body: Record<string, unknown>) {
 
 catalogRouter.get("/store", async (_req, res) => {
   res.json(await getStore());
+});
+
+catalogRouter.patch("/store", async (req, res) => {
+  const idleTimeoutMinutes = Number(req.body?.idleTimeoutMinutes);
+  if (!Number.isFinite(idleTimeoutMinutes) || idleTimeoutMinutes < 1 || idleTimeoutMinutes > 10080) {
+    res.status(400).json({
+      error: "Informe o tempo limite em minutos (1 a 10080).",
+    });
+    return;
+  }
+  try {
+    res.json(await updateStore({ idleTimeoutMinutes }));
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao salvar as configurações.",
+    });
+  }
 });
 
 catalogRouter.get("/categories", async (req, res) => {

@@ -72,6 +72,7 @@ export type Store = {
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   deliveryFeeCents: number;
+  idleTimeoutMinutes: number;
 };
 
 export type Product = {
@@ -106,6 +107,7 @@ export type Conversation = {
   customerId: string;
   state: ConversationState;
   context: ConversationContext;
+  lastMessageAt?: string;
 };
 
 export type Order = {

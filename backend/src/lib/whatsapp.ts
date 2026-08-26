@@ -146,7 +146,7 @@ export async function sendList(
           rows: section.rows.slice(0, 10).map((row) => ({
             id: row.id,
             title: row.title.slice(0, 24),
-            description: row.description?.slice(0, 72),
+            ...(row.description ? { description: row.description.slice(0, 72) } : {}),
           })),
         })),
       },

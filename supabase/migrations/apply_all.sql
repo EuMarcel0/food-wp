@@ -443,3 +443,7 @@ grant select on public.product_option_groups, public.product_options
 -- ========== 013_option_group_exclusive ==========
 alter table public.product_option_groups
   add column if not exists exclusive_set text;
+
+-- ========== 014_store_idle_timeout ==========
+alter table public.stores
+  add column if not exists idle_timeout_minutes integer not null default 60;

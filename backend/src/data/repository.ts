@@ -82,6 +82,7 @@ function mapStore(row: Record<string, unknown>): Store {
     deliveryEnabled: Boolean(row.delivery_enabled ?? true),
     pickupEnabled: Boolean(row.pickup_enabled ?? true),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
+    idleTimeoutMinutes: Math.max(1, Number(row.idle_timeout_minutes ?? 60)),
   };
 }
 
@@ -149,6 +150,33 @@ export async function getStore(): Promise<Store> {
     .limit(1)
     .maybeSingle();
   if (error || !data) return memoryStore.getStore();
+  return mapStore(data);
+}
+
+export async function updateStore(patch: {
+  idleTimeoutMinutes: number;
+}): Promise<Store> {
+  const idleTimeoutMinutes = Math.min(
+    10080,
+    Math.max(1, Math.round(Number(patch.idleTimeoutMinutes))),
+  );
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updateStore({ idleTimeoutMinutes });
+
+  const current = await getStore();
+  const { data, error } = await supabase
+    .from("stores")
+    .update({ idle_timeout_minutes: idleTimeoutMinutes })
+    .eq("id", current.id)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) {
+    throw new Error(
+      error?.message?.includes("idle_timeout_minutes")
+        ? "Rode a migration 014_store_idle_timeout.sql no Supabase."
+        : error?.message ?? "Falha ao salvar as configurações.",
+    );
+  }
   return mapStore(data);
 }
 
@@ -519,6 +547,7 @@ export async function getConversation(customerId: string) {
     customerId: data.customer_id,
     state: data.state as ConversationState,
     context: (data.context ?? { cart: [] }) as ConversationContext,
+    lastMessageAt: data.last_message_at ? String(data.last_message_at) : undefined,
   } satisfies Conversation;
 }
 
@@ -540,7 +569,7 @@ export async function saveConversation(
         last_message_at: new Date().toISOString(),
       })
       .eq("id", current.id);
-    return { ...current, state, context };
+    return { ...current, state, context, lastMessageAt: new Date().toISOString() };
   }
 
   const { data } = await supabase
@@ -560,6 +589,9 @@ export async function saveConversation(
     customerId: customer.id,
     state,
     context,
+    lastMessageAt: data?.last_message_at
+      ? String(data.last_message_at)
+      : new Date().toISOString(),
   } satisfies Conversation;
 }
 

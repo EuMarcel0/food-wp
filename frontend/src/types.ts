@@ -75,6 +75,7 @@ export type Store = {
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   deliveryFeeCents: number;
+  idleTimeoutMinutes: number;
 };
 
 export type Health = {

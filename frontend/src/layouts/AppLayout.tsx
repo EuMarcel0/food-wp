@@ -4,6 +4,7 @@ import {
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
+  SettingOutlined,
   ShoppingOutlined,
   TagsOutlined,
   ThunderboltOutlined,
@@ -22,6 +23,7 @@ const items = [
   { key: "/pedidos", icon: <ShoppingOutlined />, label: "Pedidos" },
   { key: "/cardapio", icon: <AppstoreOutlined />, label: "Cardápio" },
   { key: "/categorias", icon: <TagsOutlined />, label: "Categorias" },
+  { key: "/configuracoes", icon: <SettingOutlined />, label: "Configurações" },
 ];
 
 function readSiderCollapsed() {

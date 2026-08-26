@@ -4,6 +4,7 @@ import { AppLayout } from "./layouts/AppLayout";
 import { SignupPage } from "./pages/cadastro";
 import { CatalogPage } from "./pages/cardapio";
 import { CategoriesPage } from "./pages/categorias";
+import { SettingsPage } from "./pages/configuracoes";
 import { DashboardPage } from "./pages/dashboard";
 import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/pedidos";
@@ -21,6 +22,7 @@ export function App() {
           <Route path="/pedidos" element={<OrdersPage />} />
           <Route path="/cardapio" element={<CatalogPage />} />
           <Route path="/categorias" element={<CategoriesPage />} />
+          <Route path="/configuracoes" element={<SettingsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -32,6 +32,7 @@ const store: Store = {
   deliveryEnabled: true,
   pickupEnabled: true,
   deliveryFeeCents: 700,
+  idleTimeoutMinutes: 60,
 };
 
 const categories: Category[] = [
@@ -103,6 +104,14 @@ function phoneKey(phone: string) {
 
 export const memoryStore = {
   getStore() {
+    return store;
+  },
+
+  updateStore(patch: { idleTimeoutMinutes: number }) {
+    store.idleTimeoutMinutes = Math.min(
+      10080,
+      Math.max(1, Math.round(patch.idleTimeoutMinutes)),
+    );
     return store;
   },
 
@@ -289,6 +298,7 @@ export const memoryStore = {
       customerId: customer.id,
       state,
       context,
+      lastMessageAt: new Date().toISOString(),
     };
     conversations.set(customer.id, conversation);
     return conversation;
