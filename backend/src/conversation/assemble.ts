@@ -137,17 +137,26 @@ function cheapestSum(group: ProductOptionGroup, count: number) {
     .reduce((sum, value) => sum + value, 0);
 }
 
+function isFlavorOrSizeGroup(group: ProductOptionGroup | undefined) {
+  if (!group) return false;
+  return group.maxSelect > 1 || Boolean(group.exclusiveSet?.trim());
+}
+
+function hasBasePrice(product: Product) {
+  return product.price > 0;
+}
+
 export function variantStartingPrice(product: Product, group: ProductOptionGroup) {
-  const add = cheapestSum(group, Math.max(1, group.minSelect));
-  if (group.priceMode === "replace") return Math.max(0, add);
-  return Math.max(0, product.price + add);
+  if (hasBasePrice(product)) return product.price;
+  return Math.max(0, cheapestSum(group, Math.max(1, group.minSelect)));
 }
 
 export function variantPriceLabel(product: Product, group: ProductOptionGroup) {
   const price = variantStartingPrice(product, group);
+  const formatted = formatReais(price);
+  if (hasBasePrice(product)) return formatted;
   const extras = group.options.map((option) => option.extraPrice);
   const varied = extras.length > 1 && extras.some((value) => value !== extras[0]);
-  const formatted = formatReais(price);
   return varied ? `a partir de ${formatted}` : formatted;
 }
 
@@ -159,7 +168,13 @@ export function soleGroupPick(group: ProductOptionGroup) {
 
 export function unitPriceCents(product: Product, selections: CartSelection[]) {
   let cents = Math.round(product.price * 100);
+  const groups = activeGroups(product);
+  const freezeFlavors = hasBasePrice(product);
+
   for (const selection of selections) {
+    const group = groups.find((item) => item.id === selection.groupId);
+    if (freezeFlavors && (isFlavorOrSizeGroup(group) || !group)) continue;
+
     const extra = selection.options.reduce(
       (max, option) => Math.max(max, Math.round(option.extraPrice * 100)),
       0,

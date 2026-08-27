@@ -18,6 +18,7 @@ export function catalogPriceLabel(product: {
   optionGroups?: { options: { extraPrice: number }[] }[];
 }) {
   if (!product.customizable) return formatReais(product.price);
+  if (product.price > 0) return formatReais(product.price);
   const extras = (product.optionGroups ?? []).flatMap((group) =>
     group.options.map((option) => option.extraPrice),
   );

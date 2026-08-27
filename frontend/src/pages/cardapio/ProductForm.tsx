@@ -168,7 +168,7 @@ export function ProductForm({
                 </FormControl>
                 {values.customizable ? (
                   <p className={cn(formHint, "-mt-1")}>
-                    Pode deixar vazio. O bot usa o preço do tamanho; sabores do mesmo grupo não somam entre si.
+                    Se preenchido, este é o preço da pizza no WhatsApp — tamanhos e sabores não somam. Sem valor, o bot usa o preço das opções. A regra “sabor mais caro” ainda não entra.
                   </p>
                 ) : null}
                 <div className="mt-1 grid gap-2">

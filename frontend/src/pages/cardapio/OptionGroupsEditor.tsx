@@ -139,7 +139,7 @@ export function OptionGroupsEditor({
                   onChange={(next) => setValue(next)}
                   options={[
                     { value: "replace", label: "Substitui o preço do item" },
-                    { value: "addon", label: "Soma no preço base (sabores não somam entre si)" },
+                    { value: "addon", label: "Soma no preço base (borda e adicionais)" },
                   ]}
                 />
               )}
@@ -199,6 +199,11 @@ export function OptionGroupsEditor({
             />
           </label>
           <div className="rounded-xl border border-food-border bg-food-card p-2.5">
+            {group.exclusiveSet || Number(group.maxSelect) > 1 ? (
+              <p className="mb-2 px-0.5 text-xs text-food-muted">
+                Com preço base preenchido, o valor das opções de tamanho e sabor ainda não altera o total.
+              </p>
+            ) : null}
             <div className="mb-2 grid grid-cols-[minmax(0,1fr)_128px_32px] gap-2 px-0.5 text-[11px] font-bold uppercase tracking-wider text-food-muted max-sm:grid-cols-[minmax(0,1fr)_104px_32px]">
               <span>Opção</span>
               <span>Preço</span>
