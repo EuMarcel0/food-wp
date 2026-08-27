@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ConfigProvider, Input, Pagination, Select, Table, Tag, theme } from "antd";
+import { Input, Pagination, Select, Table, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -87,7 +87,6 @@ export function OrdersPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isDesktop = useMediaQuery("(min-width: 992px)");
-  const { token } = theme.useToken();
   const { shellRef, tableAreaRef, bodyHeight } = useOrdersGridHeight(isDesktop);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -199,15 +198,6 @@ export function OrdersPage() {
   });
 
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: token.colorText,
-          colorInfo: token.colorText,
-          controlOutline: "transparent",
-        },
-      }}
-    >
     <div className="orders-page flex h-full min-h-0 flex-1 flex-col max-lg:h-auto max-lg:flex-none">
       <PageHeader
         className="mb-3 shrink-0"
@@ -419,6 +409,5 @@ export function OrdersPage() {
         }}
       />
     </div>
-    </ConfigProvider>
   );
 }

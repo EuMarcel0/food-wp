@@ -159,13 +159,6 @@
     background: transparent !important;
   }
 
-  .orders-page .ant-input-affix-wrapper-focused,
-  .orders-page .ant-input-focused,
-  .orders-page .ant-select-focused .ant-select-selector {
-    border-color: var(--food-border) !important;
-    box-shadow: none !important;
-  }
-
   .ant-app .ant-message {
     z-index: 2000;
   }
