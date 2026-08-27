@@ -54,8 +54,10 @@ export const api = {
   updateStore: (payload: {
     idleTimeoutMinutes?: number;
     deliveryFeeCents?: number;
+    name?: string;
+    photo?: { mime: string; data: string };
   }) =>
-    request<Store>("/api/store", {
+    request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),

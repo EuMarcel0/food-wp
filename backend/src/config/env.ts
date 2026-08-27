@@ -21,8 +21,10 @@ export const env = {
   whatsappPhoneNumberId: read("WHATSAPP_PHONE_NUMBER_ID"),
   whatsappVerifyToken: read("WHATSAPP_VERIFY_TOKEN", "food-wp-verify"),
   whatsappAppSecret: read("WHATSAPP_APP_SECRET"),
+  whatsappAppId: read("WHATSAPP_APP_ID"),
   whatsappGraphVersion: read("WHATSAPP_GRAPH_VERSION", "v21.0"),
   whatsappWabaId: read("WHATSAPP_WABA_ID"),
+
   defaultStoreId: read("DEFAULT_STORE_ID", "00000000-0000-0000-0000-000000000001"),
   frontendOrigins: read("FRONTEND_ORIGIN")
     .split(",")

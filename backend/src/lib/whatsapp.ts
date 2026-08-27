@@ -153,3 +153,97 @@ export async function sendList(
     },
   });
 }
+
+function graphError(status: number, body: string, fallback: string) {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string } };
+    if (parsed.error?.message) return parsed.error.message;
+  } catch {
+    // corpo não é JSON
+  }
+  return body || fallback || `WhatsApp API ${status}`;
+}
+
+async function resolveWhatsAppAppId() {
+  if (env.whatsappAppId) return env.whatsappAppId;
+  const response = await fetch(
+    `${GRAPH}/debug_token?input_token=${encodeURIComponent(env.whatsappToken)}&access_token=${encodeURIComponent(env.whatsappToken)}`,
+  );
+  const json = (await response.json()) as { data?: { app_id?: string } };
+  return String(json.data?.app_id ?? "");
+}
+
+async function uploadProfilePictureHandle(bytes: Buffer, mime: string, fileName: string) {
+  const appId = await resolveWhatsAppAppId();
+  if (!appId) {
+    throw new Error(
+      "Informe WHATSAPP_APP_ID no .env para enviar a foto ao perfil do WhatsApp.",
+    );
+  }
+
+  const sessionResponse = await fetch(
+    `${GRAPH}/${appId}/uploads?file_name=${encodeURIComponent(fileName)}&file_length=${bytes.length}&file_type=${encodeURIComponent(mime)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `OAuth ${env.whatsappToken}` },
+    },
+  );
+  const sessionBody = await sessionResponse.text();
+  if (!sessionResponse.ok) {
+    throw new Error(graphError(sessionResponse.status, sessionBody, "Falha ao abrir o envio da foto."));
+  }
+  const session = JSON.parse(sessionBody) as { id?: string };
+  if (!session.id) throw new Error("WhatsApp não devolveu a sessão de upload.");
+
+  const uploadResponse = await fetch(`${GRAPH}/${session.id}`, {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${env.whatsappToken}`,
+      file_offset: "0",
+      "Content-Type": "application/octet-stream",
+    },
+    body: new Uint8Array(bytes),
+  });
+  const uploadBody = await uploadResponse.text();
+  if (!uploadResponse.ok) {
+    throw new Error(graphError(uploadResponse.status, uploadBody, "Falha ao enviar a foto."));
+  }
+  const uploaded = JSON.parse(uploadBody) as { h?: string };
+  if (!uploaded.h) throw new Error("WhatsApp não devolveu o identificador da foto.");
+  return uploaded.h;
+}
+
+export async function updateWhatsAppBusinessProfile(input: {
+  about?: string;
+  picture?: { bytes: Buffer; mime: string; fileName: string };
+}) {
+  if (!flags.whatsappReady) return { skipped: true as const };
+
+  const payload: Record<string, unknown> = { messaging_product: "whatsapp" };
+  if (input.about?.trim()) payload.about = input.about.trim().slice(0, 139);
+  if (input.picture) {
+    payload.profile_picture_handle = await uploadProfilePictureHandle(
+      input.picture.bytes,
+      input.picture.mime,
+      input.picture.fileName,
+    );
+  }
+  if (Object.keys(payload).length <= 1) return { skipped: true as const };
+
+  const response = await fetch(
+    `${GRAPH}/${env.whatsappPhoneNumberId}/whatsapp_business_profile`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.whatsappToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(graphError(response.status, body, "Falha ao atualizar o perfil do WhatsApp."));
+  }
+  return { skipped: false as const };
+}

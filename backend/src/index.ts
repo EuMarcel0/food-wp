@@ -47,6 +47,7 @@ app.use(
 
 app.use(
   express.json({
+    limit: "5mb",
     verify: (req, _res, buf) => {
       (req as typeof req & { rawBody?: string }).rawBody = buf.toString("utf8");
     },

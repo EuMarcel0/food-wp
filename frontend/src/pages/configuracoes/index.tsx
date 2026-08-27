@@ -11,6 +11,7 @@ import {
   type BotSettingsValues,
 } from "../../lib/validation";
 import { NeighborhoodFees } from "./NeighborhoodFees";
+import { BrandingCard } from "./BrandingCard";
 
 function formatIdleLabel(minutes: number) {
   if (!Number.isFinite(minutes) || minutes < 1) return "—";
@@ -52,10 +53,12 @@ export function SettingsPage() {
       <PageHeader
         kicker="Retaguarda"
         title="Configurações"
-        subtitle="Regras do bot no WhatsApp: tempo sem resposta, taxa default e taxas por bairro."
+        subtitle="Perfil no WhatsApp, tempo sem resposta e taxas de entrega."
       />
 
       <div className="flex flex-col gap-6">
+        <BrandingCard store={store} whatsappReady={health?.whatsapp} />
+
         <Card
           className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
           title="Tempo sem resposta"

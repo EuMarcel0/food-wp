@@ -88,6 +88,7 @@ function mapStore(row: Record<string, unknown>): Store {
     pickupEnabled: Boolean(row.pickup_enabled ?? true),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     idleTimeoutMinutes: Math.max(1, Number(row.idle_timeout_minutes ?? 60)),
+    profilePhotoUrl: (row.profile_photo_url as string | null) ?? null,
     neighborhoods: [],
   };
 }
@@ -241,8 +242,10 @@ export async function getStore(): Promise<Store> {
 export async function updateStore(patch: {
   idleTimeoutMinutes?: number;
   deliveryFeeCents?: number;
+  name?: string;
+  profilePhotoUrl?: string | null;
 }): Promise<Store> {
-  const payload: Record<string, number> = {};
+  const payload: Record<string, unknown> = {};
   if (patch.idleTimeoutMinutes !== undefined) {
     payload.idle_timeout_minutes = Math.min(
       10080,
@@ -254,6 +257,12 @@ export async function updateStore(patch: {
       0,
       Math.round(Number(patch.deliveryFeeCents)),
     );
+  }
+  if (patch.name !== undefined) {
+    payload.name = patch.name;
+  }
+  if (patch.profilePhotoUrl !== undefined) {
+    payload.profile_photo_url = patch.profilePhotoUrl;
   }
   const supabase = getSupabase();
   if (!supabase) return memoryStore.updateStore(patch);
@@ -269,10 +278,33 @@ export async function updateStore(patch: {
     throw new Error(
       error?.message?.includes("idle_timeout_minutes")
         ? "Rode a migration 014_store_idle_timeout.sql no Supabase."
+        : error?.message?.includes("profile_photo_url")
+          ? "Rode a migration 022_store_branding.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }
   return hydrateStore(data as Record<string, unknown>);
+}
+
+export async function saveStoreProfilePhoto(storeId: string, bytes: Buffer) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return `data:image/jpeg;base64,${bytes.toString("base64")}`;
+  }
+  const path = `${storeId}/profile.jpg`;
+  const { error } = await supabase.storage.from("store-branding").upload(path, bytes, {
+    upsert: true,
+    contentType: "image/jpeg",
+  });
+  if (error) {
+    throw new Error(
+      error.message.includes("store-branding") || error.message.includes("Bucket")
+        ? "Rode a migration 022_store_branding.sql no Supabase."
+        : error.message,
+    );
+  }
+  const { data } = supabase.storage.from("store-branding").getPublicUrl(path);
+  return `${data.publicUrl}?t=${Date.now()}`;
 }
 
 export async function createNeighborhood(input: {

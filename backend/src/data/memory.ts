@@ -36,6 +36,7 @@ const store: Store = {
   pickupEnabled: true,
   deliveryFeeCents: 700,
   idleTimeoutMinutes: 60,
+  profilePhotoUrl: null,
   neighborhoods: [],
 };
 
@@ -126,7 +127,12 @@ export const memoryStore = {
     return store;
   },
 
-  updateStore(patch: { idleTimeoutMinutes?: number; deliveryFeeCents?: number }) {
+  updateStore(patch: {
+    idleTimeoutMinutes?: number;
+    deliveryFeeCents?: number;
+    name?: string;
+    profilePhotoUrl?: string | null;
+  }) {
     if (patch.idleTimeoutMinutes !== undefined) {
       store.idleTimeoutMinutes = Math.min(
         10080,
@@ -136,6 +142,8 @@ export const memoryStore = {
     if (patch.deliveryFeeCents !== undefined) {
       store.deliveryFeeCents = Math.max(0, Math.round(patch.deliveryFeeCents));
     }
+    if (patch.name !== undefined) store.name = patch.name;
+    if (patch.profilePhotoUrl !== undefined) store.profilePhotoUrl = patch.profilePhotoUrl;
     return store;
   },
 

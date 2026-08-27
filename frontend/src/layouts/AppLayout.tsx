@@ -12,10 +12,13 @@ import {
 } from "@ant-design/icons";
 import { Button, Drawer, Grid, Layout, Menu, Tooltip, Typography, theme } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { NotificationProvider } from "../notifications/NotificationProvider";
 import { UserMenu } from "./UserMenu";
+import { api } from "../lib/api";
+import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/cn";
 import { foodMark } from "../ui";
 
@@ -38,7 +41,16 @@ function readSiderCollapsed() {
   }
 }
 
-function SiderBrand({ compact = false }: { compact?: boolean }) {
+function SiderBrand({
+  compact = false,
+  name,
+  photoUrl,
+}: {
+  compact?: boolean;
+  name?: string;
+  photoUrl?: string | null;
+}) {
+  const label = name?.trim() || "Food WP";
   return (
     <div
       className={cn(
@@ -46,13 +58,21 @@ function SiderBrand({ compact = false }: { compact?: boolean }) {
         compact && "justify-center px-3",
       )}
     >
-      <div className={foodMark} aria-hidden="true">
-        🍽️
-      </div>
+      {photoUrl ? (
+        <img
+          src={photoUrl}
+          alt=""
+          className="size-[34px] shrink-0 rounded-[10px] object-cover shadow-[0_6px_16px_rgba(232,93,4,0.28)]"
+        />
+      ) : (
+        <div className={foodMark} aria-hidden="true">
+          🍽️
+        </div>
+      )}
       {compact ? null : (
-        <div>
-          <strong className="block text-base leading-tight tracking-tight">
-            Food WP
+        <div className="min-w-0">
+          <strong className="block truncate text-base leading-tight tracking-tight">
+            {label}
           </strong>
           <span className="block text-xs text-zinc-400">Retaguarda do bot</span>
         </div>
@@ -69,6 +89,12 @@ export function AppLayout() {
   const isMobile = screens.lg === false;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
+  const storeQuery = useQuery({
+    queryKey: queryKeys.store,
+    queryFn: api.store,
+  });
+  const storeName = storeQuery.data?.name;
+  const storePhoto = storeQuery.data?.profilePhotoUrl;
 
   function go(path: string) {
     navigate(path);
@@ -118,7 +144,7 @@ export function AppLayout() {
             header: { display: "none" },
           }}
         >
-          <SiderBrand />
+          <SiderBrand name={storeName} photoUrl={storePhoto} />
           <nav aria-label="Menu principal">{menu}</nav>
         </Drawer>
       ) : (
@@ -129,7 +155,7 @@ export function AppLayout() {
           collapsed={collapsed}
           theme="dark"
         >
-          <SiderBrand compact={collapsed} />
+          <SiderBrand compact={collapsed} name={storeName} photoUrl={storePhoto} />
           <nav aria-label="Menu principal">{menu}</nav>
         </Layout.Sider>
       )}

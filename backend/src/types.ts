@@ -95,6 +95,7 @@ export type Store = {
   pickupEnabled: boolean;
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
+  profilePhotoUrl: string | null;
   neighborhoods: DeliveryNeighborhood[];
 };
 

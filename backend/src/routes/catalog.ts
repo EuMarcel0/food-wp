@@ -15,6 +15,7 @@ import {
   listCategories,
   listCategoriesPage,
   listProductsPage,
+  saveStoreProfilePhoto,
   updateAddon,
   updateCategory,
   updateProduct,
@@ -26,6 +27,7 @@ import {
   parseSearch,
 } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
+import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
 import type { ProductOptionGroup } from "../types.js";
 
 export const catalogRouter = Router();
@@ -79,7 +81,12 @@ catalogRouter.get("/store", async (_req, res) => {
 
 catalogRouter.patch("/store", async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const patch: { idleTimeoutMinutes?: number; deliveryFeeCents?: number } = {};
+  const patch: {
+    idleTimeoutMinutes?: number;
+    deliveryFeeCents?: number;
+    name?: string;
+    profilePhotoUrl?: string | null;
+  } = {};
 
   if (body.idleTimeoutMinutes !== undefined) {
     const idleTimeoutMinutes = Number(body.idleTimeoutMinutes);
@@ -101,13 +108,58 @@ catalogRouter.patch("/store", async (req, res) => {
     patch.deliveryFeeCents = Math.round(deliveryFeeCents);
   }
 
+  if (body.name !== undefined) {
+    const name = String(body.name ?? "").trim();
+    if (name.length < 2 || name.length > 80) {
+      res.status(400).json({ error: "Informe o nome do estabelecimento (2 a 80 caracteres)." });
+      return;
+    }
+    patch.name = name;
+  }
+
+  const photo = body.photo as { mime?: string; data?: string } | undefined;
+  let picture: { bytes: Buffer; mime: string; fileName: string } | undefined;
+  if (photo?.data) {
+    const raw = String(photo.data).replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+    const bytes = Buffer.from(raw, "base64");
+    if (bytes.length < 32 || bytes.length > 2.5 * 1024 * 1024) {
+      res.status(400).json({ error: "A foto precisa ter no máximo 2 MB." });
+      return;
+    }
+    try {
+      const store = await getStore();
+      patch.profilePhotoUrl = await saveStoreProfilePhoto(store.id, bytes);
+      picture = { bytes, mime: "image/jpeg", fileName: "profile.jpg" };
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Falha ao salvar a foto.",
+      });
+      return;
+    }
+  }
+
   if (!Object.keys(patch).length) {
     res.status(400).json({ error: "Nada para atualizar." });
     return;
   }
 
   try {
-    res.json(await updateStore(patch));
+    const store = await updateStore(patch);
+    let whatsappError: string | undefined;
+    if (patch.name || picture) {
+      try {
+        await updateWhatsAppBusinessProfile({
+          about: store.name,
+          picture,
+        });
+      } catch (error) {
+        whatsappError =
+          error instanceof Error
+            ? error.message
+            : "Não foi possível atualizar o perfil no WhatsApp.";
+      }
+    }
+    res.json({ ...store, whatsappError });
   } catch (error) {
     res.status(400).json({
       error:

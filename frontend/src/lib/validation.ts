@@ -164,6 +164,14 @@ export const addonSchema = Yup.object({
   active: Yup.boolean().default(true),
 });
 
+export const storeBrandingSchema = Yup.object({
+  name: Yup.string()
+    .trim()
+    .required("Informe o nome do estabelecimento")
+    .min(2, "Use pelo menos 2 caracteres")
+    .max(80, "Use no máximo 80 caracteres"),
+});
+
 export const botSettingsSchema = Yup.object({
   idleTimeoutMinutes: Yup.number()
     .typeError("Informe o tempo em minutos")
@@ -201,6 +209,7 @@ export type SettingsValues = Yup.InferType<typeof settingsSchema>;
 export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
 export type AddonValues = Yup.InferType<typeof addonSchema>;
+export type StoreBrandingValues = Yup.InferType<typeof storeBrandingSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
 export type DefaultDeliveryFeeValues = Yup.InferType<typeof defaultDeliveryFeeSchema>;
 export type NeighborhoodFeeValues = Yup.InferType<typeof neighborhoodFeeSchema>;
