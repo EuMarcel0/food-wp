@@ -186,7 +186,7 @@ export function AppLayout() {
           className={cn(
             "min-h-0 min-w-0 flex-1 scroll-mt-3",
             location.pathname === "/pedidos"
-              ? "flex flex-col overflow-hidden px-4 py-3 max-lg:overflow-auto max-lg:px-3.5 max-lg:py-3"
+              ? "flex h-full min-h-0 flex-col overflow-hidden px-4 py-3 max-lg:h-auto max-lg:overflow-auto max-lg:px-3.5"
               : "overflow-auto px-7 py-6 pb-8 max-lg:px-3.5 max-lg:py-4 max-lg:pb-6",
           )}
           tabIndex={-1}
@@ -194,7 +194,7 @@ export function AppLayout() {
           <div
             className={
               location.pathname === "/pedidos"
-                ? "flex min-h-0 w-full flex-1 flex-col max-lg:h-auto max-lg:flex-none"
+                ? "flex h-full min-h-0 w-full flex-1 flex-col max-lg:h-auto max-lg:flex-none"
                 : "mx-auto w-full max-w-[1200px]"
             }
           >

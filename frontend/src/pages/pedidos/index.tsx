@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Input, Select, Table, Tag } from "antd";
+import { ConfigProvider, Input, Pagination, Select, Table, Tag, theme } from "antd";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -33,45 +33,50 @@ import type { Order, OrderStatus } from "../../types";
 import { cn } from "../../lib/cn";
 import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
 
-function useTableBodyHeight(enabled: boolean, tick: number) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [bodyHeight, setBodyHeight] = useState(320);
+function useOrdersGridHeight(enabled: boolean) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const tableAreaRef = useRef<HTMLDivElement>(null);
+  const [bodyHeight, setBodyHeight] = useState(400);
 
   useLayoutEffect(() => {
     if (!enabled) return;
-    const wrap = wrapRef.current;
-    if (!wrap) return;
+    const shell = shellRef.current;
+    const area = tableAreaRef.current;
+    if (!shell || !area) return;
 
     const measure = () => {
-      if (wrap.clientHeight <= 0) return;
-      const pagination = wrap.querySelector<HTMLElement>(".ant-pagination");
+      const top = shell.getBoundingClientRect().top;
+      const content = document.getElementById("conteudo");
+      const padBottom = content
+        ? parseFloat(getComputedStyle(content).paddingBottom) || 0
+        : 12;
+      const shellHeight = Math.floor(window.innerHeight - top - padBottom);
+      if (shellHeight <= 0) return;
+      shell.style.height = `${shellHeight}px`;
       const header =
-        wrap.querySelector<HTMLElement>(".ant-table-header") ??
-        wrap.querySelector<HTMLElement>(".ant-table-thead");
+        area.querySelector<HTMLElement>(".ant-table-header") ??
+        area.querySelector<HTMLElement>(".ant-table-thead");
       const next = Math.floor(
-        wrap.clientHeight -
-          (pagination?.getBoundingClientRect().height ?? 0) -
-          (header?.getBoundingClientRect().height ?? 47),
+        area.clientHeight - (header?.getBoundingClientRect().height ?? 47) - 2,
       );
-      const clamped = Math.max(160, next);
+      const clamped = Math.max(120, next);
       setBodyHeight((prev) => (Math.abs(prev - clamped) < 1 ? prev : clamped));
     };
 
     measure();
     const frame = window.requestAnimationFrame(measure);
     const observer = new ResizeObserver(measure);
-    observer.observe(wrap);
-    const pagination = wrap.querySelector(".ant-pagination");
-    if (pagination) observer.observe(pagination);
+    observer.observe(shell);
+    observer.observe(area);
     window.addEventListener("resize", measure);
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [enabled, tick]);
+  }, [enabled]);
 
-  return [wrapRef, bodyHeight] as const;
+  return { shellRef, tableAreaRef, bodyHeight };
 }
 
 const STATUS_OPTIONS = (
@@ -82,6 +87,8 @@ export function OrdersPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isDesktop = useMediaQuery("(min-width: 992px)");
+  const { token } = theme.useToken();
+  const { shellRef, tableAreaRef, bodyHeight } = useOrdersGridHeight(isDesktop);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [qInput, setQInput] = useState("");
@@ -106,7 +113,6 @@ export function OrdersPage() {
   const result = listQuery.data;
   const orders = result?.items ?? [];
   const total = result?.total ?? 0;
-  const [tableWrapRef, tableBodyHeight] = useTableBodyHeight(isDesktop, total);
 
   useEffect(() => {
     if (!result) return;
@@ -187,11 +193,26 @@ export function OrdersPage() {
       ? statusMutation.variables.order.id
       : null;
 
+  const pagination = serverPagination(page, limit, total, (nextPage, nextSize) => {
+    setPage(nextPage);
+    setLimit(nextSize);
+  });
+
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col max-lg:h-auto max-lg:flex-none">
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: token.colorText,
+          colorInfo: token.colorText,
+          controlOutline: "transparent",
+        },
+      }}
+    >
+    <div className="orders-page flex h-full min-h-0 flex-1 flex-col max-lg:h-auto max-lg:flex-none">
       <PageHeader
         className="mb-3 shrink-0"
         kicker="Fila"
+        kickerClassName="!text-food-muted"
         title="Pedidos"
         subtitle="Ao mudar o status, o cliente recebe o aviso no WhatsApp."
       />
@@ -231,18 +252,16 @@ export function OrdersPage() {
           ]}
         />
       </ListFilters>
-      <div ref={tableWrapRef} className={cn(tableWrap, "flex min-h-0 flex-1 flex-col")}>
+      <div ref={shellRef} className={cn(tableWrap, "flex min-h-0 flex-1 flex-col")}>
+      <div ref={tableAreaRef} className="min-h-0 flex-1 overflow-hidden">
       <Table
         rowKey="id"
         className={`${tableClass} orders-grid-fill [&_.ant-table-cell-align-center]:whitespace-nowrap`}
         loading={listQuery.isPending && !result}
         dataSource={orders}
         tableLayout="fixed"
-        pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-          setPage(nextPage);
-          setLimit(nextSize);
-        })}
-        scroll={{ x: 1280, y: tableBodyHeight }}
+        pagination={false}
+        scroll={{ x: 1280, y: bodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
@@ -307,7 +326,9 @@ export function OrdersPage() {
             width: 148,
             align: "center",
             render: (value: OrderStatus) => (
-              <Tag color={STATUS_COLOR[value]}>{STATUS_LABEL[value]}</Tag>
+              <Tag color={value === "received" ? "default" : STATUS_COLOR[value]}>
+                {STATUS_LABEL[value]}
+              </Tag>
             ),
           },
           {
@@ -326,6 +347,7 @@ export function OrdersPage() {
               const next = nextStatus(order.status, order.fulfillment);
               return (
                 <RowActions
+                  disabled={order.status === "delivered"}
                   items={[
                     next
                       ? {
@@ -351,6 +373,10 @@ export function OrdersPage() {
           },
         ]}
       />
+      </div>
+      <div className="flex shrink-0 items-center justify-end border-t border-food-border">
+        <Pagination {...pagination} />
+      </div>
       </div>
       <div className={listCards}>
         <MobileCardList
@@ -393,5 +419,6 @@ export function OrdersPage() {
         }}
       />
     </div>
+    </ConfigProvider>
   );
 }

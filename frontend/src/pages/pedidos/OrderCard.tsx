@@ -40,6 +40,7 @@ export function OrderCard({
       title={`#${order.code}`}
       extra={
         <RowActions
+          disabled={order.status === "delivered"}
           items={[
             next
               ? {
