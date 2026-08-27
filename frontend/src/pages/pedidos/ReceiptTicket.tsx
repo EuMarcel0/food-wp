@@ -14,11 +14,15 @@ function formatReceiptPhone(raw?: string | null) {
   if (!digits) return "";
   const local =
     digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
-  if (local.length === 11) {
-    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  const ddd = local.slice(0, 2);
+  const subscriber = local.slice(2);
+  // Celular com 9º dígito: (77) 99177-6299
+  if (local.length === 11 && subscriber.startsWith("9")) {
+    return `(${ddd}) ${subscriber.slice(0, 5)}-${subscriber.slice(5)}`;
   }
+  // Formato antigo sem o 9: (77) 9 9177-6299
   if (local.length === 10) {
-    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+    return `(${ddd}) 9 ${subscriber.slice(0, 4)}-${subscriber.slice(4)}`;
   }
   return raw?.trim() || digits;
 }
