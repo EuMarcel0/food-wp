@@ -9,6 +9,27 @@ import {
 } from "../../lib/format";
 import type { Order, Store } from "../../types";
 
+function formatReceiptPhone(raw?: string | null) {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  const local =
+    digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+  return raw?.trim() || digits;
+}
+
+function receiptCustomerLine(order: Order) {
+  const name = order.customerName?.trim();
+  const phone = formatReceiptPhone(order.customerPhone);
+  if (name && phone) return `${name} · ${phone}`;
+  return name || phone || "Cliente";
+}
+
 function receiptNeighborhood(order: Order, store?: Store) {
   const saved = order.neighborhoodName?.trim();
   if (saved) return saved;
@@ -120,7 +141,7 @@ export function ReceiptTicket({
       <section>
         <div style={{ fontSize: 14, fontWeight: 800 }}>Pedido #{order.code}</div>
         <div>{formatReceiptDate(order.createdAt)}</div>
-        <div>{order.customerName || order.customerPhone || "Cliente"}</div>
+        <div>{receiptCustomerLine(order)}</div>
         <div>
           {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
           {payment ? ` · ${payment}` : ""}

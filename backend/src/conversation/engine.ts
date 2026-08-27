@@ -19,6 +19,7 @@ import {
   CRUST_GROUP_ID,
   assembledName,
   addonLabel,
+  addonOptionLabel,
   crustLabel,
   flavorShareLine,
   groupPrompt,
@@ -641,7 +642,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
   const remaining = remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
-  const picked = draftAddon(drafts)?.options.map((option) => option.name) ?? [];
+  const picked = draftAddon(drafts)?.options.map(addonOptionLabel) ?? [];
   const prompt = [
     `*${product.name}*`,
     picked.length
@@ -1177,7 +1178,7 @@ export async function handleIncomingMessage(input: {
     await persist("awaiting_addon", context);
 
     const names = (draftAddon(context.draftSelections)?.options ?? []).map(
-      (option) => option.name,
+      addonOptionLabel,
     );
     if (!remainingAddons(product, context.draftSelections).length) {
       await askQuantityStage(input.from, product, context, persist);

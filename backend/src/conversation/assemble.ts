@@ -259,10 +259,15 @@ export function assembledName(product: Product, selections: CartSelection[]) {
   return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
 }
 
+export function addonOptionLabel(option: { name: string; extraPrice: number }) {
+  const price = formatReais(option.extraPrice).replace(/\s/g, "");
+  return `${option.name}(${price})`;
+}
+
 export function addonLabel(selections?: CartSelection[]) {
   const names = (selections ?? [])
     .filter((item) => item.groupId === ADDON_GROUP_ID)
-    .flatMap((item) => item.options.map((option) => option.name));
+    .flatMap((item) => item.options.map(addonOptionLabel));
   if (!names.length) return null;
   return `Adicionais: ${names.join(", ")}`;
 }
