@@ -27,6 +27,7 @@ import {
   formatBRL,
   formatDate,
   addonLabel,
+  cashChangeLabel,
 } from "../../lib/format";
 import { useAuth } from "../../auth/AuthProvider";
 import { displayName } from "../../lib/profile";
@@ -252,7 +253,7 @@ export function OrdersPage() {
         dataSource={orders}
         tableLayout="fixed"
         pagination={false}
-        scroll={{ x: 1280, y: bodyHeight }}
+        scroll={{ x: 1380, y: bodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
@@ -264,19 +265,49 @@ export function OrdersPage() {
           {
             title: "Itens",
             render: (_, order) => {
-              const text =
-                (order.items ?? [])
-                  .map((item) => {
-                    const line = `${item.quantity}x ${item.name}`;
-                    const withNotes = item.notes ? `${line} (obs.: ${item.notes})` : line;
-                    const addons = addonLabel(item.extras);
-                    return addons ? `${withNotes}\n${addons}` : withNotes;
-                  })
-                  .join("\n") || "—";
+              const items = order.items ?? [];
+              if (!items.length) return "—";
               return (
-                <span className="line-clamp-4 whitespace-pre-line leading-snug break-words" title={text}>
-                  {text}
-                </span>
+                <div className="flex flex-col gap-1.5 leading-snug">
+                  {items.map((item, index) => {
+                    const addons = addonLabel(item.extras);
+                    return (
+                      <div key={item.id ?? `${item.name}-${index}`}>
+                        <span>
+                          {item.name}
+                          {item.notes ? ` (obs.: ${item.notes})` : ""}
+                        </span>
+                        {addons ? (
+                          <div className="text-[12px] text-food-muted">{addons}</div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            },
+          },
+          {
+            title: "Quantidade",
+            width: 108,
+            align: "center",
+            render: (_, order) => {
+              const items = order.items ?? [];
+              if (!items.length) return "—";
+              return (
+                <div className="flex flex-col gap-1.5 leading-snug tabular-nums">
+                  {items.map((item, index) => {
+                    const addons = addonLabel(item.extras);
+                    return (
+                      <div key={item.id ?? `${item.name}-${index}`}>
+                        <span>{item.quantity}</span>
+                        {addons ? (
+                          <div className="invisible text-[12px]">&nbsp;</div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               );
             },
           },
@@ -297,17 +328,15 @@ export function OrdersPage() {
           {
             title: "Pagamento",
             dataIndex: "paymentMethod",
-            width: 132,
+            width: 188,
             align: "center",
             render: (value: Order["paymentMethod"], order) =>
               value ? (
                 <span className="inline-flex flex-col items-center gap-0.5">
                   <Tag color={PAYMENT_COLOR[value]}>{PAYMENT_LABEL[value]}</Tag>
                   {value === "cash" && order.changeForCents != null ? (
-                    <span className="text-[11px] font-medium text-food-muted">
-                      {order.changeForCents
-                        ? `Troco p/ ${formatBRL(order.changeForCents)}`
-                        : "Sem troco"}
+                    <span className="max-w-[11.5rem] whitespace-normal text-[11px] font-medium leading-tight text-food-muted">
+                      {cashChangeLabel(order.changeForCents, order.totalCents)}
                     </span>
                   ) : null}
                 </span>

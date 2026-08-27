@@ -104,6 +104,12 @@ export const PAYMENT_LABEL: Record<NonNullable<Order["paymentMethod"]>, string> 
   debit: "Débito",
 };
 
+export function cashChangeLabel(changeForCents: number, totalCents: number) {
+  if (!changeForCents) return "Sem troco";
+  const dueCents = Math.max(0, changeForCents - totalCents);
+  return `Troco p/ ${formatBRL(changeForCents)} = ${formatBRL(dueCents)}`;
+}
+
 export const PAYMENT_COLOR: Record<NonNullable<Order["paymentMethod"]>, string> = {
   pix: "cyan",
   cash: "green",

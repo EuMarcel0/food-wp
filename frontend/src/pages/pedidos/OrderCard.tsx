@@ -10,6 +10,7 @@ import {
   formatBRL,
   formatDate,
   addonLabel,
+  cashChangeLabel,
 } from "../../lib/format";
 import { entityItems, entityMeta, entityPrice } from "../../ui";
 import type { Order, OrderStatus } from "../../types";
@@ -76,9 +77,7 @@ export function OrderCard({
             ) : null}
             {order.paymentMethod === "cash" && order.changeForCents != null ? (
               <span>
-                {order.changeForCents
-                  ? `Troco p/ ${formatBRL(order.changeForCents)}`
-                  : "Sem troco"}
+                {cashChangeLabel(order.changeForCents, order.totalCents)}
               </span>
             ) : null}
             <span>{formatDate(order.createdAt)}</span>
@@ -95,12 +94,15 @@ export function OrderCard({
           ? order.items?.map((item, index) => {
               const addons = addonLabel(item.extras);
               return (
-              <li key={item.id ?? `${item.name}-${index}`}>
-                {item.quantity}x {item.name}
-                {item.notes ? ` · obs.: ${item.notes}` : ""}
-                {addons ? (
-                  <div className="font-normal text-food-muted">{addons}</div>
-                ) : null}
+              <li key={item.id ?? `${item.name}-${index}`} className="flex items-baseline gap-1.5">
+                <span className="tabular-nums">{item.quantity}</span>
+                <span>
+                  {item.name}
+                  {item.notes ? ` · obs.: ${item.notes}` : ""}
+                  {addons ? (
+                    <div className="font-normal text-food-muted">{addons}</div>
+                  ) : null}
+                </span>
               </li>
               );
             })
