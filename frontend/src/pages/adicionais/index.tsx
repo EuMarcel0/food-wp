@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Key } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Table, Tabs, Tag } from "antd";
@@ -34,6 +34,7 @@ export function AddonsPage() {
   const [open, setOpen] = useState(false);
   const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
   const [editingCrust, setEditingCrust] = useState<Crust | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [qInput, setQInput] = useState("");
   const [active, setActive] = useState<boolean | undefined>();
   const q = useDebouncedValue(qInput.trim(), 300);
@@ -45,6 +46,7 @@ export function AddonsPage() {
 
   useEffect(() => {
     setPage(1);
+    setSelectedKeys([]);
   }, [q, active, tab]);
 
   const addonsQuery = useQuery({
@@ -106,6 +108,21 @@ export function AddonsPage() {
     },
   });
 
+  const bulkDeleteAddonMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.deleteAddon(id)));
+    },
+    onSuccess: async (_data, ids) => {
+      toast.success(
+        ids.length === 1
+          ? "Adicional excluído."
+          : `${ids.length} adicionais excluídos.`,
+      );
+      setSelectedKeys([]);
+      await refreshAddons();
+    },
+  });
+
   const saveCrustMutation = useMutation({
     mutationFn: async (values: CrustValues) => {
       const payload = toCrustPayload(values);
@@ -124,6 +141,21 @@ export function AddonsPage() {
     mutationFn: (crust: Crust) => api.deleteCrust(crust.id),
     onSuccess: async () => {
       toast.success("Borda excluída.");
+      await refreshCrusts();
+    },
+  });
+
+  const bulkDeleteCrustMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.deleteCrust(id)));
+    },
+    onSuccess: async (_data, ids) => {
+      toast.success(
+        ids.length === 1
+          ? "Borda excluída."
+          : `${ids.length} bordas excluídas.`,
+      );
+      setSelectedKeys([]);
       await refreshCrusts();
     },
   });
@@ -154,6 +186,55 @@ export function AddonsPage() {
     });
   }
 
+  function askBulkDeleteAddon() {
+    const ids = selectedKeys.map(String);
+    if (!ids.length) return;
+    const count = ids.length;
+    void dialog.delete({
+      title: "Excluir adicionais",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{count}</strong>{" "}
+          {count === 1 ? "adicional selecionado" : "adicionais selecionados"}?
+          Os itens do cardápio que usam esses adicionais deixam de oferecê-los.
+        </>
+      ),
+      onConfirm: () => bulkDeleteAddonMutation.mutateAsync(ids),
+    });
+  }
+
+  function askBulkDeleteCrust() {
+    const ids = selectedKeys.map(String);
+    if (!ids.length) return;
+    const count = ids.length;
+    void dialog.delete({
+      title: "Excluir bordas",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{count}</strong>{" "}
+          {count === 1 ? "borda selecionada" : "bordas selecionadas"}? Itens com
+          “Perguntar borda” deixam de oferecer essas opções.
+        </>
+      ),
+      onConfirm: () => bulkDeleteCrustMutation.mutateAsync(ids),
+    });
+  }
+
+  const bulkTrailing =
+    selectedKeys.length > 0 ? (
+      <Button
+        danger
+        loading={
+          isCrusts
+            ? bulkDeleteCrustMutation.isPending
+            : bulkDeleteAddonMutation.isPending
+        }
+        onClick={isCrusts ? askBulkDeleteCrust : askBulkDeleteAddon}
+      >
+        Excluir ({selectedKeys.length})
+      </Button>
+    ) : null;
+
   function openCreate() {
     setEditingAddon(null);
     setEditingCrust(null);
@@ -183,6 +264,7 @@ export function AddonsPage() {
           setOpen(false);
           setEditingAddon(null);
           setEditingCrust(null);
+          setSelectedKeys([]);
         }}
         items={[
           { key: "addons", label: "Adicional" },
@@ -193,6 +275,7 @@ export function AddonsPage() {
         <ListFilters
           className="mb-3 shrink-0"
           activeCount={crustFilterCount}
+          trailing={bulkTrailing}
           onClear={() => setQInput("")}
         >
           <Input.Search
@@ -207,6 +290,7 @@ export function AddonsPage() {
         <ListFilters
           className="mb-3 shrink-0"
           activeCount={addonFilterCount}
+          trailing={bulkTrailing}
           onClear={() => {
             setQInput("");
             setActive(undefined);
@@ -240,6 +324,7 @@ export function AddonsPage() {
         pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
           setPage(nextPage);
           setLimit(nextSize);
+          setSelectedKeys([]);
         })}
       >
         {isCrusts ? (
@@ -250,6 +335,10 @@ export function AddonsPage() {
             dataSource={crusts}
             pagination={false}
             scroll={{ x: 560, y: bodyHeight }}
+            rowSelection={{
+              selectedRowKeys: selectedKeys,
+              onChange: setSelectedKeys,
+            }}
             columns={[
               { title: "Nome", dataIndex: "name" },
               {
@@ -304,6 +393,10 @@ export function AddonsPage() {
             dataSource={addons}
             pagination={false}
             scroll={{ x: 640, y: bodyHeight }}
+            rowSelection={{
+              selectedRowKeys: selectedKeys,
+              onChange: setSelectedKeys,
+            }}
             columns={[
               { title: "Nome", dataIndex: "name" },
               {

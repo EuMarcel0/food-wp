@@ -9,11 +9,13 @@ export function ListFilters({
   onClear,
   children,
   className,
+  trailing,
 }: {
   activeCount: number;
   onClear: () => void;
   children: ReactNode;
   className?: string;
+  trailing?: ReactNode;
 }) {
   const isMobile = useMediaQuery("(max-width: 991px)");
   const [open, setOpen] = useState(false);
@@ -25,18 +27,24 @@ export function ListFilters({
         {activeCount > 0 ? (
           <Button onClick={onClear}>Limpar</Button>
         ) : null}
+        {trailing ? (
+          <div className="ml-auto flex flex-wrap items-center gap-2">{trailing}</div>
+        ) : null}
       </div>
     );
   }
 
   return (
     <>
-      <div className={cn("flex", className ?? "mb-3.5")}>
+      <div className={cn("flex items-center gap-2", className ?? "mb-3.5")}>
         <Badge count={activeCount} size="small" offset={[-2, 2]}>
           <Button icon={<FilterOutlined />} onClick={() => setOpen(true)}>
             Filtros
           </Button>
         </Badge>
+        {trailing ? (
+          <div className="ml-auto flex flex-wrap items-center gap-2">{trailing}</div>
+        ) : null}
       </div>
       <Modal
         title="Filtros"

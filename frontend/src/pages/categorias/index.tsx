@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Key } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Table, Tag } from "antd";
@@ -29,6 +29,7 @@ export function CategoriesPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [qInput, setQInput] = useState("");
   const [active, setActive] = useState<boolean | undefined>();
   const q = useDebouncedValue(qInput.trim(), 300);
@@ -37,6 +38,7 @@ export function CategoriesPage() {
 
   useEffect(() => {
     setPage(1);
+    setSelectedKeys([]);
   }, [q, active]);
 
   const listQuery = useQuery({
@@ -80,6 +82,24 @@ export function CategoriesPage() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.deleteCategory(id)));
+    },
+    onSuccess: async (_data, ids) => {
+      toast.success(
+        ids.length === 1
+          ? "Categoria excluída."
+          : `${ids.length} categorias excluídas.`,
+      );
+      setSelectedKeys([]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
+      ]);
+    },
+  });
+
   function askDelete(category: Category) {
     void dialog.delete({
       title: "Excluir categoria",
@@ -91,6 +111,24 @@ export function CategoriesPage() {
         </>
       ),
       onConfirm: () => deleteMutation.mutateAsync(category),
+    });
+  }
+
+  function askBulkDelete() {
+    const ids = selectedKeys.map(String);
+    if (!ids.length) return;
+    const count = ids.length;
+    void dialog.delete({
+      title: "Excluir categorias",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{count}</strong>{" "}
+          {count === 1 ? "categoria selecionada" : "categorias selecionadas"}?
+          Esta ação não pode ser desfeita. Se houver itens do cardápio em alguma
+          delas, a exclusão será recusada.
+        </>
+      ),
+      onConfirm: () => bulkDeleteMutation.mutateAsync(ids),
     });
   }
 
@@ -113,6 +151,17 @@ export function CategoriesPage() {
       <ListFilters
         className="mb-3 shrink-0"
         activeCount={activeCount}
+        trailing={
+          selectedKeys.length > 0 ? (
+            <Button
+              danger
+              loading={bulkDeleteMutation.isPending}
+              onClick={askBulkDelete}
+            >
+              Excluir ({selectedKeys.length})
+            </Button>
+          ) : null
+        }
         onClear={() => {
           setQInput("");
           setActive(undefined);
@@ -145,6 +194,7 @@ export function CategoriesPage() {
         pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
           setPage(nextPage);
           setLimit(nextSize);
+          setSelectedKeys([]);
         })}
       >
         <Table
@@ -154,6 +204,10 @@ export function CategoriesPage() {
           dataSource={categories}
           pagination={false}
           scroll={{ x: 640, y: bodyHeight }}
+          rowSelection={{
+            selectedRowKeys: selectedKeys,
+            onChange: setSelectedKeys,
+          }}
           columns={[
             { title: "Nome", dataIndex: "name" },
             { title: "Ordem", dataIndex: "sortOrder", width: 100 },

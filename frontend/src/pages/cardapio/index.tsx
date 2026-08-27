@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Key } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Table, Tag } from "antd";
@@ -7,6 +7,7 @@ import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
+import { useDialog } from "../../dialog";
 import { ProductCard } from "./ProductCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
@@ -21,6 +22,7 @@ import type { ProductValues } from "../../lib/validation";
 import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
 
 export function CatalogPage() {
+  const dialog = useDialog();
   const queryClient = useQueryClient();
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(isDesktop);
@@ -28,6 +30,7 @@ export function CatalogPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [qInput, setQInput] = useState("");
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [active, setActive] = useState<boolean | undefined>();
@@ -37,6 +40,7 @@ export function CatalogPage() {
 
   useEffect(() => {
     setPage(1);
+    setSelectedKeys([]);
   }, [q, categoryId, active]);
 
   const categoriesQuery = useQuery({
@@ -60,6 +64,9 @@ export function CatalogPage() {
   const result = listQuery.data;
   const products = result?.items ?? [];
   const total = result?.total ?? 0;
+  const selectedProducts = products.filter((product) =>
+    selectedKeys.includes(product.id),
+  );
 
   useEffect(() => {
     if (!result) return;
@@ -102,6 +109,78 @@ export function CatalogPage() {
     },
   });
 
+  const bulkActiveMutation = useMutation({
+    mutationFn: async ({
+      ids,
+      active: nextActive,
+    }: {
+      ids: string[];
+      active: boolean;
+    }) => {
+      await Promise.all(
+        ids.map((id) => api.updateProduct(id, { active: nextActive })),
+      );
+    },
+    onSuccess: async (_data, variables) => {
+      const count = variables.ids.length;
+      toast.success(
+        variables.active
+          ? count === 1
+            ? "1 item ativado no WhatsApp."
+            : `${count} itens ativados no WhatsApp.`
+          : count === 1
+            ? "1 item desativado no WhatsApp."
+            : `${count} itens desativados no WhatsApp.`,
+      );
+      setSelectedKeys([]);
+      await refreshCatalog();
+    },
+  });
+
+  function askBulkActive(nextActive: boolean) {
+    const ids = selectedProducts.map((product) => product.id);
+    if (!ids.length) return;
+    const count = ids.length;
+    void dialog.confirm({
+      title: nextActive ? "Ativar itens" : "Desativar itens",
+      description: nextActive ? (
+        <>
+          Ativar <strong>{count}</strong>{" "}
+          {count === 1 ? "item selecionado" : "itens selecionados"}? Eles voltam
+          a aparecer no WhatsApp.
+        </>
+      ) : (
+        <>
+          Desativar <strong>{count}</strong>{" "}
+          {count === 1 ? "item selecionado" : "itens selecionados"}? Eles deixam
+          de aparecer no WhatsApp.
+        </>
+      ),
+      okText: nextActive ? "Ativar" : "Desativar",
+      onConfirm: () =>
+        bulkActiveMutation.mutateAsync({ ids, active: nextActive }),
+    });
+  }
+
+  const bulkTrailing =
+    selectedKeys.length > 0 ? (
+      <>
+        <Button
+          loading={bulkActiveMutation.isPending}
+          onClick={() => askBulkActive(true)}
+        >
+          Ativar ({selectedKeys.length})
+        </Button>
+        <Button
+          danger
+          loading={bulkActiveMutation.isPending}
+          onClick={() => askBulkActive(false)}
+        >
+          Desativar ({selectedKeys.length})
+        </Button>
+      </>
+    ) : null;
+
   return (
     <div className={listPage}>
       <PageHeader
@@ -125,6 +204,7 @@ export function CatalogPage() {
       <ListFilters
         className="mb-3 shrink-0"
         activeCount={activeCount}
+        trailing={bulkTrailing}
         onClear={() => {
           setQInput("");
           setCategoryId(undefined);
@@ -171,6 +251,7 @@ export function CatalogPage() {
         pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
           setPage(nextPage);
           setLimit(nextSize);
+          setSelectedKeys([]);
         })}
       >
         <Table
@@ -180,6 +261,10 @@ export function CatalogPage() {
           dataSource={products}
           pagination={false}
           scroll={{ x: 800, y: bodyHeight }}
+          rowSelection={{
+            selectedRowKeys: selectedKeys,
+            onChange: setSelectedKeys,
+          }}
           columns={[
             { title: "Categoria", dataIndex: "categoryName", width: 180 },
             { title: "Item", dataIndex: "name" },
