@@ -102,80 +102,46 @@ export function BrandingCard({
               />
             ) : null}
 
-            <div className="grid items-start gap-6 min-[720px]:grid-cols-[minmax(240px,0.9fr)_minmax(0,1.1fr)]">
-              <div>
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-food-muted">
-                  Prévia da conversa
-                </p>
-                <div className="overflow-hidden rounded-2xl border border-[#1c2a33] bg-[#0b141a] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div className="flex items-center gap-3 bg-[#1f2c34] px-3.5 py-2.5">
-                    <Avatar
-                      src={preview}
-                      size={44}
-                      className="shrink-0 border border-white/10 bg-[#2a3942] text-lg"
-                    >
-                      {(values.name || "E").trim().charAt(0).toUpperCase()}
-                    </Avatar>
-                    <div className="min-w-0">
-                      <strong className="block truncate text-[15px] leading-tight text-white">
-                        {values.name.trim() || "Nome do estabelecimento"}
-                      </strong>
-                      <span className="text-[12px] text-[#8696a0]">online</span>
-                    </div>
-                  </div>
-                  <div className="px-3.5 py-4">
-                    <div className="max-w-[90%] rounded-lg rounded-tl-sm bg-[#1f2c34] px-3 py-2 text-[13px] leading-snug text-[#e9edef]">
-                      Olá! Bem-vindo à{" "}
-                      <span className="font-semibold">
-                        {values.name.trim() || "sua loja"}
-                      </span>
-                      .
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="max-w-md">
-                <div className="mb-4 flex items-center gap-3">
-                  <Avatar
-                    src={preview}
-                    size={72}
-                    className="shrink-0 border border-food-border bg-food-chip text-2xl"
-                  >
-                    {(values.name || "E").trim().charAt(0).toUpperCase()}
-                  </Avatar>
-                  <div>
-                    <Upload
-                      accept="image/png,image/jpeg,image/webp"
-                      showUploadList={false}
-                      beforeUpload={(file) => {
-                        if (file.size > 2 * 1024 * 1024) {
-                          toast.error("A foto precisa ter no máximo 2 MB.");
-                          return Upload.LIST_IGNORE;
-                        }
-                        setPhoto(file);
-                        return false;
-                      }}
-                    >
-                      <Button icon={<CameraOutlined />}>Trocar foto</Button>
-                    </Upload>
-                    <p className="mb-0 mt-1.5 text-xs text-food-muted">
-                      JPG, PNG ou WEBP · quadrada · até 2 MB
-                    </p>
-                  </div>
-                </div>
-                <FormField name="name" label="Nome do estabelecimento">
-                  <Input placeholder="Ex.: Pizzaria do Bairro…" maxLength={80} />
-                </FormField>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={isSubmitting || saveMutation.isPending}
-                  disabled={!store}
+            <div className="max-w-md">
+              <div className="mb-4 flex items-center gap-3">
+                <Avatar
+                  src={preview}
+                  size={72}
+                  className="shrink-0 border border-food-border bg-food-chip text-2xl"
                 >
-                  Salvar perfil
-                </Button>
+                  {(values.name || "E").trim().charAt(0).toUpperCase()}
+                </Avatar>
+                <div>
+                  <Upload
+                    accept="image/png,image/jpeg,image/webp"
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      if (file.size > 2 * 1024 * 1024) {
+                        toast.error("A foto precisa ter no máximo 2 MB.");
+                        return Upload.LIST_IGNORE;
+                      }
+                      setPhoto(file);
+                      return false;
+                    }}
+                  >
+                    <Button icon={<CameraOutlined />}>Trocar foto</Button>
+                  </Upload>
+                  <p className="mb-0 mt-1.5 text-xs text-food-muted">
+                    JPG, PNG ou WEBP · quadrada · até 2 MB
+                  </p>
+                </div>
               </div>
+              <FormField name="name" label="Nome do estabelecimento">
+                <Input placeholder="Ex.: Pizzaria do Bairro…" maxLength={80} />
+              </FormField>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={isSubmitting || saveMutation.isPending}
+                disabled={!store}
+              >
+                Salvar perfil
+              </Button>
             </div>
           </FormikForm>
         )}
