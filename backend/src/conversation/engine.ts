@@ -160,22 +160,21 @@ function productHasAddons(product: Product) {
   return productAddons(product).length > 0;
 }
 
-function hasAddonPicked(drafts?: CartSelection[]) {
-  return (drafts ?? []).some(
-    (item) => item.groupId === ADDON_GROUP_ID && item.options.length > 0,
-  );
+function addonStepDone(drafts?: CartSelection[]) {
+  return (drafts ?? []).some((item) => item.groupId === ADDON_GROUP_ID);
 }
 
 function applyDraftAddon(drafts: CartSelection[], addon: { id: string; name: string; price: number } | null) {
   const next = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
-  if (addon) {
-    next.push({
-      groupId: ADDON_GROUP_ID,
-      groupName: "Adicional",
-      priceMode: "addon",
-      options: [{ id: addon.id, name: addon.name, extraPrice: addon.price }],
-    });
-  }
+  next.push({
+    groupId: ADDON_GROUP_ID,
+    groupName: "Adicional",
+    priceMode: "addon",
+    options: addon
+      ? [{ id: addon.id, name: addon.name, extraPrice: addon.price }]
+      : [],
+    skipped: !addon,
+  });
   return next;
 }
 
@@ -567,6 +566,9 @@ async function askAddons(to: string, product: Product) {
       rows,
     },
   ]);
+  await sendButtons(to, "Esta etapa é opcional.", [
+    { id: "skip_addon", title: "Sem adicional" },
+  ]);
 }
 
 async function askQuantityStage(
@@ -575,11 +577,13 @@ async function askQuantityStage(
   context: ConversationContext,
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
 ) {
+  if (productHasAddons(product) && !addonStepDone(context.draftSelections)) {
+    await persist("awaiting_addon", context);
+    await askAddons(to, product);
+    return;
+  }
   await persist("awaiting_quantity", context);
   await askQuantity(to, product, context.draftSelections ?? []);
-  if (productHasAddons(product) && !hasAddonPicked(context.draftSelections)) {
-    await askAddons(to, product);
-  }
 }
 
 async function continueProductFlow(
@@ -989,43 +993,12 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_quantity") {
+    const quantity = parseQuantity(incoming);
     const product = context.selectedProductId
       ? await getProduct(context.selectedProductId)
       : null;
 
-    if (!product) {
-      await sendText(input.from, "Envie um número de 1 a 20, ou toque em 1, 2 ou 3.");
-      return;
-    }
-
-    if (productHasAddons(product) && isSkipAddon(incoming, normalized)) {
-      context.draftSelections = applyDraftAddon(context.draftSelections ?? [], null);
-      await persist("awaiting_quantity", context);
-      await sendText(input.from, "Ok, sem adicional. Toque em 1, 2 ou 3, ou digite a quantidade.");
-      return;
-    }
-
-    if (productHasAddons(product)) {
-      const addons = productAddons(product);
-      const addon = incoming.startsWith("addon:")
-        ? addons.find((item) => item.id === incoming.slice("addon:".length))
-        : addons.find((item) => normalize(item.name) === normalized);
-      if (addon) {
-        context.draftSelections = applyDraftAddon(context.draftSelections ?? [], addon);
-        await persist("awaiting_quantity", context);
-        await askQuantity(input.from, product, context.draftSelections);
-        return;
-      }
-      if (incoming.startsWith("addon:")) {
-        await sendText(input.from, "Escolha um adicional da lista ou toque em Sem adicional.");
-        await askAddons(input.from, product);
-        return;
-      }
-    }
-
-    const quantity = parseQuantity(incoming);
-
-    if (quantity == null) {
+    if (!product || quantity == null) {
       await sendText(input.from, "Envie um número de 1 a 20, ou toque em 1, 2 ou 3.");
       return;
     }
