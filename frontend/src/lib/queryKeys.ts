@@ -23,6 +23,14 @@ export const queryKeys = {
       filters: { q?: string; active?: boolean },
     ) => ["addons", "list", page, limit, filters] as const,
   },
+  crusts: {
+    all: ["crusts"] as const,
+    list: (
+      page: number,
+      limit: number,
+      filters: { q?: string },
+    ) => ["crusts", "list", page, limit, filters] as const,
+  },
   products: {
     all: ["products"] as const,
     list: (

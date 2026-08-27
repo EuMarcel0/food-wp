@@ -6,6 +6,7 @@ export function formatBRL(cents: number) {
 }
 
 const ADDON_GROUP_ID = "__addon__";
+const CRUST_GROUP_ID = "__crust__";
 
 export function addonLabel(
   extras?: { groupId: string; options?: { name: string }[] }[] | null,
@@ -15,6 +16,16 @@ export function addonLabel(
     .flatMap((item) => (item.options ?? []).map((option) => option.name).filter(Boolean));
   if (!names.length) return null;
   return `Adicionais: ${names.join(", ")}`;
+}
+
+export function crustLabel(
+  extras?: { groupId: string; options?: { name: string }[] }[] | null,
+) {
+  const names = (extras ?? [])
+    .filter((item) => item.groupId === CRUST_GROUP_ID)
+    .flatMap((item) => (item.options ?? []).map((option) => option.name).filter(Boolean));
+  if (!names.length) return null;
+  return `Borda: ${names.join(", ")}`;
 }
 
 export function formatReais(value: number) {

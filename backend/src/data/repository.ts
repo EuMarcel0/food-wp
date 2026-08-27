@@ -15,6 +15,7 @@ import type {
   Conversation,
   ConversationContext,
   ConversationState,
+  Crust,
   Customer,
   DeliveryNeighborhood,
   Fulfillment,
@@ -147,6 +148,7 @@ function mapProduct(row: Record<string, unknown>): Product {
     customizable: Boolean(row.customizable ?? false),
     notesEnabled: Boolean(row.notes_enabled ?? false),
     addonsEnabled: Boolean(row.addons_enabled ?? false),
+    crustsEnabled: Boolean(row.crusts_enabled ?? false),
     addons: mapProductAddons(row),
     optionGroups: mapOptionGroups(row),
   };
@@ -723,6 +725,192 @@ async function replaceProductAddons(productId: string, addonIds: string[]) {
   }
 }
 
+function missingCrustsTable(message?: string) {
+  return Boolean(
+    message?.includes("crusts") || message?.includes("crusts_enabled"),
+  );
+}
+
+function mapCrust(row: Record<string, unknown>): Crust {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    addsPrice: Boolean(row.adds_price ?? false),
+    price: Number(row.price ?? 0),
+    sortOrder: Number(row.sort_order ?? 0),
+    active: Boolean(row.active ?? true),
+  };
+}
+
+const DEFAULT_CRUSTS = [
+  { name: "Sem Borda", sortOrder: 0 },
+  { name: "Borda de cheddar", sortOrder: 1 },
+  { name: "Borda de Catupiry", sortOrder: 2 },
+] as const;
+
+async function ensureDefaultCrusts() {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const store = await getStore();
+  const { count, error } = await supabase
+    .from("crusts")
+    .select("id", { count: "exact", head: true })
+    .eq("store_id", store.id);
+  if (error) {
+    if (missingCrustsTable(error.message)) return;
+    throw new Error(error.message);
+  }
+  if (count) return;
+  const { error: insertError } = await supabase.from("crusts").insert(
+    DEFAULT_CRUSTS.map((item) => ({
+      store_id: store.id,
+      name: item.name,
+      adds_price: false,
+      price: 0,
+      sort_order: item.sortOrder,
+      active: true,
+    })),
+  );
+  if (insertError && !missingCrustsTable(insertError.message)) {
+    throw new Error(insertError.message);
+  }
+}
+
+export async function listCrusts(): Promise<Crust[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listCrusts();
+  await ensureDefaultCrusts();
+  const { data, error } = await supabase
+    .from("crusts")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingCrustsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapCrust(row as Record<string, unknown>));
+}
+
+export async function listAllCrusts(): Promise<Crust[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAllCrusts();
+  await ensureDefaultCrusts();
+  const { data, error } = await supabase
+    .from("crusts")
+    .select("*")
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingCrustsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapCrust(row as Record<string, unknown>));
+}
+
+export async function listCrustsPage(
+  page: number,
+  limit: number,
+  all: boolean,
+  filter: { q?: string; active?: boolean } = {},
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listCrustsPage(page, limit, all, filter);
+  await ensureDefaultCrusts();
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  let query = supabase
+    .from("crusts")
+    .select("*", { count: "exact" })
+    .order("sort_order")
+    .order("name");
+  if (!all) query = query.eq("active", true);
+  if (filter.active !== undefined) query = query.eq("active", filter.active);
+  if (filter.q) query = query.ilike("name", `%${filter.q}%`);
+
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    if (missingCrustsTable(error.message)) {
+      return { items: [] as Crust[], total: 0, page, limit };
+    }
+    return memoryStore.listCrustsPage(page, limit, all, filter);
+  }
+  return {
+    items: (data ?? []).map((row) => mapCrust(row as Record<string, unknown>)),
+    total: count ?? 0,
+    page,
+    limit,
+  };
+}
+
+export async function createCrust(input: {
+  name: string;
+  addsPrice: boolean;
+  price: number;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.createCrust(input);
+  const store = await getStore();
+  const { data: last } = await supabase
+    .from("crusts")
+    .select("sort_order")
+    .eq("store_id", store.id)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sortOrder = Number(last?.sort_order ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("crusts")
+    .insert({
+      store_id: store.id,
+      name: input.name,
+      adds_price: input.addsPrice,
+      price: input.addsPrice ? input.price : 0,
+      sort_order: sortOrder,
+      active: true,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(
+      missingCrustsTable(error?.message)
+        ? "Rode a migration 025_crusts.sql no Supabase."
+        : error?.message ?? "Não foi possível salvar a borda.",
+    );
+  }
+  return mapCrust(data as Record<string, unknown>);
+}
+
+export async function updateCrust(
+  id: string,
+  input: { name: string; addsPrice: boolean; price: number },
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updateCrust(id, input);
+  const { data, error } = await supabase
+    .from("crusts")
+    .update({
+      name: input.name,
+      adds_price: input.addsPrice,
+      price: input.addsPrice ? input.price : 0,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !data) return null;
+  return mapCrust(data as Record<string, unknown>);
+}
+
+export async function deleteCrust(id: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.deleteCrust(id);
+  const { error } = await supabase.from("crusts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 export async function createProduct(input: {
   categoryId: string;
   name: string;
@@ -732,6 +920,7 @@ export async function createProduct(input: {
   customizable?: boolean;
   notesEnabled?: boolean;
   addonsEnabled?: boolean;
+  crustsEnabled?: boolean;
   addonIds?: string[];
   optionGroups?: ProductOptionGroup[];
 }) {
@@ -751,14 +940,17 @@ export async function createProduct(input: {
       customizable: Boolean(input.customizable),
       notes_enabled: Boolean(input.notesEnabled),
       addons_enabled: Boolean(input.addonsEnabled),
+      crusts_enabled: Boolean(input.crustsEnabled),
     })
     .select(PRODUCT_SELECT)
     .single();
   if (error || !data) {
     throw new Error(
-      missingAddonsTable(error?.message)
-        ? "Rode a migration 021_addons.sql no Supabase."
-        : error?.message ?? "Não foi possível salvar o item.",
+      missingCrustsTable(error?.message)
+        ? "Rode a migration 025_crusts.sql no Supabase."
+        : missingAddonsTable(error?.message)
+          ? "Rode a migration 021_addons.sql no Supabase."
+          : error?.message ?? "Não foi possível salvar o item.",
     );
   }
   const product = mapProduct(data as Record<string, unknown>);
@@ -780,6 +972,7 @@ export async function updateProduct(
     customizable: boolean;
     notesEnabled: boolean;
     addonsEnabled: boolean;
+    crustsEnabled: boolean;
     addonIds: string[];
     optionGroups: ProductOptionGroup[];
   }>,
@@ -796,10 +989,14 @@ export async function updateProduct(
   if (input.customizable !== undefined) payload.customizable = input.customizable;
   if (input.notesEnabled !== undefined) payload.notes_enabled = input.notesEnabled;
   if (input.addonsEnabled !== undefined) payload.addons_enabled = input.addonsEnabled;
+  if (input.crustsEnabled !== undefined) payload.crusts_enabled = input.crustsEnabled;
 
   if (Object.keys(payload).length) {
     const { error } = await supabase.from("products").update(payload).eq("id", id);
     if (error) {
+      if (missingCrustsTable(error.message)) {
+        throw new Error("Rode a migration 025_crusts.sql no Supabase.");
+      }
       if (missingAddonsTable(error.message)) {
         throw new Error("Rode a migration 021_addons.sql no Supabase.");
       }

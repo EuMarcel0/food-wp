@@ -2,22 +2,28 @@ import { Router } from "express";
 import {
   createAddon,
   createCategory,
+  createCrust,
   createNeighborhood,
   createProduct,
   deleteAddon,
   deleteCategory,
+  deleteCrust,
   deleteNeighborhood,
   getStore,
   listAddons,
   listAddonsPage,
   listAllAddons,
   listAllCategories,
+  listAllCrusts,
   listCategories,
   listCategoriesPage,
+  listCrusts,
+  listCrustsPage,
   listProductsPage,
   saveStoreProfilePhoto,
   updateAddon,
   updateCategory,
+  updateCrust,
   updateProduct,
   updateStore,
 } from "../data/repository.js";
@@ -364,6 +370,83 @@ catalogRouter.delete("/addons/:id", async (req, res) => {
   }
 });
 
+function crustPayload(body: Record<string, unknown>) {
+  const name = String(body.name ?? "").trim();
+  const addsPrice = Boolean(body.addsPrice);
+  const price = addsPrice ? Number(body.price ?? 0) : 0;
+  if (!name || !Number.isFinite(price) || price < 0) {
+    return null;
+  }
+  return { name, addsPrice, price: Math.round(price * 100) / 100 };
+}
+
+catalogRouter.get("/crusts", async (req, res) => {
+  const all = String(req.query.all ?? "") === "1";
+  const paged =
+    req.query.page !== undefined || req.query.limit !== undefined;
+  if (paged) {
+    const { page, limit } = parsePageQuery(req.query);
+    res.json(
+      await listCrustsPage(page, limit, all, {
+        q: parseSearch(req.query.q),
+        active: parseOptionalBoolean(req.query.active),
+      }),
+    );
+    return;
+  }
+  res.json(all ? await listAllCrusts() : await listCrusts());
+});
+
+catalogRouter.post("/crusts", async (req, res) => {
+  const payload = crustPayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({ error: "Preencha o nome da borda." });
+    return;
+  }
+  if (payload.addsPrice && payload.price < 0) {
+    res.status(400).json({ error: "Informe um preço válido." });
+    return;
+  }
+  try {
+    res.status(201).json(await createCrust(payload));
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao incluir borda.",
+    });
+  }
+});
+
+catalogRouter.patch("/crusts/:id", async (req, res) => {
+  const payload = crustPayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({ error: "Preencha o nome da borda." });
+    return;
+  }
+  try {
+    const crust = await updateCrust(String(req.params.id), payload);
+    if (!crust) {
+      res.status(404).json({ error: "Borda não encontrada." });
+      return;
+    }
+    res.json(crust);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao atualizar borda.",
+    });
+  }
+});
+
+catalogRouter.delete("/crusts/:id", async (req, res) => {
+  try {
+    await deleteCrust(String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao excluir borda.",
+    });
+  }
+});
+
 catalogRouter.get("/products", async (req, res) => {
   const { page, limit } = parsePageQuery(req.query);
   res.json(
@@ -388,6 +471,7 @@ catalogRouter.post("/products", async (req, res) => {
   const customizable = Boolean(req.body?.customizable);
   const notesEnabled = Boolean(req.body?.notesEnabled);
   const addonsEnabled = Boolean(req.body?.addonsEnabled);
+  const crustsEnabled = Boolean(req.body?.crustsEnabled);
   const addonIds = parseAddonIds(req.body?.addonIds) ?? [];
   const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
@@ -422,6 +506,7 @@ catalogRouter.post("/products", async (req, res) => {
         customizable,
         notesEnabled,
         addonsEnabled,
+        crustsEnabled,
         addonIds: addonsEnabled ? addonIds : [],
         optionGroups,
       }),
@@ -443,6 +528,7 @@ function productPatch(body: Record<string, unknown>) {
     customizable?: boolean;
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
+    crustsEnabled?: boolean;
     addonIds?: string[];
     optionGroups?: ProductOptionGroup[];
   } = {};
@@ -476,6 +562,9 @@ function productPatch(body: Record<string, unknown>) {
   }
   if (body.addonsEnabled !== undefined) {
     patch.addonsEnabled = Boolean(body.addonsEnabled);
+  }
+  if (body.crustsEnabled !== undefined) {
+    patch.crustsEnabled = Boolean(body.crustsEnabled);
   }
   if (body.addonIds !== undefined) {
     patch.addonIds = parseAddonIds(body.addonIds) ?? [];

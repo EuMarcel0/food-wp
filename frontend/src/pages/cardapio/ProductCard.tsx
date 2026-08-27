@@ -38,6 +38,7 @@ export function ProductCard({
           </Tag>
           {product.customizable ? <Tag color="orange">Montável</Tag> : null}
           {product.addonsEnabled ? <Tag color="purple">Adicional</Tag> : null}
+          {product.crustsEnabled ? <Tag color="gold">Borda</Tag> : null}
           {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
           <strong className={entityPrice}>{catalogPriceLabel(product)}</strong>
         </>

@@ -92,26 +92,12 @@ export function OptionGroupsEditor({
         >
           Sabores
         </Button>
-        <Button
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={() => onChange([...groups, emptyGroup("Borda", "addon", 1, false)])}
-        >
-          Borda
-        </Button>
-        <Button
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={() => onChange([...groups, emptyGroup("", "addon", 1)])}
-        >
-          Grupo livre
-        </Button>
       </div>
       <div className="grid min-h-0 flex-1 gap-3 overflow-auto overscroll-contain pr-1 pb-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
       {groups.length === 0 ? (
         <div className={formEmpty}>
           <p>
-            Nenhuma etapa ainda. Comece por um atalho ou crie um grupo livre.
+            Nenhuma etapa ainda. Comece por Tamanho ou Sabores.
           </p>
         </div>
       ) : null}

@@ -14,6 +14,7 @@ import type {
   Conversation,
   ConversationContext,
   ConversationState,
+  Crust,
   Customer,
   DeliveryNeighborhood,
   Fulfillment,
@@ -62,6 +63,7 @@ const products: Product[] = [
     customizable: false,
     notesEnabled: false,
     addonsEnabled: false,
+    crustsEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -76,6 +78,7 @@ const products: Product[] = [
     customizable: false,
     notesEnabled: false,
     addonsEnabled: false,
+    crustsEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -90,6 +93,7 @@ const products: Product[] = [
     customizable: false,
     notesEnabled: false,
     addonsEnabled: false,
+    crustsEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -104,6 +108,7 @@ const products: Product[] = [
     customizable: false,
     notesEnabled: false,
     addonsEnabled: false,
+    crustsEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -111,6 +116,32 @@ const products: Product[] = [
 
 const addons: Addon[] = [];
 const productAddonIds = new Map<string, string[]>();
+const crusts: Crust[] = [
+  {
+    id: "crust-none",
+    name: "Sem Borda",
+    addsPrice: false,
+    price: 0,
+    sortOrder: 0,
+    active: true,
+  },
+  {
+    id: "crust-cheddar",
+    name: "Borda de cheddar",
+    addsPrice: false,
+    price: 0,
+    sortOrder: 1,
+    active: true,
+  },
+  {
+    id: "crust-catupiry",
+    name: "Borda de Catupiry",
+    addsPrice: false,
+    price: 0,
+    sortOrder: 2,
+    active: true,
+  },
+];
 
 const customers = new Map<string, Customer>();
 const conversations = new Map<string, Conversation>();
@@ -342,6 +373,72 @@ export const memoryStore = {
     return true;
   },
 
+  listCrusts() {
+    return crusts.filter((item) => item.active);
+  },
+
+  listAllCrusts() {
+    return [...crusts].sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+    );
+  },
+
+  listCrustsPage(
+    page: number,
+    limit: number,
+    all: boolean,
+    filter: { q?: string; active?: boolean } = {},
+  ) {
+    const items = (all ? [...crusts] : this.listCrusts())
+      .filter((item) => {
+        if (filter.active !== undefined && item.active !== filter.active) return false;
+        if (filter.q && !item.name.toLowerCase().includes(filter.q.toLowerCase())) {
+          return false;
+        }
+        return true;
+      })
+      .sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+      );
+    return paginateItems(items, page, limit);
+  },
+
+  createCrust(input: { name: string; addsPrice: boolean; price: number }) {
+    const sortOrder =
+      crusts.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
+    const crust: Crust = {
+      id: `crust-${Date.now()}`,
+      name: input.name,
+      addsPrice: input.addsPrice,
+      price: input.addsPrice ? input.price : 0,
+      sortOrder,
+      active: true,
+    };
+    crusts.push(crust);
+    return crust;
+  },
+
+  updateCrust(
+    id: string,
+    input: { name: string; addsPrice: boolean; price: number },
+  ) {
+    const crust = crusts.find((item) => item.id === id);
+    if (!crust) return null;
+    crust.name = input.name;
+    crust.addsPrice = input.addsPrice;
+    crust.price = input.addsPrice ? input.price : 0;
+    return crust;
+  },
+
+  deleteCrust(id: string) {
+    const index = crusts.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    crusts.splice(index, 1);
+    return true;
+  },
+
   replaceProductAddons(productId: string, addonIds: string[]) {
     productAddonIds.set(productId, [...new Set(addonIds.filter(Boolean))]);
     const product = products.find((item) => item.id === productId);
@@ -373,6 +470,7 @@ export const memoryStore = {
     customizable?: boolean;
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
+    crustsEnabled?: boolean;
     addonIds?: string[];
     optionGroups?: ProductOptionGroup[];
   }) {
@@ -388,6 +486,7 @@ export const memoryStore = {
       customizable: Boolean(input.customizable),
       notesEnabled: Boolean(input.notesEnabled),
       addonsEnabled: Boolean(input.addonsEnabled),
+      crustsEnabled: Boolean(input.crustsEnabled),
       addons: [],
       optionGroups: input.optionGroups ?? [],
     };
@@ -407,6 +506,7 @@ export const memoryStore = {
       customizable: boolean;
       notesEnabled: boolean;
       addonsEnabled: boolean;
+      crustsEnabled: boolean;
       addonIds: string[];
       optionGroups: ProductOptionGroup[];
     }>,
@@ -426,6 +526,7 @@ export const memoryStore = {
     if (input.customizable !== undefined) product.customizable = input.customizable;
     if (input.notesEnabled !== undefined) product.notesEnabled = input.notesEnabled;
     if (input.addonsEnabled !== undefined) product.addonsEnabled = input.addonsEnabled;
+    if (input.crustsEnabled !== undefined) product.crustsEnabled = input.crustsEnabled;
     if (input.optionGroups !== undefined) product.optionGroups = input.optionGroups;
     if (input.addonIds !== undefined || input.addonsEnabled === false) {
       this.replaceProductAddons(

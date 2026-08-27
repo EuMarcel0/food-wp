@@ -77,6 +77,7 @@ export const productSchema = Yup.object({
   customizable: Yup.boolean().default(false),
   notesEnabled: Yup.boolean().default(false),
   addonsEnabled: Yup.boolean().default(false),
+  crustsEnabled: Yup.boolean().default(false),
   addonIds: Yup.array().of(Yup.string().required()).default([]),
   optionGroups: Yup.array()
     .of(
@@ -121,7 +122,7 @@ export const productSchema = Yup.object({
   if (!values.optionGroups?.length) {
     return this.createError({
       path: "optionGroups",
-      message: "Inclua grupos como tamanho, sabores ou borda.",
+      message: "Inclua grupos como tamanho ou sabores.",
     });
   }
   return true;
@@ -162,6 +163,22 @@ export const addonSchema = Yup.object({
       return Number.isInteger(parsed) && parsed >= 0;
     }),
   active: Yup.boolean().default(true),
+});
+
+export const crustSchema = Yup.object({
+  name: Yup.string().trim().required("Informe o nome da borda"),
+  addsPrice: Yup.boolean().default(false),
+  price: Yup.string().default("").when("addsPrice", {
+    is: true,
+    then: (schema) =>
+      schema
+        .required("Informe o preço")
+        .test("price", "Informe um valor válido", (value) => {
+          const amount = parseReais(value ?? "");
+          return amount !== null && amount >= 0;
+        }),
+    otherwise: (schema) => schema.default(""),
+  }),
 });
 
 export const storeBrandingSchema = Yup.object({
@@ -227,6 +244,7 @@ export type SettingsValues = Yup.InferType<typeof settingsSchema>;
 export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
 export type AddonValues = Yup.InferType<typeof addonSchema>;
+export type CrustValues = Yup.InferType<typeof crustSchema>;
 export type StoreBrandingValues = Yup.InferType<typeof storeBrandingSchema>;
 export type StoreReceiptValues = Yup.InferType<typeof storeReceiptSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;

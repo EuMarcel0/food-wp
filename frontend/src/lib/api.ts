@@ -5,6 +5,7 @@ import type {
   Addon,
   AppNotification,
   Category,
+  Crust,
   Health,
   Order,
   OrderStats,
@@ -144,6 +145,34 @@ export const api = {
     }),
   deleteAddon: (id: string) =>
     request<void>(`/api/addons/${id}`, { method: "DELETE" }),
+  listCrusts: (
+    page = 1,
+    limit = PAGE_SIZE,
+    filters?: { q?: string },
+  ) =>
+    request<PageResult<Crust>>(
+      withQuery("/api/crusts", {
+        all: 1,
+        page,
+        limit,
+        q: filters?.q,
+      }),
+    ),
+  createCrust: (payload: { name: string; addsPrice: boolean; price: number }) =>
+    request<Crust>("/api/crusts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateCrust: (
+    id: string,
+    payload: { name: string; addsPrice: boolean; price: number },
+  ) =>
+    request<Crust>(`/api/crusts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteCrust: (id: string) =>
+    request<void>(`/api/crusts/${id}`, { method: "DELETE" }),
   products: (
     page = 1,
     limit = PAGE_SIZE,
@@ -167,6 +196,7 @@ export const api = {
     customizable: boolean;
     notesEnabled: boolean;
     addonsEnabled: boolean;
+    crustsEnabled: boolean;
     addonIds: string[];
     optionGroups: Product["optionGroups"];
   }) =>
@@ -185,6 +215,7 @@ export const api = {
       customizable: boolean;
       notesEnabled: boolean;
       addonsEnabled: boolean;
+      crustsEnabled: boolean;
       addonIds: string[];
       optionGroups: Product["optionGroups"];
     }>,

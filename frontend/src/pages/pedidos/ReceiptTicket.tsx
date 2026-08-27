@@ -1,6 +1,7 @@
 import {
   PAYMENT_LABEL,
   addonLabel,
+  crustLabel,
   cashChangeLabel,
   formatBRL,
   formatCnpj,
@@ -137,6 +138,7 @@ export function ReceiptTicket({
       <section>
         {items.length ? (
           items.map((item, index) => {
+            const crust = crustLabel(item.extras);
             const addons = addonLabel(item.extras);
             const lineTotal = item.quantity * item.unitPriceCents;
             return (
@@ -152,6 +154,9 @@ export function ReceiptTicket({
                   <div style={{ paddingLeft: 8, opacity: 0.85 }}>
                     obs.: {item.notes}
                   </div>
+                ) : null}
+                {crust ? (
+                  <div style={{ paddingLeft: 8, opacity: 0.85 }}>{crust}</div>
                 ) : null}
                 {addons ? (
                   <div style={{ paddingLeft: 8, opacity: 0.85 }}>{addons}</div>

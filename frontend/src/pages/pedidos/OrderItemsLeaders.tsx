@@ -1,4 +1,4 @@
-import { addonLabel } from "../../lib/format";
+import { addonLabel, crustLabel } from "../../lib/format";
 import type { OrderItem } from "../../types";
 
 export function OrderItemsLeaders({ items }: { items: OrderItem[] }) {
@@ -6,6 +6,7 @@ export function OrderItemsLeaders({ items }: { items: OrderItem[] }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5 leading-snug">
       {items.map((item, index) => {
+        const crust = crustLabel(item.extras);
         const addons = addonLabel(item.extras);
         return (
           <div key={item.id ?? `${item.name}-${index}`} className="min-w-0">
@@ -22,6 +23,9 @@ export function OrderItemsLeaders({ items }: { items: OrderItem[] }) {
                 {item.quantity}
               </span>
             </div>
+            {crust ? (
+              <div className="pr-8 text-[12px] text-food-muted">{crust}</div>
+            ) : null}
             {addons ? (
               <div className="pr-8 text-[12px] text-food-muted">{addons}</div>
             ) : null}

@@ -13,6 +13,7 @@ export type ConversationState =
   | "welcome"
   | "awaiting_product"
   | "awaiting_addon"
+  | "awaiting_crust"
   | "awaiting_option"
   | "awaiting_quantity"
   | "awaiting_item_note"
@@ -120,6 +121,15 @@ export type Addon = {
   active: boolean;
 };
 
+export type Crust = {
+  id: string;
+  name: string;
+  addsPrice: boolean;
+  price: number;
+  sortOrder: number;
+  active: boolean;
+};
+
 export type Product = {
   id: string;
   categoryId: string;
@@ -131,6 +141,7 @@ export type Product = {
   customizable: boolean;
   notesEnabled: boolean;
   addonsEnabled: boolean;
+  crustsEnabled: boolean;
   addons: Addon[];
   optionGroups: ProductOptionGroup[];
 };

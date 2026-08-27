@@ -142,6 +142,11 @@ function isSizeGroup(group: ProductOptionGroup | undefined) {
 }
 
 export const ADDON_GROUP_ID = "__addon__";
+export const CRUST_GROUP_ID = "__crust__";
+
+function isCatalogExtraGroup(groupId: string) {
+  return groupId === ADDON_GROUP_ID || groupId === CRUST_GROUP_ID;
+}
 
 function isFlavorOrSizeGroup(group: ProductOptionGroup | undefined) {
   if (!group) return false;
@@ -186,11 +191,11 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
   for (const selection of selections) {
     const group = groups.find((item) => item.id === selection.groupId);
     if (isFlavorOrSizeGroup(group)) continue;
-    if (!group && selection.groupId !== ADDON_GROUP_ID) continue;
+    if (!group && !isCatalogExtraGroup(selection.groupId)) continue;
 
     const extra = selection.options.reduce((total, option) => {
       const cents = Math.round(option.extraPrice * 100);
-      return selection.groupId === ADDON_GROUP_ID ? total + cents : Math.max(total, cents);
+      return isCatalogExtraGroup(selection.groupId) ? total + cents : Math.max(total, cents);
     }, 0);
     if (selection.priceMode === "replace") cents = extra;
     else cents += extra;
@@ -235,7 +240,7 @@ export function assembledName(product: Product, selections: CartSelection[]) {
 
   for (const selection of selections) {
     if (!selection.options.length) continue;
-    if (selection.groupId === ADDON_GROUP_ID) continue;
+    if (isCatalogExtraGroup(selection.groupId)) continue;
     const group = groups.find((item) => item.id === selection.groupId);
     const names = selection.options.map((option) => option.name);
     if (isShareGroup(group)) {
@@ -260,6 +265,14 @@ export function addonLabel(selections?: CartSelection[]) {
     .flatMap((item) => item.options.map((option) => option.name));
   if (!names.length) return null;
   return `Adicionais: ${names.join(", ")}`;
+}
+
+export function crustLabel(selections?: CartSelection[]) {
+  const names = (selections ?? [])
+    .filter((item) => item.groupId === CRUST_GROUP_ID)
+    .flatMap((item) => item.options.map((option) => option.name));
+  if (!names.length) return null;
+  return `Borda: ${names.join(", ")}`;
 }
 
 export function selectionKey(

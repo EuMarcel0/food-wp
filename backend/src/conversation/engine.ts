@@ -7,6 +7,7 @@ import {
   getConversation,
   getProduct,
   getStore,
+  listCrusts,
   listProducts,
   saveConversation,
   upsertCustomer,
@@ -15,8 +16,10 @@ import { describeOrderStatus, formatPrepDuration } from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
   ADDON_GROUP_ID,
+  CRUST_GROUP_ID,
   assembledName,
   addonLabel,
+  crustLabel,
   flavorShareLine,
   groupPrompt,
   isCustomizable,
@@ -34,6 +37,7 @@ import type {
   CartSelection,
   ConversationContext,
   ConversationState,
+  Crust,
   Customer,
   DeliveryNeighborhood,
   Fulfillment,
@@ -105,6 +109,8 @@ function itemHeading(
   const lines = [`*${title}*`];
   const description = item.catalogDescription?.trim();
   if (description) lines.push(description);
+  const crust = crustLabel(item.extras);
+  if (crust) lines.push(crust);
   const addons = addonLabel(item.extras);
   if (addons) lines.push(addons);
   return { title, lines };
@@ -218,6 +224,52 @@ function skipDraftAddon(drafts: CartSelection[]) {
       skipped: true,
     },
   ];
+}
+
+function crustStepDone(drafts?: CartSelection[]) {
+  return (drafts ?? []).some((item) => item.groupId === CRUST_GROUP_ID);
+}
+
+function setDraftCrust(drafts: CartSelection[], crust: Crust) {
+  const others = drafts.filter((item) => item.groupId !== CRUST_GROUP_ID);
+  return [
+    ...others,
+    {
+      groupId: CRUST_GROUP_ID,
+      groupName: "Borda",
+      priceMode: "addon" as const,
+      options: [
+        {
+          id: crust.id,
+          name: crust.name,
+          extraPrice: crust.addsPrice ? crust.price : 0,
+        },
+      ],
+      skipped: false,
+    },
+  ];
+}
+
+async function askCrusts(to: string, product: Product, crusts: Crust[]) {
+  const visible = crusts.slice(0, 10);
+  await sendList(
+    to,
+    `*${product.name}*\nEscolha a borda. Esta etapa é obrigatória.`,
+    "Ver bordas",
+    [
+      {
+        title: "Bordas",
+        rows: visible.map((crust) => ({
+          id: `crust:${crust.id}`,
+          title: crust.name.slice(0, 24),
+          description:
+            crust.addsPrice && crust.price > 0
+              ? `+ ${formatReais(crust.price)}`
+              : "Incluído",
+        })),
+      },
+    ],
+  );
 }
 
 function isSkipAddon(incoming: string, normalized: string) {
@@ -568,6 +620,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
     `*${product.name}*`,
     product.description?.trim() || null,
     variant !== product.name ? variant : null,
+    crustLabel(extras),
     addonLabel(extras),
     formatReais(price / 100),
   ]
@@ -647,6 +700,14 @@ async function askQuantityStage(
   context: ConversationContext,
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
 ) {
+  if (product.crustsEnabled && !crustStepDone(context.draftSelections)) {
+    const crusts = await listCrusts();
+    if (crusts.length) {
+      await persist("awaiting_crust", context);
+      await askCrusts(to, product, crusts);
+      return;
+    }
+  }
   if (productHasAddons(product) && !addonStepDone(context.draftSelections)) {
     await persist("awaiting_addon", context);
     await askAddons(to, product, context.draftSelections);
@@ -1012,6 +1073,38 @@ export async function handleIncomingMessage(input: {
     }
 
     await goNext();
+    return;
+  }
+
+  if (state === "awaiting_crust" && !incoming.startsWith("product:")) {
+    const product = context.selectedProductId
+      ? await getProduct(context.selectedProductId)
+      : null;
+    if (!product) {
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "Escolha um item do cardápio:");
+      return;
+    }
+
+    const crusts = await listCrusts();
+    if (!crusts.length) {
+      await askQuantityStage(input.from, product, context, persist);
+      return;
+    }
+
+    const crust = incoming.startsWith("crust:")
+      ? crusts.find((item) => item.id === incoming.slice("crust:".length))
+      : crusts.find((item) => normalize(item.name) === normalized);
+
+    if (!crust) {
+      await sendText(input.from, "Escolha uma borda da lista. Esta etapa é obrigatória.");
+      await persist("awaiting_crust", context);
+      await askCrusts(input.from, product, crusts);
+      return;
+    }
+
+    context.draftSelections = setDraftCrust(context.draftSelections ?? [], crust);
+    await askQuantityStage(input.from, product, context, persist);
     return;
   }
 

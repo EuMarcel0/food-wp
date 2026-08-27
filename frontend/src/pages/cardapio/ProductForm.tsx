@@ -1,5 +1,5 @@
 import { Formik, Form as FormikForm } from "formik";
-import { Alert, Button, Input, Modal, Select, Switch } from "antd";
+import { Alert, Button, Checkbox, Input, Modal, Select, Switch } from "antd";
 import { FormControl, FormField } from "../../components/FormField";
 import {
   maskBRL,
@@ -82,6 +82,7 @@ export function ProductForm({
     customizable: product?.customizable ?? false,
     notesEnabled: product?.notesEnabled ?? false,
     addonsEnabled: product?.addonsEnabled ?? false,
+    crustsEnabled: product?.crustsEnabled ?? false,
     addonIds: (product?.addons ?? []).map((addon) => addon.id),
     optionGroups: groupsFromProduct(product),
   };
@@ -146,21 +147,37 @@ export function ProductForm({
                 <FormField name="name" label="Nome">
                   <Input placeholder="Ex.: Pizza, X-Burguer…" />
                 </FormField>
-                <FormControl name="categoryId" label="Categoria">
-                  {({ value, setValue, setTouched }) => (
-                    <Select
-                      style={{ width: "100%" }}
-                      placeholder="Escolha a categoria"
-                      value={value ? String(value) : undefined}
-                      onChange={(next) => setValue(next)}
-                      onBlur={setTouched}
-                      options={categories.map((category) => ({
-                        value: category.id,
-                        label: category.name,
-                      }))}
-                    />
-                  )}
-                </FormControl>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-0 flex-1">
+                    <FormControl name="categoryId" label="Categoria">
+                      {({ value, setValue, setTouched }) => (
+                        <Select
+                          style={{ width: "100%" }}
+                          placeholder="Escolha a categoria"
+                          value={value ? String(value) : undefined}
+                          onChange={(next) => setValue(next)}
+                          onBlur={setTouched}
+                          options={categories.map((category) => ({
+                            value: category.id,
+                            label: category.name,
+                          }))}
+                        />
+                      )}
+                    </FormControl>
+                  </div>
+                  <FormControl name="crustsEnabled" compact>
+                    {({ value, setValue }) => (
+                      <div className="mb-3 flex h-8 items-center whitespace-nowrap">
+                        <Checkbox
+                          checked={Boolean(value)}
+                          onChange={(event) => setValue(event.target.checked)}
+                        >
+                          Perguntar borda
+                        </Checkbox>
+                      </div>
+                    )}
+                  </FormControl>
+                </div>
                 <FormField name="description" label="Descrição">
                   <Input.TextArea rows={4} placeholder="Ingredientes, observação…" />
                 </FormField>
@@ -386,6 +403,7 @@ export function toProductPayload(values: ProductValues) {
     customizable: Boolean(values.customizable),
     notesEnabled: Boolean(values.notesEnabled),
     addonsEnabled: Boolean(values.addonsEnabled),
+    crustsEnabled: Boolean(values.crustsEnabled),
     addonIds: values.addonsEnabled ? values.addonIds ?? [] : [],
     optionGroups,
   };

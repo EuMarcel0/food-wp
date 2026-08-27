@@ -11,6 +11,7 @@ import {
   formatBRL,
   formatDate,
   addonLabel,
+  crustLabel,
   cashChangeLabel,
 } from "../../lib/format";
 import { entityItems, entityMeta, entityPrice } from "../../ui";
@@ -103,6 +104,7 @@ export function OrderCard({
       <ul className={entityItems}>
         {(order.items ?? []).length
           ? order.items?.map((item, index) => {
+              const crust = crustLabel(item.extras);
               const addons = addonLabel(item.extras);
               return (
               <li key={item.id ?? `${item.name}-${index}`} className="flex items-baseline gap-1.5">
@@ -110,6 +112,9 @@ export function OrderCard({
                 <span>
                   {item.name}
                   {item.notes ? ` · obs.: ${item.notes}` : ""}
+                  {crust ? (
+                    <div className="font-normal text-food-muted">{crust}</div>
+                  ) : null}
                   {addons ? (
                     <div className="font-normal text-food-muted">{addons}</div>
                   ) : null}

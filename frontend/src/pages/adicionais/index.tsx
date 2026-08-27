@@ -1,49 +1,66 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
-import { Button, Input, Select, Table, Tag } from "antd";
+import { Button, Input, Select, Table, Tabs, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { useDialog } from "../../dialog";
 import { AddonCard } from "./AddonCard";
+import { CrustCard } from "./CrustCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { formatReais } from "../../lib/format";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
-import type { Addon } from "../../types";
-import type { AddonValues } from "../../lib/validation";
+import type { Addon, Crust } from "../../types";
+import type { AddonValues, CrustValues } from "../../lib/validation";
 import { AddonForm, toAddonPayload } from "./AddonForm";
+import { CrustForm, toCrustPayload } from "./CrustForm";
 import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
 
 export function AddonsPage() {
   const dialog = useDialog();
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState("addons");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Addon | null>(null);
+  const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
+  const [editingCrust, setEditingCrust] = useState<Crust | null>(null);
   const [qInput, setQInput] = useState("");
   const [active, setActive] = useState<boolean | undefined>();
   const q = useDebouncedValue(qInput.trim(), 300);
-  const filters = { q: q || undefined, active };
-  const activeCount = [q, active !== undefined].filter(Boolean).length;
+  const addonFilters = { q: q || undefined, active };
+  const crustFilters = { q: q || undefined };
+  const addonFilterCount = [q, active !== undefined].filter(Boolean).length;
+  const crustFilterCount = q ? 1 : 0;
+  const isCrusts = tab === "crusts";
 
   useEffect(() => {
     setPage(1);
-  }, [q, active]);
+  }, [q, active, tab]);
 
-  const listQuery = useQuery({
-    queryKey: queryKeys.addons.list(page, limit, filters),
-    queryFn: () => api.listAddons(page, limit, filters),
+  const addonsQuery = useQuery({
+    queryKey: queryKeys.addons.list(page, limit, addonFilters),
+    queryFn: () => api.listAddons(page, limit, addonFilters),
     placeholderData: keepPreviousData,
+    enabled: !isCrusts,
   });
 
+  const crustsQuery = useQuery({
+    queryKey: queryKeys.crusts.list(page, limit, crustFilters),
+    queryFn: () => api.listCrusts(page, limit, crustFilters),
+    placeholderData: keepPreviousData,
+    enabled: isCrusts,
+  });
+
+  const listQuery = isCrusts ? crustsQuery : addonsQuery;
   const result = listQuery.data;
-  const addons = result?.items ?? [];
+  const addons = addonsQuery.data?.items ?? [];
+  const crusts = crustsQuery.data?.items ?? [];
   const total = result?.total ?? 0;
 
   useEffect(() => {
@@ -59,21 +76,25 @@ export function AddonsPage() {
     ]);
   }
 
-  const saveMutation = useMutation({
+  async function refreshCrusts() {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.crusts.all });
+  }
+
+  const saveAddonMutation = useMutation({
     mutationFn: async (values: AddonValues) => {
       const payload = toAddonPayload(values);
-      if (editing) return api.updateAddon(editing.id, payload);
+      if (editingAddon) return api.updateAddon(editingAddon.id, payload);
       return api.createAddon(payload);
     },
     onSuccess: async () => {
-      toast.success(editing ? "Adicional atualizado." : "Adicional incluído.");
+      toast.success(editingAddon ? "Adicional atualizado." : "Adicional incluído.");
       setOpen(false);
-      setEditing(null);
+      setEditingAddon(null);
       await refreshAddons();
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteAddonMutation = useMutation({
     mutationFn: (addon: Addon) => api.deleteAddon(addon.id),
     onSuccess: async () => {
       toast.success("Adicional excluído.");
@@ -81,7 +102,29 @@ export function AddonsPage() {
     },
   });
 
-  function askDelete(addon: Addon) {
+  const saveCrustMutation = useMutation({
+    mutationFn: async (values: CrustValues) => {
+      const payload = toCrustPayload(values);
+      if (editingCrust) return api.updateCrust(editingCrust.id, payload);
+      return api.createCrust(payload);
+    },
+    onSuccess: async () => {
+      toast.success(editingCrust ? "Borda atualizada." : "Borda incluída.");
+      setOpen(false);
+      setEditingCrust(null);
+      await refreshCrusts();
+    },
+  });
+
+  const deleteCrustMutation = useMutation({
+    mutationFn: (crust: Crust) => api.deleteCrust(crust.id),
+    onSuccess: async () => {
+      toast.success("Borda excluída.");
+      await refreshCrusts();
+    },
+  });
+
+  function askDeleteAddon(addon: Addon) {
     void dialog.delete({
       title: "Excluir adicional",
       description: (
@@ -90,8 +133,27 @@ export function AddonsPage() {
           do cardápio que usam este adicional deixam de oferecê-lo.
         </>
       ),
-      onConfirm: () => deleteMutation.mutateAsync(addon),
+      onConfirm: () => deleteAddonMutation.mutateAsync(addon),
     });
+  }
+
+  function askDeleteCrust(crust: Crust) {
+    void dialog.delete({
+      title: "Excluir borda",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{crust.name}</strong>? Itens
+          com “Perguntar borda” deixam de oferecer esta opção.
+        </>
+      ),
+      onConfirm: () => deleteCrustMutation.mutateAsync(crust),
+    });
+  }
+
+  function openCreate() {
+    setEditingAddon(null);
+    setEditingCrust(null);
+    setOpen(true);
   }
 
   return (
@@ -99,141 +161,269 @@ export function AddonsPage() {
       <PageHeader
         kicker="Extras"
         title="Adicionais"
-        subtitle="Cadastre extras como bacon ou cheddar. Depois marque quais entram em cada item do cardápio."
+        subtitle="Cadastre extras e bordas. No item, marque quais adicionais entram e se o bot deve perguntar a borda."
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-            setEditing(null);
-            setOpen(true);
-          }}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             Incluir
           </Button>
         }
       />
-      <ListFilters
-        activeCount={activeCount}
-        onClear={() => {
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => {
+          setTab(key);
           setQInput("");
           setActive(undefined);
-        }}
-      >
-        <Input.Search
-          className={filterSearch}
-          allowClear
-          placeholder="Nome do adicional…"
-          value={qInput}
-          onChange={(event) => setQInput(event.target.value)}
-        />
-        <Select
-          className={filterSelect}
-          allowClear
-          placeholder="Situação"
-          value={active === undefined ? undefined : active ? "1" : "0"}
-          onChange={(value) =>
-            setActive(value === undefined ? undefined : value === "1")
-          }
-          options={[
-            { value: "1", label: "Ativos" },
-            { value: "0", label: "Inativos" },
-          ]}
-        />
-      </ListFilters>
-      <div className={tableWrap}>
-        <Table
-          rowKey="id"
-          className={tableClass}
-          loading={listQuery.isPending && !result}
-          dataSource={addons}
-          pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-            setPage(nextPage);
-            setLimit(nextSize);
-          })}
-          scroll={{ x: 640 }}
-          columns={[
-            { title: "Nome", dataIndex: "name" },
-            {
-              title: "Valor",
-              dataIndex: "price",
-              width: 120,
-              render: (value: number) => formatReais(value),
-            },
-            { title: "Ordem", dataIndex: "sortOrder", width: 100 },
-            {
-              title: "Ativo",
-              dataIndex: "active",
-              width: 100,
-              render: (value: boolean) => (
-                <Tag color={value ? "green" : "default"}>
-                  {value ? "Sim" : "Não"}
-                </Tag>
-              ),
-            },
-            {
-              title: "Ações",
-              width: 72,
-              align: "center",
-              render: (_, addon) => (
-                <RowActions
-                  items={[
-                    {
-                      key: "edit",
-                      label: "Editar",
-                      onClick: () => {
-                        setEditing(addon);
-                        setOpen(true);
-                      },
-                    },
-                    {
-                      key: "delete",
-                      label: "Excluir",
-                      danger: true,
-                      onClick: () => askDelete(addon),
-                    },
-                  ]}
-                />
-              ),
-            },
-          ]}
-        />
-      </div>
-      <div className={listCards}>
-        <MobileCardList
-          loading={listQuery.isPending && !result}
-          isEmpty={addons.length === 0}
-          empty={
-            activeCount > 0
-              ? "Nenhum adicional encontrado com esses filtros."
-              : "Inclua o primeiro adicional para oferecer extras no WhatsApp."
-          }
-          pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-            setPage(nextPage);
-            setLimit(nextSize);
-          })}
-        >
-          {addons.map((addon) => (
-            <AddonCard
-              key={addon.id}
-              addon={addon}
-              onEdit={(item) => {
-                setEditing(item);
-                setOpen(true);
-              }}
-              onDelete={askDelete}
-            />
-          ))}
-        </MobileCardList>
-      </div>
-      <AddonForm
-        open={open}
-        addon={editing}
-        submitting={saveMutation.isPending}
-        onCancel={() => {
           setOpen(false);
-          setEditing(null);
+          setEditingAddon(null);
+          setEditingCrust(null);
         }}
-        onSubmit={async (values) => {
-          await saveMutation.mutateAsync(values);
-        }}
+        items={[
+          { key: "addons", label: "Adicional" },
+          { key: "crusts", label: "Bordas" },
+        ]}
       />
+      {isCrusts ? (
+        <>
+          <ListFilters
+            activeCount={crustFilterCount}
+            onClear={() => setQInput("")}
+          >
+            <Input.Search
+              className={filterSearch}
+              allowClear
+              placeholder="Nome da borda…"
+              value={qInput}
+              onChange={(event) => setQInput(event.target.value)}
+            />
+          </ListFilters>
+          <div className={tableWrap}>
+            <Table
+              rowKey="id"
+              className={tableClass}
+              loading={crustsQuery.isPending && !crustsQuery.data}
+              dataSource={crusts}
+              pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+                setPage(nextPage);
+                setLimit(nextSize);
+              })}
+              scroll={{ x: 560 }}
+              columns={[
+                { title: "Nome", dataIndex: "name" },
+                {
+                  title: "Soma no valor",
+                  dataIndex: "addsPrice",
+                  width: 160,
+                  render: (value: boolean) => (
+                    <Tag color={value ? "gold" : "default"}>
+                      {value ? "Sim" : "Não"}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: "Preço",
+                  dataIndex: "price",
+                  width: 120,
+                  render: (_: number, crust: Crust) =>
+                    crust.addsPrice ? formatReais(crust.price) : "—",
+                },
+                {
+                  title: "Ações",
+                  width: 72,
+                  align: "center",
+                  render: (_, crust) => (
+                    <RowActions
+                      items={[
+                        {
+                          key: "edit",
+                          label: "Editar",
+                          onClick: () => {
+                            setEditingCrust(crust);
+                            setOpen(true);
+                          },
+                        },
+                        {
+                          key: "delete",
+                          label: "Excluir",
+                          danger: true,
+                          onClick: () => askDeleteCrust(crust),
+                        },
+                      ]}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+          <div className={listCards}>
+            <MobileCardList
+              loading={crustsQuery.isPending && !crustsQuery.data}
+              isEmpty={crusts.length === 0}
+              empty={
+                crustFilterCount > 0
+                  ? "Nenhuma borda encontrada com esses filtros."
+                  : "Inclua a primeira borda. Sem Borda, cheddar e Catupiry entram automaticamente se a tabela estiver vazia."
+              }
+              pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+                setPage(nextPage);
+                setLimit(nextSize);
+              })}
+            >
+              {crusts.map((crust) => (
+                <CrustCard
+                  key={crust.id}
+                  crust={crust}
+                  onEdit={(item) => {
+                    setEditingCrust(item);
+                    setOpen(true);
+                  }}
+                  onDelete={askDeleteCrust}
+                />
+              ))}
+            </MobileCardList>
+          </div>
+          <CrustForm
+            open={open}
+            crust={editingCrust}
+            submitting={saveCrustMutation.isPending}
+            onCancel={() => {
+              setOpen(false);
+              setEditingCrust(null);
+            }}
+            onSubmit={async (values) => {
+              await saveCrustMutation.mutateAsync(values);
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <ListFilters
+            activeCount={addonFilterCount}
+            onClear={() => {
+              setQInput("");
+              setActive(undefined);
+            }}
+          >
+            <Input.Search
+              className={filterSearch}
+              allowClear
+              placeholder="Nome do adicional…"
+              value={qInput}
+              onChange={(event) => setQInput(event.target.value)}
+            />
+            <Select
+              className={filterSelect}
+              allowClear
+              placeholder="Situação"
+              value={active === undefined ? undefined : active ? "1" : "0"}
+              onChange={(value) =>
+                setActive(value === undefined ? undefined : value === "1")
+              }
+              options={[
+                { value: "1", label: "Ativos" },
+                { value: "0", label: "Inativos" },
+              ]}
+            />
+          </ListFilters>
+          <div className={tableWrap}>
+            <Table
+              rowKey="id"
+              className={tableClass}
+              loading={addonsQuery.isPending && !addonsQuery.data}
+              dataSource={addons}
+              pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+                setPage(nextPage);
+                setLimit(nextSize);
+              })}
+              scroll={{ x: 640 }}
+              columns={[
+                { title: "Nome", dataIndex: "name" },
+                {
+                  title: "Valor",
+                  dataIndex: "price",
+                  width: 120,
+                  render: (value: number) => formatReais(value),
+                },
+                { title: "Ordem", dataIndex: "sortOrder", width: 100 },
+                {
+                  title: "Ativo",
+                  dataIndex: "active",
+                  width: 100,
+                  render: (value: boolean) => (
+                    <Tag color={value ? "green" : "default"}>
+                      {value ? "Sim" : "Não"}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: "Ações",
+                  width: 72,
+                  align: "center",
+                  render: (_, addon) => (
+                    <RowActions
+                      items={[
+                        {
+                          key: "edit",
+                          label: "Editar",
+                          onClick: () => {
+                            setEditingAddon(addon);
+                            setOpen(true);
+                          },
+                        },
+                        {
+                          key: "delete",
+                          label: "Excluir",
+                          danger: true,
+                          onClick: () => askDeleteAddon(addon),
+                        },
+                      ]}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+          <div className={listCards}>
+            <MobileCardList
+              loading={addonsQuery.isPending && !addonsQuery.data}
+              isEmpty={addons.length === 0}
+              empty={
+                addonFilterCount > 0
+                  ? "Nenhum adicional encontrado com esses filtros."
+                  : "Inclua o primeiro adicional para oferecer extras no WhatsApp."
+              }
+              pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+                setPage(nextPage);
+                setLimit(nextSize);
+              })}
+            >
+              {addons.map((addon) => (
+                <AddonCard
+                  key={addon.id}
+                  addon={addon}
+                  onEdit={(item) => {
+                    setEditingAddon(item);
+                    setOpen(true);
+                  }}
+                  onDelete={askDeleteAddon}
+                />
+              ))}
+            </MobileCardList>
+          </div>
+          <AddonForm
+            open={open}
+            addon={editingAddon}
+            submitting={saveAddonMutation.isPending}
+            onCancel={() => {
+              setOpen(false);
+              setEditingAddon(null);
+            }}
+            onSubmit={async (values) => {
+              await saveAddonMutation.mutateAsync(values);
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
