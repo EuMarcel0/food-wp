@@ -56,6 +56,8 @@ export type CartSelection = {
 export type CartItem = {
   productId: string;
   name: string;
+  catalogName?: string;
+  catalogDescription?: string | null;
   quantity: number;
   unitPriceCents: number;
   extras?: CartSelection[];

@@ -96,13 +96,26 @@ function cartTotal(context: ConversationContext) {
   );
 }
 
+function itemHeading(item: Pick<CartItem, "name" | "catalogName" | "catalogDescription">) {
+  const title = item.catalogName?.trim() || item.name;
+  const lines = [`*${title}*`];
+  const description = item.catalogDescription?.trim();
+  if (description) lines.push(description);
+  return { title, lines };
+}
+
+function renderCartItem(item: CartItem) {
+  const { title, lines } = itemHeading(item);
+  const detail =
+    item.name !== title ? `${item.quantity}x ${item.name}` : `${item.quantity}x`;
+  lines.push(`${detail} — ${formatBRL(item.quantity * item.unitPriceCents)}`);
+  if (item.notes?.trim()) lines.push(`Obs.: ${item.notes.trim()}`);
+  return lines.join("\n");
+}
+
 function renderCart(context: ConversationContext) {
   if (!context.cart.length) return "Seu carrinho está vazio.";
-  const lines = context.cart.flatMap((item) => {
-    const row = `• ${item.quantity}x ${item.name} — ${formatBRL(item.quantity * item.unitPriceCents)}`;
-    return item.notes?.trim() ? [row, `  Obs.: ${item.notes.trim()}`] : [row];
-  });
-  return `${lines.join("\n")}\n\nSubtotal: ${formatBRL(cartTotal(context))}`;
+  return `${context.cart.map(renderCartItem).join("\n\n")}\n\nSubtotal: ${formatBRL(cartTotal(context))}`;
 }
 
 function isSkipStep(incoming: string, normalized: string) {
@@ -146,10 +159,10 @@ function commitDraftToCart(context: ConversationContext) {
   return added;
 }
 
-async function showCartAfterAdd(to: string, context: ConversationContext, added: CartItem) {
+async function showCartAfterAdd(to: string, context: ConversationContext) {
   await sendButtons(
     to,
-    `${added.quantity}x ${added.name} adicionado.\n\n${renderCart(context)}`,
+    `Adicionado.\n\n${renderCart(context)}`,
     [
       { id: "order", title: "Adicionar mais" },
       { id: "checkout", title: "Fechar pedido" },
@@ -158,10 +171,19 @@ async function showCartAfterAdd(to: string, context: ConversationContext, added:
   );
 }
 
-async function askItemNote(to: string, itemName: string) {
+async function askItemNote(to: string, item: CartItem) {
+  const { title, lines } = itemHeading(item);
   await sendButtons(
     to,
-    `Observação para *${itemName}*?\nEx.: sem cebola, bem assada.\nSe não quiser, toque em *Pular*.`,
+    [
+      "Observação para este item?",
+      ...lines,
+      item.name !== title ? item.name : null,
+      "Ex.: sem cebola, bem assada.",
+      "Se não quiser, toque em *Pular*.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     [{ id: "skip_note", title: "Pular" }],
   );
 }
@@ -459,11 +481,19 @@ function groupWantingMore(product: Product, drafts: CartSelection[]) {
 }
 
 async function askQuantity(to: string, product: Product, extras: CartSelection[]) {
-  const name = assembledName(product, extras);
+  const variant = assembledName(product, extras);
   const price = unitPriceCents(product, extras);
+  const heading = [
+    `*${product.name}*`,
+    product.description?.trim() || null,
+    variant !== product.name ? variant : null,
+    formatReais(price / 100),
+  ]
+    .filter(Boolean)
+    .join("\n");
   await sendButtons(
     to,
-    `*${name}*\n${formatReais(price / 100)}\nQuantas unidades?\nOu digite um número de 1 a 20.`,
+    `${heading}\nQuantas unidades?\nOu digite um número de 1 a 20.`,
     [
       { id: "qty:1", title: "1" },
       { id: "qty:2", title: "2" },
@@ -576,14 +606,14 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_item_note" && context.draftItem) {
     const notes = isSkipNote(incoming, normalized) ? null : clipNote(input.text);
     if (!isSkipNote(incoming, normalized) && !notes) {
-      await askItemNote(input.from, context.draftItem.name);
+      await askItemNote(input.from, context.draftItem);
       return;
     }
     const added = context.draftItem;
     added.notes = notes;
     commitDraftToCart(context);
     await persist("cart", context);
-    await showCartAfterAdd(input.from, context, added);
+    await showCartAfterAdd(input.from, context);
     return;
   }
 
@@ -855,6 +885,8 @@ export async function handleIncomingMessage(input: {
     context.draftItem = {
       productId: product.id,
       name: assembledName(product, extras),
+      catalogName: product.name,
+      catalogDescription: product.description,
       quantity,
       unitPriceCents: unitPriceCents(product, extras),
       extras,
@@ -865,13 +897,13 @@ export async function handleIncomingMessage(input: {
 
     if (product.notesEnabled) {
       await persist("awaiting_item_note", context);
-      await askItemNote(input.from, context.draftItem.name);
+      await askItemNote(input.from, context.draftItem);
       return;
     }
 
     const added = commitDraftToCart(context);
     await persist("cart", context);
-    if (added) await showCartAfterAdd(input.from, context, added);
+    if (added) await showCartAfterAdd(input.from, context);
     return;
   }
 
