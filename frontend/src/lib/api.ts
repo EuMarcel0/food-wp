@@ -261,4 +261,9 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ reader }),
     }),
+  markAllNotificationsRead: (reader: string) =>
+    request<{ ok: boolean; count: number }>("/api/notifications/read-all", {
+      method: "PATCH",
+      body: JSON.stringify({ reader }),
+    }),
 };

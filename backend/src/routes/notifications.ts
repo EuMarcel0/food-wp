@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   listNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
 } from "../data/repository.js";
 
@@ -13,6 +14,12 @@ function readerFrom(value: unknown) {
 
 notificationsRouter.get("/", async (req, res) => {
   res.json(await listNotifications(readerFrom(req.query.reader)));
+});
+
+notificationsRouter.patch("/read-all", async (req, res) => {
+  const reader = readerFrom(req.body?.reader ?? req.query.reader);
+  const count = await markAllNotificationsRead(reader);
+  res.json({ ok: true, count });
 });
 
 notificationsRouter.patch("/:id/read", async (req, res) => {

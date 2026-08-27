@@ -1530,6 +1530,27 @@ export async function markNotificationRead(id: string, readerKey: string) {
   return true;
 }
 
+export async function markAllNotificationsRead(readerKey: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.markAllNotificationsRead(readerKey);
+
+  const items = await listNotifications(readerKey);
+  const unread = items.filter((item) => !item.read);
+  if (!unread.length) return 0;
+
+  const { error } = await supabase.from("notification_reads").upsert(
+    unread.map((item) => ({
+      notification_id: item.id,
+      reader_key: readerKey,
+    })),
+  );
+  if (error) {
+    console.error("Falha ao marcar notificações como lidas", error.message);
+    return 0;
+  }
+  return unread.length;
+}
+
 export function usingSupabase() {
   return flags.supabaseReady;
 }

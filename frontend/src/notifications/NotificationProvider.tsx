@@ -18,6 +18,7 @@ type NotificationContextValue = {
   items: AppNotification[];
   unread: number;
   markRead: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
 };
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
@@ -102,13 +103,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [reader],
   );
 
+  const markAllRead = useCallback(async () => {
+    await api.markAllNotificationsRead(reader);
+    setItems((current) => current.map((item) => ({ ...item, read: true })));
+  }, [reader]);
+
   const value = useMemo<NotificationContextValue>(
     () => ({
       items,
       unread: items.filter((item) => !item.read).length,
       markRead,
+      markAllRead,
     }),
-    [items, markRead],
+    [items, markRead, markAllRead],
   );
 
   return (

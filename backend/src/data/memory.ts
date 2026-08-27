@@ -755,4 +755,15 @@ export const memoryStore = {
     notificationReads.add(readKey(id, readerKey));
     return true;
   },
+
+  markAllNotificationsRead(readerKey: string) {
+    let count = 0;
+    for (const item of notifications.slice(0, 50)) {
+      const key = readKey(item.id, readerKey);
+      if (notificationReads.has(key)) continue;
+      notificationReads.add(key);
+      count += 1;
+    }
+    return count;
+  },
 };

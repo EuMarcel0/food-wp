@@ -61,11 +61,12 @@ function NotificationList({
 }
 
 export function NotificationBell() {
-  const { items, unread, markRead } = useNotifications();
+  const { items, unread, markRead, markAllRead } = useNotifications();
   const navigate = useNavigate();
   const isMobile = useMediaQuery("(max-width: 991px)");
   const isPhone = useMediaQuery("(max-width: 575px)");
   const [open, setOpen] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
 
   useEffect(() => {
     setOpen(false);
@@ -77,9 +78,28 @@ export function NotificationBell() {
     navigate("/pedidos");
   }
 
-  const unreadLabel = unread
-    ? `${unread} não lida${unread === 1 ? "" : "s"}`
-    : null;
+  async function handleMarkAllRead() {
+    if (!unread || markingAll) return;
+    setMarkingAll(true);
+    try {
+      await markAllRead();
+    } finally {
+      setMarkingAll(false);
+    }
+  }
+
+  const markAllButton =
+    unread > 0 ? (
+      <Button
+        type="text"
+        size="small"
+        loading={markingAll}
+        onClick={() => void handleMarkAllRead()}
+        className="!h-auto !px-0 !text-xs font-semibold text-food-accent"
+      >
+        Marcar todas como lida
+      </Button>
+    ) : null;
 
   const list = <NotificationList items={items} onSelect={openOrder} />;
 
@@ -111,11 +131,9 @@ export function NotificationBell() {
           overlayClassName="[&_.ant-popover-inner]:overflow-hidden [&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-0"
           content={
             <div className="w-[min(360px,calc(100vw-24px))]">
-              <div className="flex items-baseline justify-between gap-3 border-b border-food-border px-4 pt-3.5 pb-2.5">
+              <div className="flex items-center justify-between gap-3 border-b border-food-border px-4 pt-3.5 pb-2.5">
                 <strong className="text-sm tracking-tight">Notificações</strong>
-                {unreadLabel ? (
-                  <span className="text-xs text-food-muted">{unreadLabel}</span>
-                ) : null}
+                {markAllButton}
               </div>
               {list}
             </div>
@@ -127,11 +145,7 @@ export function NotificationBell() {
       {isMobile ? (
         <Drawer
           title="Notificações"
-          extra={
-            unreadLabel ? (
-              <span className="text-xs text-food-muted">{unreadLabel}</span>
-            ) : null
-          }
+          extra={markAllButton}
           placement="right"
           open={open}
           onClose={() => setOpen(false)}
