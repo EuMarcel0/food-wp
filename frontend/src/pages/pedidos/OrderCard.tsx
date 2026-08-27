@@ -73,6 +73,13 @@ export function OrderCard({
                 {PAYMENT_LABEL[order.paymentMethod]}
               </Tag>
             ) : null}
+            {order.paymentMethod === "cash" && order.changeForCents != null ? (
+              <span>
+                {order.changeForCents
+                  ? `Troco p/ ${formatBRL(order.changeForCents)}`
+                  : "Sem troco"}
+              </span>
+            ) : null}
             <span>{formatDate(order.createdAt)}</span>
           </div>
           <strong className={entityPrice}>{formatBRL(order.totalCents)}</strong>

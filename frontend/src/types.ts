@@ -19,7 +19,8 @@ export type Order = {
   code: string;
   status: OrderStatus;
   fulfillment: "delivery" | "pickup";
-  paymentMethod: "pix" | "cash" | "card" | null;
+  paymentMethod: "pix" | "cash" | "card" | "credit" | "debit" | null;
+  changeForCents?: number | null;
   addressText: string | null;
   notes?: string | null;
   customerPhone?: string;

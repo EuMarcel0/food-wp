@@ -294,11 +294,20 @@ export function OrdersPage() {
           {
             title: "Pagamento",
             dataIndex: "paymentMethod",
-            width: 120,
+            width: 132,
             align: "center",
-            render: (value: Order["paymentMethod"]) =>
+            render: (value: Order["paymentMethod"], order) =>
               value ? (
-                <Tag color={PAYMENT_COLOR[value]}>{PAYMENT_LABEL[value]}</Tag>
+                <span className="inline-flex flex-col items-center gap-0.5">
+                  <Tag color={PAYMENT_COLOR[value]}>{PAYMENT_LABEL[value]}</Tag>
+                  {value === "cash" && order.changeForCents != null ? (
+                    <span className="text-[11px] font-medium text-food-muted">
+                      {order.changeForCents
+                        ? `Troco p/ ${formatBRL(order.changeForCents)}`
+                        : "Sem troco"}
+                    </span>
+                  ) : null}
+                </span>
               ) : (
                 "—"
               ),

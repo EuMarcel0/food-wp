@@ -13,6 +13,12 @@ type WhatsAppChange = {
       from: string;
       type?: string;
       text?: { body?: string };
+      location?: {
+        latitude?: number;
+        longitude?: number;
+        name?: string;
+        address?: string;
+      };
       interactive?: {
         type?: string;
         button_reply?: { id?: string; title?: string };
@@ -78,8 +84,19 @@ webhookRouter.post("/whatsapp", (req, res) => {
           message.interactive?.button_reply?.title ??
           message.interactive?.list_reply?.title ??
           "";
+        const location =
+          message.type === "location" &&
+          message.location?.latitude != null &&
+          message.location?.longitude != null
+            ? {
+                latitude: Number(message.location.latitude),
+                longitude: Number(message.location.longitude),
+                name: message.location.name,
+                address: message.location.address,
+              }
+            : undefined;
         const to = waId || message.from;
-        if (!to || (!text && !replyId)) continue;
+        if (!to || (!text && !replyId && !location)) continue;
         incoming += 1;
         console.log(
           `WhatsApp inbound from=${message.from} wa_id=${waId ?? "-"} reply=${to}`,
@@ -90,6 +107,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
           name,
           text,
           replyId,
+          location,
         }).catch((error) => {
           console.error("Falha ao processar mensagem WhatsApp", error);
         });

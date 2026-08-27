@@ -1,5 +1,5 @@
 export type Fulfillment = "delivery" | "pickup";
-export type PaymentMethod = "pix" | "cash" | "card";
+export type PaymentMethod = "pix" | "cash" | "card" | "credit" | "debit";
 
 export type OrderStatus =
   | "received"
@@ -21,6 +21,7 @@ export type ConversationState =
   | "awaiting_neighborhood"
   | "awaiting_address"
   | "awaiting_payment"
+  | "awaiting_change"
   | "awaiting_order_code";
 
 export type ProductOption = {
@@ -71,6 +72,8 @@ export type ConversationContext = {
   neighborhoodId?: string;
   neighborhoodName?: string;
   addressText?: string;
+  paymentMethod?: PaymentMethod;
+  changeForCents?: number;
   orderNotes?: string | null;
 };
 
@@ -138,6 +141,7 @@ export type Order = {
   status: OrderStatus;
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod | null;
+  changeForCents: number | null;
   addressText: string | null;
   notes: string | null;
   subtotalCents: number;

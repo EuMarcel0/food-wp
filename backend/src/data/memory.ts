@@ -349,6 +349,7 @@ export const memoryStore = {
     customer: Customer;
     fulfillment: Fulfillment;
     paymentMethod: PaymentMethod;
+    changeForCents?: number | null;
     addressText?: string;
     notes?: string | null;
     items: {
@@ -373,6 +374,8 @@ export const memoryStore = {
       status: "received",
       fulfillment: input.fulfillment,
       paymentMethod: input.paymentMethod,
+      changeForCents:
+        input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
       addressText: input.addressText ?? null,
       notes: input.notes?.trim() || null,
       subtotalCents,

@@ -135,6 +135,8 @@ function mapOrder(row: Record<string, unknown>): Order {
     status: row.status as OrderStatus,
     fulfillment: row.fulfillment as Fulfillment,
     paymentMethod: (row.payment_method as PaymentMethod | null) ?? null,
+    changeForCents:
+      row.change_for_cents == null ? null : Math.max(0, Number(row.change_for_cents)),
     addressText: (row.address_text as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
     subtotalCents: Number(row.subtotal_cents ?? 0),
@@ -711,6 +713,7 @@ export async function createOrder(input: {
   customer: Customer;
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod;
+  changeForCents?: number | null;
   addressText?: string;
   notes?: string | null;
   items: {
@@ -737,6 +740,8 @@ export async function createOrder(input: {
     status: "received",
     fulfillment: input.fulfillment,
     payment_method: input.paymentMethod,
+    change_for_cents:
+      input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
     address_text: input.addressText ?? null,
     notes: input.notes?.trim() || null,
     subtotal_cents: subtotalCents,

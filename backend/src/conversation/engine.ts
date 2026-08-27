@@ -1,5 +1,5 @@
 import { formatBRL, formatReais } from "../lib/money.js";
-import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
+import { sendButtons, sendList, sendLocationRequest, sendText } from "../lib/whatsapp.js";
 import {
   createOrder,
   findLatestOrder,
@@ -32,6 +32,7 @@ import type {
   CartSelection,
   ConversationContext,
   ConversationState,
+  Customer,
   DeliveryNeighborhood,
   Fulfillment,
   PaymentMethod,
@@ -217,10 +218,130 @@ function findNeighborhood(
 }
 
 async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
-  const intro = zone
-    ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.\nQual o endereço completo da entrega?`
-    : "Qual o endereço completo da entrega?";
-  await sendText(to, intro);
+  const intro = [
+    zone
+      ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`
+      : null,
+    "Qual o endereço completo da entrega?",
+    "Você também pode *enviar sua localização*.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  try {
+    await sendLocationRequest(to, intro);
+  } catch (error) {
+    console.warn("WhatsApp: location request indisponível, usando texto", error);
+    await sendText(to, intro);
+  }
+}
+
+function formatLocation(location: {
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}) {
+  const maps = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+  const label = location.address?.trim() || location.name?.trim();
+  return label ? `${label}\n${maps}` : maps;
+}
+
+function resolveAddress(input: {
+  text: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+  };
+}) {
+  if (input.location) return formatLocation(input.location);
+  const text = input.text.trim();
+  return text || null;
+}
+
+const PAYMENT_ROWS = [
+  { id: "pay:pix", title: "Pix" },
+  { id: "pay:cash", title: "Dinheiro" },
+  { id: "pay:credit", title: "Cartão crédito" },
+  { id: "pay:debit", title: "Cartão débito" },
+];
+
+async function askPayment(to: string, intro = "Como deseja pagar?") {
+  await sendList(to, intro, "Ver opções", [
+    { title: "Pagamento", rows: PAYMENT_ROWS },
+  ]);
+}
+
+function parsePayment(incoming: string, normalized: string): PaymentMethod | "card_ambiguous" | null {
+  const raw = incoming.startsWith("pay:") ? incoming.slice(4) : normalized;
+  const value = normalize(raw.replace(/_/g, " "));
+  if (value === "pix") return "pix";
+  if (value === "cash" || value === "dinheiro") return "cash";
+  if (
+    value === "credit" ||
+    value === "credito" ||
+    value === "cartao credito" ||
+    value === "cartao de credito"
+  ) {
+    return "credit";
+  }
+  if (
+    value === "debit" ||
+    value === "debito" ||
+    value === "cartao debito" ||
+    value === "cartao de debito"
+  ) {
+    return "debit";
+  }
+  if (value === "card" || value === "cartao") return "card_ambiguous";
+  return null;
+}
+
+function paymentLabel(method: PaymentMethod) {
+  if (method === "pix") return "Pix";
+  if (method === "cash") return "Dinheiro";
+  if (method === "credit") return "Cartão crédito";
+  if (method === "debit") return "Cartão débito";
+  return "Cartão";
+}
+
+function parseChangeCents(text: string): number | null {
+  const normalized = normalize(text).replace(/[!?.,]+$/g, "").trim();
+  if (["sem troco", "nao precisa", "zero", "0"].includes(normalized)) {
+    return 0;
+  }
+  const compact = text.replace(/r\$/gi, "").trim();
+  if (!compact) return null;
+  const hasComma = compact.includes(",");
+  const hasDot = compact.includes(".");
+  let numeric = compact.replace(/[^\d,.-]/g, "");
+  if (hasComma && hasDot) {
+    numeric = numeric.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    numeric = numeric.replace(",", ".");
+  }
+  const value = Number(numeric);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value * 100);
+}
+
+async function askChange(to: string, totalCents: number) {
+  await sendText(
+    to,
+    `Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`,
+  );
+}
+
+function orderTotalCents(store: Store, context: ConversationContext) {
+  const deliveryFee =
+    context.fulfillment === "delivery"
+      ? resolveDeliveryFee(store, {
+          neighborhoodId: context.neighborhoodId,
+          address: context.addressText,
+        }).cents
+      : 0;
+  return cartTotal(context) + deliveryFee;
 }
 
 async function showWelcome(to: string, storeName: string) {
@@ -351,11 +472,78 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   );
 }
 
+async function finishOrder(
+  to: string,
+  store: Store,
+  customer: Customer,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+) {
+  if (!context.fulfillment || !context.paymentMethod) {
+    await sendText(to, "Escolha Pix, dinheiro, cartão crédito ou débito.");
+    await askPayment(to);
+    return;
+  }
+
+  const deliveryFee = resolveDeliveryFee(store, {
+    neighborhoodId: context.neighborhoodId,
+    address: context.fulfillment === "delivery" ? context.addressText : undefined,
+  });
+  const order = await createOrder({
+    customer,
+    fulfillment: context.fulfillment,
+    paymentMethod: context.paymentMethod,
+    changeForCents: context.paymentMethod === "cash" ? (context.changeForCents ?? 0) : null,
+    addressText: context.addressText,
+    notes: context.orderNotes ?? null,
+    deliveryFeeCents: context.fulfillment === "delivery" ? deliveryFee.cents : 0,
+    items: context.cart,
+  });
+
+  await persist("welcome", emptyContext());
+  const feeLine =
+    context.fulfillment !== "delivery"
+      ? "Retirada no local"
+      : deliveryFee.neighborhood
+        ? `Taxa de entrega (${deliveryFee.neighborhood.name}): ${formatBRL(deliveryFee.cents)}`
+        : deliveryFee.cents
+          ? `Taxa de entrega: ${formatBRL(deliveryFee.cents)}`
+          : "Entrega sem taxa";
+  const changeLine =
+    context.paymentMethod === "cash"
+      ? context.changeForCents
+        ? `Troco para ${formatBRL(context.changeForCents)}`
+        : "Sem troco"
+      : "";
+  await sendText(
+    to,
+    [
+      `Pedido *#${order.code}* confirmado!`,
+      renderCart(context),
+      feeLine,
+      `Pagamento: ${paymentLabel(context.paymentMethod)}`,
+      changeLine,
+      `Total: *${formatBRL(order.totalCents)}*`,
+      context.addressText ? `Entrega: ${context.addressText}` : "",
+      context.orderNotes ? `Obs. do pedido: ${context.orderNotes}` : "",
+      "Assim que o status mudar, eu te aviso por aqui.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
 export async function handleIncomingMessage(input: {
   from: string;
   name?: string;
   text: string;
   replyId?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+  };
 }) {
   const store = await getStore();
   const customer = await upsertCustomer(input.from, input.name);
@@ -739,11 +927,7 @@ export async function handleIncomingMessage(input: {
     }
 
     await persist("awaiting_payment", context);
-    await sendButtons(input.from, "Como deseja pagar?", [
-      { id: "pay:pix", title: "Pix" },
-      { id: "pay:cash", title: "Dinheiro" },
-      { id: "pay:card", title: "Cartão" },
-    ]);
+    await askPayment(input.from);
     return;
   }
 
@@ -762,63 +946,68 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_address") {
-    context.addressText = input.text.trim();
+    const address = resolveAddress(input);
+    if (!address) {
+      await sendText(
+        input.from,
+        "Envie o endereço em texto ou compartilhe sua localização.",
+      );
+      return;
+    }
+    context.addressText = address;
     await persist("awaiting_payment", context);
-    await sendButtons(input.from, "Endereço anotado. Como deseja pagar?", [
-      { id: "pay:pix", title: "Pix" },
-      { id: "pay:cash", title: "Dinheiro" },
-      { id: "pay:card", title: "Cartão" },
-    ]);
+    await askPayment(input.from, "Endereço anotado. Como deseja pagar?");
+    return;
+  }
+
+  if (state === "awaiting_change") {
+    const totalCents = orderTotalCents(store, context);
+    const change = parseChangeCents(input.text);
+    if (change == null) {
+      await sendText(input.from, "Envie o valor do troco, por exemplo *100*, ou *sem troco*.");
+      return;
+    }
+    if (change > 0 && change < totalCents) {
+      await sendText(
+        input.from,
+        `O troco precisa ser pelo menos o total de *${formatBRL(totalCents)}*.`,
+      );
+      await askChange(input.from, totalCents);
+      return;
+    }
+    context.changeForCents = change;
+    context.paymentMethod = "cash";
+    await finishOrder(input.from, store, customer, context, persist);
     return;
   }
 
   if (state === "awaiting_payment" || incoming.startsWith("pay:")) {
-    const raw = incoming.startsWith("pay:") ? incoming.slice(4) : normalized;
-    const payment: PaymentMethod | null =
-      raw === "pix" ? "pix" : raw === "cash" || raw === "dinheiro" ? "cash" : raw === "card" || raw === "cartao" ? "card" : null;
-
-    if (!payment || !context.fulfillment) {
-      await sendText(input.from, "Escolha Pix, dinheiro ou cartão.");
+    const payment = parsePayment(incoming, normalized);
+    if (payment === "card_ambiguous") {
+      await persist("awaiting_payment", context);
+      await sendButtons(input.from, "Qual cartão?", [
+        { id: "pay:credit", title: "Crédito" },
+        { id: "pay:debit", title: "Débito" },
+      ]);
       return;
     }
 
-    const deliveryFee = resolveDeliveryFee(store, {
-      neighborhoodId: context.neighborhoodId,
-      address: context.fulfillment === "delivery" ? context.addressText : undefined,
-    });
-    const order = await createOrder({
-      customer,
-      fulfillment: context.fulfillment,
-      paymentMethod: payment,
-      addressText: context.addressText,
-      notes: context.orderNotes ?? null,
-      deliveryFeeCents: context.fulfillment === "delivery" ? deliveryFee.cents : 0,
-      items: context.cart,
-    });
+    if (!payment || !context.fulfillment) {
+      await sendText(input.from, "Escolha Pix, dinheiro, cartão crédito ou débito.");
+      await askPayment(input.from);
+      return;
+    }
 
-    await persist("welcome", emptyContext());
-    const feeLine =
-      context.fulfillment !== "delivery"
-        ? "Retirada no local"
-        : deliveryFee.neighborhood
-          ? `Taxa de entrega (${deliveryFee.neighborhood.name}): ${formatBRL(deliveryFee.cents)}`
-          : deliveryFee.cents
-            ? `Taxa de entrega: ${formatBRL(deliveryFee.cents)}`
-            : "Entrega sem taxa";
-    await sendText(
-      input.from,
-      [
-        `Pedido *#${order.code}* confirmado!`,
-        renderCart(context),
-        feeLine,
-        `Total: *${formatBRL(order.totalCents)}*`,
-        context.addressText ? `Entrega: ${context.addressText}` : "",
-        context.orderNotes ? `Obs. do pedido: ${context.orderNotes}` : "",
-        "Assim que o status mudar, eu te aviso por aqui.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    context.paymentMethod = payment;
+    if (payment === "cash") {
+      const totalCents = orderTotalCents(store, context);
+      await persist("awaiting_change", context);
+      await askChange(input.from, totalCents);
+      return;
+    }
+
+    context.changeForCents = undefined;
+    await finishOrder(input.from, store, customer, context, persist);
     return;
   }
 

@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import type { OrderStatus } from "../types";
+import type { Order, OrderStatus } from "../types";
 
 export function formatBRL(cents: number) {
   return formatReais(cents / 100);
@@ -84,14 +84,18 @@ export function nextStatus(
   return undefined;
 }
 
-export const PAYMENT_LABEL = {
+export const PAYMENT_LABEL: Record<NonNullable<Order["paymentMethod"]>, string> = {
   pix: "Pix",
   cash: "Dinheiro",
   card: "Cartão",
-} as const;
+  credit: "Crédito",
+  debit: "Débito",
+};
 
-export const PAYMENT_COLOR = {
+export const PAYMENT_COLOR: Record<NonNullable<Order["paymentMethod"]>, string> = {
   pix: "cyan",
   cash: "green",
   card: "purple",
-} as const;
+  credit: "purple",
+  debit: "blue",
+};
