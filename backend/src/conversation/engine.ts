@@ -11,7 +11,7 @@ import {
   saveConversation,
   upsertCustomer,
 } from "../data/repository.js";
-import { describeOrderStatus } from "./status.js";
+import { describeOrderStatus, formatPrepDuration } from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
   assembledName,
@@ -432,10 +432,14 @@ export async function handleIncomingMessage(input: {
     const latest = await findLatestOrder(customer.id);
     if (latest) {
       await persist("welcome", context);
-      await sendText(
-        input.from,
-        `Seu último pedido *#${latest.code}* está *${describeOrderStatus(latest.status)}*.\nTotal: ${formatBRL(latest.totalCents)}.`,
-      );
+      const lines = [
+        `Seu último pedido *#${latest.code}* está *${describeOrderStatus(latest.status)}*.`,
+      ];
+      if (latest.status === "preparing" && latest.prepMinutes) {
+        lines.push(`Tempo estimado: ${formatPrepDuration(latest.prepMinutes)}`);
+      }
+      lines.push(`Total: ${formatBRL(latest.totalCents)}.`);
+      await sendText(input.from, lines.join("\n"));
       return;
     }
     await persist("awaiting_order_code", context);
@@ -827,10 +831,14 @@ export async function handleIncomingMessage(input: {
       return;
     }
     await persist("welcome", context);
-    await sendText(
-      input.from,
-      `Pedido *#${order.code}*: *${describeOrderStatus(order.status)}*.\nTotal: ${formatBRL(order.totalCents)}.`,
-    );
+    const lines = [
+      `Pedido *#${order.code}*: *${describeOrderStatus(order.status)}*.`,
+    ];
+    if (order.status === "preparing" && order.prepMinutes) {
+      lines.push(`Tempo estimado: ${formatPrepDuration(order.prepMinutes)}`);
+    }
+    lines.push(`Total: ${formatBRL(order.totalCents)}.`);
+    await sendText(input.from, lines.join("\n"));
     return;
   }
 

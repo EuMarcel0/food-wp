@@ -140,6 +140,8 @@ function mapOrder(row: Record<string, unknown>): Order {
     subtotalCents: Number(row.subtotal_cents ?? 0),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     totalCents: Number(row.total_cents ?? 0),
+    prepMinutes:
+      row.prep_minutes == null ? null : Math.max(1, Number(row.prep_minutes)),
     createdAt: String(row.created_at),
     items,
   };
@@ -873,9 +875,12 @@ export async function updateOrderStatus(
   id: string,
   status: OrderStatus,
   actorName = "Equipe",
+  prepMinutes?: number | null,
 ) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.updateOrderStatus(id, status, actorName);
+  if (!supabase) {
+    return memoryStore.updateOrderStatus(id, status, actorName, prepMinutes);
+  }
 
   const { data: current } = await supabase
     .from("orders")
@@ -887,14 +892,35 @@ export async function updateOrderStatus(
     throw new Error("Pedido de retirada não sai para entrega.");
   }
 
+  if (status === "preparing") {
+    const minutes = Math.round(Number(prepMinutes));
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      throw new Error("Informe o tempo de preparo em minutos.");
+    }
+    prepMinutes = minutes;
+  }
+
   const previous = current.status as OrderStatus;
+  const payload: Record<string, unknown> = {
+    status,
+    updated_at: new Date().toISOString(),
+  };
+  if (status === "preparing" && prepMinutes != null) {
+    payload.prep_minutes = prepMinutes;
+  }
+
   const { data, error } = await supabase
     .from("orders")
-    .update({ status, updated_at: new Date().toISOString() })
+    .update(payload)
     .eq("id", id)
     .select("*, customers(wa_phone, name), order_items(*)")
     .single();
-  if (error || !data) return null;
+  if (error || !data) {
+    if (error?.message?.includes("prep_minutes")) {
+      throw new Error("Rode a migration 019_order_prep_minutes.sql no Supabase.");
+    }
+    return null;
+  }
   const order = mapOrder(data as Record<string, unknown>);
   if (previous !== status) {
     await createNotification({

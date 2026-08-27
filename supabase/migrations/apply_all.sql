@@ -486,4 +486,10 @@ create policy "delivery_neighborhoods_read"
 grant select on public.delivery_neighborhoods
   to anon, authenticated;
 
+-- ========== 019_order_prep_minutes ==========
+alter table public.orders
+  add column if not exists prep_minutes integer
+  check (prep_minutes is null or prep_minutes >= 1);
+
+
 

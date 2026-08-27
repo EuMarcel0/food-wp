@@ -143,6 +143,7 @@ export type Order = {
   subtotalCents: number;
   deliveryFeeCents: number;
   totalCents: number;
+  prepMinutes: number | null;
   createdAt: string;
   items?: OrderItem[];
 };

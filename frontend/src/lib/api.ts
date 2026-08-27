@@ -162,10 +162,15 @@ export const api = {
       { silent },
     ),
   orderStats: () => request<OrderStats>("/api/orders/stats"),
-  updateOrderStatus: (id: string, status: OrderStatus, actorName?: string) =>
+  updateOrderStatus: (
+    id: string,
+    status: OrderStatus,
+    actorName?: string,
+    prepMinutes?: number,
+  ) =>
     request<Order>(`/api/orders/${id}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status, actorName }),
+      body: JSON.stringify({ status, actorName, prepMinutes }),
     }),
   notifications: (reader: string, silent = true) =>
     request<AppNotification[]>(

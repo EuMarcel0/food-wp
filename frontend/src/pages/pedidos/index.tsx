@@ -11,6 +11,7 @@ import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
+import { PrepTimeModal } from "./PrepTimeModal";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
@@ -101,11 +102,27 @@ export function OrdersPage() {
     };
   }, [queryClient]);
 
+  const [prepOrder, setPrepOrder] = useState<Order | null>(null);
+
   const statusMutation = useMutation({
-    mutationFn: ({ order, next }: { order: Order; next: OrderStatus }) =>
-      api.updateOrderStatus(order.id, next, displayName(user)),
+    mutationFn: ({
+      order,
+      next,
+      prepMinutes,
+    }: {
+      order: Order;
+      next: OrderStatus;
+      prepMinutes?: number;
+    }) =>
+      api.updateOrderStatus(
+        order.id,
+        next,
+        displayName(user),
+        prepMinutes,
+      ),
     onSuccess: async (updated) => {
       toast.success(`Pedido #${updated.code} → ${STATUS_LABEL[updated.status]}`);
+      setPrepOrder(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
@@ -114,6 +131,10 @@ export function OrdersPage() {
   });
 
   function changeStatus(order: Order, next: OrderStatus) {
+    if (next === "preparing") {
+      setPrepOrder(order);
+      return;
+    }
     statusMutation.mutate({ order, next });
   }
 
@@ -309,6 +330,22 @@ export function OrdersPage() {
           ))}
         </MobileCardList>
       </div>
+      <PrepTimeModal
+        order={prepOrder}
+        open={Boolean(prepOrder)}
+        submitting={statusMutation.isPending && Boolean(prepOrder)}
+        onCancel={() => {
+          if (!statusMutation.isPending) setPrepOrder(null);
+        }}
+        onConfirm={(minutes) => {
+          if (!prepOrder) return;
+          statusMutation.mutate({
+            order: prepOrder,
+            next: "preparing",
+            prepMinutes: minutes,
+          });
+        }}
+      />
     </>
   );
 }

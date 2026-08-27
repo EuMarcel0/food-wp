@@ -378,6 +378,7 @@ export const memoryStore = {
       subtotalCents,
       deliveryFeeCents: input.deliveryFeeCents,
       totalCents: subtotalCents + input.deliveryFeeCents,
+      prepMinutes: null,
       createdAt: new Date().toISOString(),
       items: input.items,
     };
@@ -449,11 +450,23 @@ export const memoryStore = {
     );
   },
 
-  updateOrderStatus(id: string, status: OrderStatus, actorName = "Equipe") {
+  updateOrderStatus(
+    id: string,
+    status: OrderStatus,
+    actorName = "Equipe",
+    prepMinutes?: number | null,
+  ) {
     const order = orders.get(id);
     if (!order) return null;
     if (!isAllowedOrderStatus(order.fulfillment, status)) {
       throw new Error("Pedido de retirada não sai para entrega.");
+    }
+    if (status === "preparing") {
+      const minutes = Math.round(Number(prepMinutes));
+      if (!Number.isFinite(minutes) || minutes < 1) {
+        throw new Error("Informe o tempo de preparo em minutos.");
+      }
+      order.prepMinutes = minutes;
     }
     const previous = order.status;
     order.status = status;
