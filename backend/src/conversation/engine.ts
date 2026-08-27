@@ -16,6 +16,7 @@ import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
   ADDON_GROUP_ID,
   assembledName,
+  addonLabel,
   flavorShareLine,
   groupPrompt,
   isCustomizable,
@@ -97,11 +98,15 @@ function cartTotal(context: ConversationContext) {
   );
 }
 
-function itemHeading(item: Pick<CartItem, "name" | "catalogName" | "catalogDescription">) {
+function itemHeading(
+  item: Pick<CartItem, "name" | "catalogName" | "catalogDescription" | "extras">,
+) {
   const title = item.catalogName?.trim() || item.name;
   const lines = [`*${title}*`];
   const description = item.catalogDescription?.trim();
   if (description) lines.push(description);
+  const addons = addonLabel(item.extras);
+  if (addons) lines.push(addons);
   return { title, lines };
 }
 
@@ -568,6 +573,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
     `*${product.name}*`,
     product.description?.trim() || null,
     variant !== product.name ? variant : null,
+    addonLabel(extras),
     formatReais(price / 100),
   ]
     .filter(Boolean)
@@ -591,7 +597,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
   const prompt = [
     `*${product.name}*`,
     picked.length
-      ? `Já escolheu: ${picked.join(" + ")}.`
+      ? `Adicionais: ${picked.join(", ")}`
       : "Quer um adicional? (opcional)",
     picked.length ? "Quer outro adicional?" : "",
   ]
@@ -632,7 +638,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
 async function confirmMoreAddons(to: string, names: string[]) {
   await sendButtons(
     to,
-    `*Adicional:*\n${names.join(" + ")}`,
+    `Adicionais: ${names.join(", ")}`,
     [
       { id: "more_addons", title: "Mais um" },
       { id: "done_addons", title: "Pronto" },

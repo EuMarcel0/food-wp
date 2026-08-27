@@ -170,6 +170,7 @@ export type OrderItem = {
   name: string;
   quantity: number;
   unitPriceCents: number;
+  extras?: CartSelection[];
   notes?: string | null;
 };
 

@@ -20,6 +20,7 @@ import type {
   Fulfillment,
   NotificationType,
   Order,
+  OrderItem,
   OrderStatus,
   PaymentMethod,
   Product,
@@ -158,6 +159,9 @@ function mapOrder(row: Record<string, unknown>): Order {
           name: String(typed.name),
           quantity: Number(typed.quantity),
           unitPriceCents: Number(typed.unit_price_cents),
+          extras: Array.isArray(typed.extras)
+            ? (typed.extras as OrderItem["extras"])
+            : [],
           notes: (typed.notes as string | null) ?? null,
         };
       })

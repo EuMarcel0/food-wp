@@ -235,6 +235,7 @@ export function assembledName(product: Product, selections: CartSelection[]) {
 
   for (const selection of selections) {
     if (!selection.options.length) continue;
+    if (selection.groupId === ADDON_GROUP_ID) continue;
     const group = groups.find((item) => item.id === selection.groupId);
     const names = selection.options.map((option) => option.name);
     if (isShareGroup(group)) {
@@ -251,6 +252,14 @@ export function assembledName(product: Product, selections: CartSelection[]) {
   }
   const parts = [...flavorNames, ...otherParts];
   return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
+}
+
+export function addonLabel(selections?: CartSelection[]) {
+  const names = (selections ?? [])
+    .filter((item) => item.groupId === ADDON_GROUP_ID)
+    .flatMap((item) => item.options.map((option) => option.name));
+  if (!names.length) return null;
+  return `Adicionais: ${names.join(", ")}`;
 }
 
 export function selectionKey(

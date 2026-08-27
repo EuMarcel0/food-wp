@@ -9,6 +9,7 @@ import {
   STATUS_LABEL,
   formatBRL,
   formatDate,
+  addonLabel,
 } from "../../lib/format";
 import { entityItems, entityMeta, entityPrice } from "../../ui";
 import type { Order, OrderStatus } from "../../types";
@@ -91,12 +92,18 @@ export function OrderCard({
       </div>
       <ul className={entityItems}>
         {(order.items ?? []).length
-          ? order.items?.map((item, index) => (
+          ? order.items?.map((item, index) => {
+              const addons = addonLabel(item.extras);
+              return (
               <li key={item.id ?? `${item.name}-${index}`}>
                 {item.quantity}x {item.name}
                 {item.notes ? ` · obs.: ${item.notes}` : ""}
+                {addons ? (
+                  <div className="font-normal text-food-muted">{addons}</div>
+                ) : null}
               </li>
-            ))
+              );
+            })
           : <li>Sem itens</li>}
       </ul>
       {order.notes ? (

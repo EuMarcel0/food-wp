@@ -5,6 +5,18 @@ export function formatBRL(cents: number) {
   return formatReais(cents / 100);
 }
 
+const ADDON_GROUP_ID = "__addon__";
+
+export function addonLabel(
+  extras?: { groupId: string; options?: { name: string }[] }[] | null,
+) {
+  const names = (extras ?? [])
+    .filter((item) => item.groupId === ADDON_GROUP_ID)
+    .flatMap((item) => (item.options ?? []).map((option) => option.name).filter(Boolean));
+  if (!names.length) return null;
+  return `Adicionais: ${names.join(", ")}`;
+}
+
 export function formatReais(value: number) {
   return value.toLocaleString("pt-BR", {
     style: "currency",

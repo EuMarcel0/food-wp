@@ -23,6 +23,7 @@ import type {
   PaymentMethod,
   Product,
   ProductOptionGroup,
+  CartSelection,
   Store,
 } from "../types.js";
 
@@ -475,6 +476,7 @@ export const memoryStore = {
       name: string;
       quantity: number;
       unitPriceCents: number;
+      extras?: CartSelection[];
       notes?: string | null;
     }[];
     deliveryFeeCents: number;

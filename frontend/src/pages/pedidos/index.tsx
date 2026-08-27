@@ -26,6 +26,7 @@ import {
   STATUS_LABEL,
   formatBRL,
   formatDate,
+  addonLabel,
 } from "../../lib/format";
 import { useAuth } from "../../auth/AuthProvider";
 import { displayName } from "../../lib/profile";
@@ -267,11 +268,13 @@ export function OrdersPage() {
                 (order.items ?? [])
                   .map((item) => {
                     const line = `${item.quantity}x ${item.name}`;
-                    return item.notes ? `${line} (obs.: ${item.notes})` : line;
+                    const withNotes = item.notes ? `${line} (obs.: ${item.notes})` : line;
+                    const addons = addonLabel(item.extras);
+                    return addons ? `${withNotes}\n${addons}` : withNotes;
                   })
-                  .join(", ") || "—";
+                  .join("\n") || "—";
               return (
-                <span className="line-clamp-2 leading-snug break-words" title={text}>
+                <span className="line-clamp-4 whitespace-pre-line leading-snug break-words" title={text}>
                   {text}
                 </span>
               );
