@@ -1,23 +1,26 @@
 import { type ReactNode, useState } from "react";
 import { FilterOutlined } from "@ant-design/icons";
 import { Badge, Button, Modal } from "antd";
+import { cn } from "../lib/cn";
 import { useMediaQuery } from "../lib/hooks";
 
 export function ListFilters({
   activeCount,
   onClear,
   children,
+  className,
 }: {
   activeCount: number;
   onClear: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   const isMobile = useMediaQuery("(max-width: 991px)");
   const [open, setOpen] = useState(false);
 
   if (!isMobile) {
     return (
-      <div className="mb-4 flex flex-row flex-wrap items-center gap-2.5 [&_.ant-input-search]:!w-[280px] [&_.ant-input-search]:!max-w-[280px] [&_.ant-select]:!w-40">
+      <div className={cn("flex flex-row flex-wrap items-center gap-2.5 [&_.ant-input-search]:!w-[280px] [&_.ant-input-search]:!max-w-[280px] [&_.ant-select]:!w-40", className ?? "mb-4")}>
         {children}
         {activeCount > 0 ? (
           <Button onClick={onClear}>Limpar</Button>
@@ -28,7 +31,7 @@ export function ListFilters({
 
   return (
     <>
-      <div className="mb-3.5 flex">
+      <div className={cn("flex", className ?? "mb-3.5")}>
         <Badge count={activeCount} size="small" offset={[-2, 2]}>
           <Button icon={<FilterOutlined />} onClick={() => setOpen(true)}>
             Filtros

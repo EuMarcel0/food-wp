@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -13,7 +13,7 @@ import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
 import { PrepTimeModal } from "./PrepTimeModal";
 import { api } from "../../lib/api";
-import { useDebouncedValue } from "../../lib/hooks";
+import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
 import { toast } from "../../lib/toast";
@@ -30,7 +30,49 @@ import {
 import { useAuth } from "../../auth/AuthProvider";
 import { displayName } from "../../lib/profile";
 import type { Order, OrderStatus } from "../../types";
+import { cn } from "../../lib/cn";
 import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
+
+function useTableBodyHeight(enabled: boolean, tick: number) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [bodyHeight, setBodyHeight] = useState(320);
+
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+
+    const measure = () => {
+      if (wrap.clientHeight <= 0) return;
+      const pagination = wrap.querySelector<HTMLElement>(".ant-pagination");
+      const header =
+        wrap.querySelector<HTMLElement>(".ant-table-header") ??
+        wrap.querySelector<HTMLElement>(".ant-table-thead");
+      const next = Math.floor(
+        wrap.clientHeight -
+          (pagination?.getBoundingClientRect().height ?? 0) -
+          (header?.getBoundingClientRect().height ?? 47),
+      );
+      const clamped = Math.max(160, next);
+      setBodyHeight((prev) => (Math.abs(prev - clamped) < 1 ? prev : clamped));
+    };
+
+    measure();
+    const frame = window.requestAnimationFrame(measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(wrap);
+    const pagination = wrap.querySelector(".ant-pagination");
+    if (pagination) observer.observe(pagination);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [enabled, tick]);
+
+  return [wrapRef, bodyHeight] as const;
+}
 
 const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
@@ -39,6 +81,7 @@ const STATUS_OPTIONS = (
 export function OrdersPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isDesktop = useMediaQuery("(min-width: 992px)");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [qInput, setQInput] = useState("");
@@ -63,6 +106,7 @@ export function OrdersPage() {
   const result = listQuery.data;
   const orders = result?.items ?? [];
   const total = result?.total ?? 0;
+  const [tableWrapRef, tableBodyHeight] = useTableBodyHeight(isDesktop, total);
 
   useEffect(() => {
     if (!result) return;
@@ -144,13 +188,15 @@ export function OrdersPage() {
       : null;
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-1 flex-col max-lg:h-auto max-lg:flex-none">
       <PageHeader
+        className="mb-3 shrink-0"
         kicker="Fila"
         title="Pedidos"
         subtitle="Ao mudar o status, o cliente recebe o aviso no WhatsApp."
       />
       <ListFilters
+        className="mb-3 shrink-0"
         activeCount={activeCount}
         onClear={() => {
           setQInput("");
@@ -185,10 +231,10 @@ export function OrdersPage() {
           ]}
         />
       </ListFilters>
-      <div className={tableWrap}>
+      <div ref={tableWrapRef} className={cn(tableWrap, "flex min-h-0 flex-1 flex-col")}>
       <Table
         rowKey="id"
-        className={`${tableClass} [&_.ant-table-cell-align-center]:whitespace-nowrap`}
+        className={`${tableClass} orders-grid-fill [&_.ant-table-cell-align-center]:whitespace-nowrap`}
         loading={listQuery.isPending && !result}
         dataSource={orders}
         tableLayout="fixed"
@@ -196,7 +242,7 @@ export function OrdersPage() {
           setPage(nextPage);
           setLimit(nextSize);
         })}
-        scroll={{ x: 1280 }}
+        scroll={{ x: 1280, y: tableBodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
@@ -346,6 +392,6 @@ export function OrdersPage() {
           });
         }}
       />
-    </>
+    </div>
   );
 }

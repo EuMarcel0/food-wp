@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Typography } from "antd";
+import { cn } from "../lib/cn";
 import { kicker } from "../ui";
 
 export function PageHeader({
@@ -7,14 +8,16 @@ export function PageHeader({
   title,
   subtitle,
   extra,
+  className,
 }: {
   kicker?: string;
   title: string;
   subtitle?: string;
   extra?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="mb-5 flex items-start justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
+    <div className={cn("flex items-start justify-between gap-4 max-sm:flex-col max-sm:items-stretch", className ?? "mb-5")}>
       <div>
         {kickerLabel ? <p className={kicker}>{kickerLabel}</p> : null}
         <Typography.Title

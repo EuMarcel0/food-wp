@@ -10,7 +10,7 @@ export const tableWrap =
 export const listCards = "hidden max-lg:block";
 
 export const tableClass =
-  "[&_.ant-table]:bg-transparent [&_.ant-table-thead_th]:text-[11px] [&_.ant-table-thead_th]:font-bold [&_.ant-table-thead_th]:uppercase [&_.ant-table-thead_th]:tracking-wider [&_.ant-table-tbody_td]:align-middle [&_.ant-table-tbody_td]:tabular-nums";
+  "[&_.ant-table]:bg-transparent [&_.ant-table-header]:bg-food-surface [&_.ant-table-thead_th]:bg-food-surface [&_.ant-table-thead_th]:text-[11px] [&_.ant-table-thead_th]:font-bold [&_.ant-table-thead_th]:uppercase [&_.ant-table-thead_th]:tracking-wider [&_.ant-table-tbody_td]:align-middle [&_.ant-table-tbody_td]:tabular-nums";
 
 export const entityCard =
   "relative overflow-hidden rounded-[18px] border border-food-border bg-food-card p-4 pb-3.5 shadow-food-soft before:absolute before:inset-y-3.5 before:left-0 before:w-[3px] before:rounded-full before:bg-food-accent before:content-['']";

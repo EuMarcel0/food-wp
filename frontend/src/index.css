@@ -125,6 +125,15 @@
     background: var(--food-chip-bg) !important;
   }
 
+  .orders-grid-fill .ant-table-header {
+    background: var(--food-surface);
+  }
+
+  .orders-grid-fill .ant-table-header .ant-table-cell,
+  .orders-grid-fill .ant-table-thead > tr > th {
+    background: var(--food-surface) !important;
+  }
+
   .ant-app .ant-message {
     z-index: 2000;
   }
