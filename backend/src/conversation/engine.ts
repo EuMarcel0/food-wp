@@ -160,6 +160,25 @@ function productHasAddons(product: Product) {
   return productAddons(product).length > 0;
 }
 
+function hasAddonPicked(drafts?: CartSelection[]) {
+  return (drafts ?? []).some(
+    (item) => item.groupId === ADDON_GROUP_ID && item.options.length > 0,
+  );
+}
+
+function applyDraftAddon(drafts: CartSelection[], addon: { id: string; name: string; price: number } | null) {
+  const next = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
+  if (addon) {
+    next.push({
+      groupId: ADDON_GROUP_ID,
+      groupName: "Adicional",
+      priceMode: "addon",
+      options: [{ id: addon.id, name: addon.name, extraPrice: addon.price }],
+    });
+  }
+  return next;
+}
+
 function isSkipAddon(incoming: string, normalized: string) {
   return (
     incoming === "skip_addon" ||
@@ -548,9 +567,19 @@ async function askAddons(to: string, product: Product) {
       rows,
     },
   ]);
-  await sendButtons(to, "Pode pular se não quiser adicional.", [
-    { id: "skip_addon", title: "Sem adicional" },
-  ]);
+}
+
+async function askQuantityStage(
+  to: string,
+  product: Product,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+) {
+  await persist("awaiting_quantity", context);
+  await askQuantity(to, product, context.draftSelections ?? []);
+  if (productHasAddons(product) && !hasAddonPicked(context.draftSelections)) {
+    await askAddons(to, product);
+  }
 }
 
 async function continueProductFlow(
@@ -564,8 +593,7 @@ async function continueProductFlow(
     await askAssembly(to, product, context);
     return;
   }
-  await persist("awaiting_quantity", context);
-  await askQuantity(to, product, context.draftSelections ?? []);
+  await askQuantityStage(to, product, context, persist);
 }
 
 async function finishOrder(
@@ -761,16 +789,14 @@ export async function handleIncomingMessage(input: {
       const following = nextAssembly(product, drafts);
       if (following.type === "done") {
         context.optionGroupIndex = undefined;
-        await persist("awaiting_quantity", context);
-        await askQuantity(input.from, product, drafts);
+        await askQuantityStage(input.from, product, context, persist);
         return;
       }
       await persist("awaiting_option", context);
       const finished = await askAssembly(input.from, product, context);
       if (finished) {
         context.optionGroupIndex = undefined;
-        await persist("awaiting_quantity", context);
-        await askQuantity(input.from, product, drafts);
+        await askQuantityStage(input.from, product, context, persist);
       }
     };
 
@@ -911,18 +937,15 @@ export async function handleIncomingMessage(input: {
     const product = context.selectedProductId
       ? await getProduct(context.selectedProductId)
       : null;
-    if (!product || !productHasAddons(product)) {
-      if (product) {
-        await continueProductFlow(input.from, product, context, persist);
-        return;
-      }
+    if (!product) {
       await persist("awaiting_product", context);
       await showMenu(input.from, "Escolha um item do cardápio:");
       return;
     }
 
     if (isSkipAddon(incoming, normalized)) {
-      await continueProductFlow(input.from, product, context, persist);
+      context.draftSelections = applyDraftAddon(context.draftSelections ?? [], null);
+      await askQuantityStage(input.from, product, context, persist);
       return;
     }
 
@@ -938,15 +961,8 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    context.draftSelections = [
-      {
-        groupId: ADDON_GROUP_ID,
-        groupName: "Adicional",
-        priceMode: "addon",
-        options: [{ id: addon.id, name: addon.name, extraPrice: addon.price }],
-      },
-    ];
-    await continueProductFlow(input.from, product, context, persist);
+    context.draftSelections = applyDraftAddon(context.draftSelections ?? [], addon);
+    await askQuantityStage(input.from, product, context, persist);
     return;
   }
 
@@ -968,23 +984,48 @@ export async function handleIncomingMessage(input: {
     context.draftSelections = [];
     context.optionGroupIndex = 0;
 
-    if (productHasAddons(product)) {
-      await persist("awaiting_addon", context);
-      await askAddons(input.from, product);
-      return;
-    }
-
     await continueProductFlow(input.from, product, context, persist);
     return;
   }
 
   if (state === "awaiting_quantity") {
-    const quantity = parseQuantity(incoming);
     const product = context.selectedProductId
       ? await getProduct(context.selectedProductId)
       : null;
 
-    if (!product || quantity == null) {
+    if (!product) {
+      await sendText(input.from, "Envie um número de 1 a 20, ou toque em 1, 2 ou 3.");
+      return;
+    }
+
+    if (productHasAddons(product) && isSkipAddon(incoming, normalized)) {
+      context.draftSelections = applyDraftAddon(context.draftSelections ?? [], null);
+      await persist("awaiting_quantity", context);
+      await sendText(input.from, "Ok, sem adicional. Toque em 1, 2 ou 3, ou digite a quantidade.");
+      return;
+    }
+
+    if (productHasAddons(product)) {
+      const addons = productAddons(product);
+      const addon = incoming.startsWith("addon:")
+        ? addons.find((item) => item.id === incoming.slice("addon:".length))
+        : addons.find((item) => normalize(item.name) === normalized);
+      if (addon) {
+        context.draftSelections = applyDraftAddon(context.draftSelections ?? [], addon);
+        await persist("awaiting_quantity", context);
+        await askQuantity(input.from, product, context.draftSelections);
+        return;
+      }
+      if (incoming.startsWith("addon:")) {
+        await sendText(input.from, "Escolha um adicional da lista ou toque em Sem adicional.");
+        await askAddons(input.from, product);
+        return;
+      }
+    }
+
+    const quantity = parseQuantity(incoming);
+
+    if (quantity == null) {
       await sendText(input.from, "Envie um número de 1 a 20, ou toque em 1, 2 ou 3.");
       return;
     }

@@ -241,7 +241,7 @@ export function ProductForm({
                   <label className={formToggle}>
                     <div>
                       <strong>Terá adicional</strong>
-                      <p>Depois do item, o cliente pode escolher um extra ou pular</p>
+                      <p>Na quantidade, o cliente pode escolher um extra ou pular</p>
                     </div>
                     <FormControl name="addonsEnabled" compact>
                       {({ value, setValue }) => (
