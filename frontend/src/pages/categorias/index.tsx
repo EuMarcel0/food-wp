@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Table, Tag } from "antd";
+import { FillTable } from "../../components/FillTable";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -9,18 +10,21 @@ import { RowActions } from "../../components/RowActions";
 import { useDialog } from "../../dialog";
 import { CategoryCard } from "./CategoryCard";
 import { api } from "../../lib/api";
-import { useDebouncedValue } from "../../lib/hooks";
+import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
+import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import type { Category } from "../../types";
 import type { CategoryValues } from "../../lib/validation";
 import { CategoryForm, toCategoryPayload } from "./CategoryForm";
-import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
+import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
 
 export function CategoriesPage() {
   const dialog = useDialog();
   const queryClient = useQueryClient();
+  const isDesktop = useMediaQuery("(min-width: 992px)");
+  const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(isDesktop);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(false);
@@ -91,8 +95,9 @@ export function CategoriesPage() {
   }
 
   return (
-    <>
+    <div className={listPage}>
       <PageHeader
+        className="mb-3 shrink-0"
         kicker="Organização"
         title="Categorias"
         subtitle="Organize o cardápio. Só as ativas aparecem no WhatsApp e no cadastro de itens."
@@ -106,6 +111,7 @@ export function CategoriesPage() {
         }
       />
       <ListFilters
+        className="mb-3 shrink-0"
         activeCount={activeCount}
         onClear={() => {
           setQInput("");
@@ -133,17 +139,21 @@ export function CategoriesPage() {
           ]}
         />
       </ListFilters>
-      <div className={tableWrap}>
+      <FillTable
+        shellRef={shellRef}
+        tableAreaRef={tableAreaRef}
+        pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+          setPage(nextPage);
+          setLimit(nextSize);
+        })}
+      >
         <Table
           rowKey="id"
-          className={tableClass}
+          className={`${tableClass} ${tableGridFill}`}
           loading={listQuery.isPending && !result}
           dataSource={categories}
-          pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-            setPage(nextPage);
-            setLimit(nextSize);
-          })}
-          scroll={{ x: 640 }}
+          pagination={false}
+          scroll={{ x: 640, y: bodyHeight }}
           columns={[
             { title: "Nome", dataIndex: "name" },
             { title: "Ordem", dataIndex: "sortOrder", width: 100 },
@@ -184,7 +194,7 @@ export function CategoriesPage() {
             },
           ]}
         />
-      </div>
+      </FillTable>
       <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
@@ -224,6 +234,6 @@ export function CategoriesPage() {
           await saveMutation.mutateAsync(values);
         }}
       />
-    </>
+    </div>
   );
 }

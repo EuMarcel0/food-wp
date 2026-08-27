@@ -2,24 +2,28 @@ import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Table, Tag } from "antd";
+import { FillTable } from "../../components/FillTable";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { ProductCard } from "./ProductCard";
 import { api } from "../../lib/api";
-import { useDebouncedValue } from "../../lib/hooks";
+import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { catalogPriceLabel } from "../../lib/format";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
+import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import type { Product } from "../../types";
 import { ProductForm, toProductPayload } from "./ProductForm";
 import type { ProductValues } from "../../lib/validation";
-import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
+import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
 
 export function CatalogPage() {
   const queryClient = useQueryClient();
+  const isDesktop = useMediaQuery("(min-width: 992px)");
+  const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(isDesktop);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(false);
@@ -99,8 +103,9 @@ export function CatalogPage() {
   });
 
   return (
-    <>
+    <div className={listPage}>
       <PageHeader
+        className="mb-3 shrink-0"
         kicker="Itens"
         title="Cardápio"
         subtitle="Os itens ativos aparecem para o cliente no WhatsApp."
@@ -118,6 +123,7 @@ export function CatalogPage() {
         }
       />
       <ListFilters
+        className="mb-3 shrink-0"
         activeCount={activeCount}
         onClear={() => {
           setQInput("");
@@ -159,17 +165,21 @@ export function CatalogPage() {
           ]}
         />
       </ListFilters>
-      <div className={tableWrap}>
+      <FillTable
+        shellRef={shellRef}
+        tableAreaRef={tableAreaRef}
+        pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+          setPage(nextPage);
+          setLimit(nextSize);
+        })}
+      >
         <Table
           rowKey="id"
-          className={tableClass}
+          className={`${tableClass} ${tableGridFill}`}
           loading={listQuery.isPending && !result}
           dataSource={products}
-          pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-            setPage(nextPage);
-            setLimit(nextSize);
-          })}
-          scroll={{ x: 800 }}
+          pagination={false}
+          scroll={{ x: 800, y: bodyHeight }}
           columns={[
             { title: "Categoria", dataIndex: "categoryName", width: 180 },
             { title: "Item", dataIndex: "name" },
@@ -232,7 +242,7 @@ export function CatalogPage() {
             },
           ]}
         />
-      </div>
+      </FillTable>
       <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
@@ -276,6 +286,6 @@ export function CatalogPage() {
           await saveMutation.mutateAsync(values);
         }}
       />
-    </>
+    </div>
   );
 }

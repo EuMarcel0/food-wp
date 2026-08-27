@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Pagination, Select, Table, Tag, Tooltip } from "antd";
+import { Button, Input, Select, Table, Tag, Tooltip } from "antd";
 import { FileTextOutlined } from "@ant-design/icons";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
@@ -34,54 +34,9 @@ import {
 import { useAuth } from "../../auth/AuthProvider";
 import { displayName } from "../../lib/profile";
 import type { Order, OrderStatus } from "../../types";
-import { cn } from "../../lib/cn";
-import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
-
-function useOrdersGridHeight(enabled: boolean) {
-  const shellRef = useRef<HTMLDivElement>(null);
-  const tableAreaRef = useRef<HTMLDivElement>(null);
-  const [bodyHeight, setBodyHeight] = useState(400);
-
-  useLayoutEffect(() => {
-    if (!enabled) return;
-    const shell = shellRef.current;
-    const area = tableAreaRef.current;
-    if (!shell || !area) return;
-
-    const measure = () => {
-      const top = shell.getBoundingClientRect().top;
-      const content = document.getElementById("conteudo");
-      const padBottom = content
-        ? parseFloat(getComputedStyle(content).paddingBottom) || 0
-        : 12;
-      const shellHeight = Math.floor(window.innerHeight - top - padBottom);
-      if (shellHeight <= 0) return;
-      shell.style.height = `${shellHeight}px`;
-      const header =
-        area.querySelector<HTMLElement>(".ant-table-header") ??
-        area.querySelector<HTMLElement>(".ant-table-thead");
-      const next = Math.floor(
-        area.clientHeight - (header?.getBoundingClientRect().height ?? 47) - 2,
-      );
-      const clamped = Math.max(120, next);
-      setBodyHeight((prev) => (Math.abs(prev - clamped) < 1 ? prev : clamped));
-    };
-
-    measure();
-    const frame = window.requestAnimationFrame(measure);
-    const observer = new ResizeObserver(measure);
-    observer.observe(shell);
-    observer.observe(area);
-    window.addEventListener("resize", measure);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [enabled]);
-
-  return { shellRef, tableAreaRef, bodyHeight };
-}
+import { FillTable } from "../../components/FillTable";
+import { useTableGridHeight } from "../../lib/useTableGridHeight";
+import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
 
 const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
@@ -91,7 +46,7 @@ export function OrdersPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isDesktop = useMediaQuery("(min-width: 992px)");
-  const { shellRef, tableAreaRef, bodyHeight } = useOrdersGridHeight(isDesktop);
+  const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(isDesktop);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [qInput, setQInput] = useState("");
@@ -207,7 +162,7 @@ export function OrdersPage() {
   });
 
   return (
-    <div className="orders-page flex h-full min-h-0 flex-1 flex-col max-lg:h-auto max-lg:flex-none">
+    <div className={listPage}>
       <PageHeader
         className="mb-3 shrink-0"
         kicker="Fila"
@@ -251,11 +206,14 @@ export function OrdersPage() {
           ]}
         />
       </ListFilters>
-      <div ref={shellRef} className={cn(tableWrap, "flex min-h-0 flex-1 flex-col")}>
-      <div ref={tableAreaRef} className="min-h-0 flex-1 overflow-hidden">
+      <FillTable
+        shellRef={shellRef}
+        tableAreaRef={tableAreaRef}
+        pagination={pagination}
+      >
       <Table
         rowKey="id"
-        className={`${tableClass} orders-grid-fill [&_.ant-table-cell-align-center]:whitespace-nowrap`}
+        className={`${tableClass} ${tableGridFill} [&_.ant-table-cell-align-center]:whitespace-nowrap`}
         loading={listQuery.isPending && !result}
         dataSource={orders}
         tableLayout="fixed"
@@ -388,11 +346,7 @@ export function OrdersPage() {
           },
         ]}
       />
-      </div>
-      <div className="flex shrink-0 items-center justify-end border-t border-food-border">
-        <Pagination {...pagination} />
-      </div>
-      </div>
+      </FillTable>
       <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}

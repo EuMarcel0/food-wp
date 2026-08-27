@@ -125,35 +125,35 @@
     background: var(--food-chip-bg) !important;
   }
 
-  .orders-grid-fill .ant-table-header {
+  .table-grid-fill .ant-table-header {
     background: var(--food-surface);
   }
 
-  .orders-grid-fill .ant-table-header .ant-table-cell,
-  .orders-grid-fill .ant-table-thead > tr > th {
+  .table-grid-fill .ant-table-header .ant-table-cell,
+  .table-grid-fill .ant-table-thead > tr > th {
     background: var(--food-surface) !important;
   }
 
-  .orders-grid-fill .ant-table-body {
+  .table-grid-fill .ant-table-body {
     overflow-x: auto !important;
     overflow-y: auto !important;
   }
 
-  .orders-page .ant-pagination-item,
-  .orders-page .ant-pagination-item-active,
-  .orders-page .ant-pagination-item-active:hover {
+  .list-page .ant-pagination-item,
+  .list-page .ant-pagination-item-active,
+  .list-page .ant-pagination-item-active:hover {
     border-color: transparent !important;
     background: transparent !important;
   }
 
-  .orders-page .ant-pagination-item-active a {
+  .list-page .ant-pagination-item-active a {
     color: var(--food-text) !important;
   }
 
-  .orders-page .ant-pagination-options .ant-select .ant-select-selector,
-  .orders-page .ant-pagination-options .ant-select:hover .ant-select-selector,
-  .orders-page .ant-pagination-options .ant-select-focused .ant-select-selector,
-  .orders-page .ant-pagination-options .ant-select-open .ant-select-selector {
+  .list-page .ant-pagination-options .ant-select .ant-select-selector,
+  .list-page .ant-pagination-options .ant-select:hover .ant-select-selector,
+  .list-page .ant-pagination-options .ant-select-focused .ant-select-selector,
+  .list-page .ant-pagination-options .ant-select-open .ant-select-selector {
     border-color: transparent !important;
     box-shadow: none !important;
     background: transparent !important;

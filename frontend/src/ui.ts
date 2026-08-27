@@ -4,8 +4,13 @@ export const foodMark =
 export const kicker =
   "m-0 mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-food-accent";
 
+export const listPage =
+  "list-page flex h-full min-h-0 flex-1 flex-col max-lg:h-auto max-lg:flex-none";
+
 export const tableWrap =
   "w-full overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft max-lg:hidden";
+
+export const tableGridFill = "table-grid-fill";
 
 export const listCards = "hidden max-lg:block";
 
