@@ -32,10 +32,12 @@ import type {
   CartSelection,
   ConversationContext,
   ConversationState,
+  DeliveryNeighborhood,
   Fulfillment,
   PaymentMethod,
   Product,
   ProductOptionGroup,
+  Store,
 } from "../types.js";
 
 const GREETING_KEYS = ["oi", "olá", "ola", "menu", "inicio", "início", "hi", "hello"];
@@ -176,6 +178,49 @@ async function askFulfillment(to: string, store: { deliveryEnabled: boolean; pic
   if (store.deliveryEnabled) buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
   if (store.pickupEnabled) buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
   await sendButtons(to, `${cartText}\n\nComo você prefere receber?`, buttons);
+}
+
+async function askNeighborhoods(to: string, store: Store) {
+  const zones = [...(store.neighborhoods ?? [])].sort((left, right) =>
+    left.name.localeCompare(right.name, "pt-BR"),
+  );
+  const sections = [];
+  for (let index = 0; index < zones.length; index += 10) {
+    const chunk = zones.slice(index, index + 10);
+    sections.push({
+      title: zones.length > 10 ? `Bairros ${Math.floor(index / 10) + 1}` : "Bairros",
+      rows: chunk.map((zone) => ({
+        id: `nbh:${zone.id}`,
+        title: zone.name,
+        description: formatBRL(zone.feeCents),
+      })),
+    });
+  }
+  await sendList(
+    to,
+    "Escolha o bairro da entrega. A taxa já aparece em cada opção.",
+    "Ver bairros",
+    sections,
+  );
+}
+
+function findNeighborhood(
+  incoming: string,
+  normalized: string,
+  zones: DeliveryNeighborhood[],
+) {
+  if (incoming.startsWith("nbh:")) {
+    const id = incoming.slice(4);
+    return zones.find((zone) => zone.id === id) ?? null;
+  }
+  return zones.find((zone) => normalize(zone.name) === normalized) ?? null;
+}
+
+async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
+  const intro = zone
+    ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.\nQual o endereço completo da entrega?`
+    : "Qual o endereço completo da entrega?";
+  await sendText(to, intro);
 }
 
 async function showWelcome(to: string, storeName: string) {
@@ -676,8 +721,16 @@ export async function handleIncomingMessage(input: {
 
     context.fulfillment = resolved;
     if (resolved === "delivery") {
+      const zones = store.neighborhoods ?? [];
+      if (zones.length) {
+        context.neighborhoodId = undefined;
+        context.neighborhoodName = undefined;
+        await persist("awaiting_neighborhood", context);
+        await askNeighborhoods(input.from, store);
+        return;
+      }
       await persist("awaiting_address", context);
-      await sendText(input.from, "Qual o endereço completo da entrega?");
+      await goToAddress(input.from);
       return;
     }
 
@@ -687,6 +740,20 @@ export async function handleIncomingMessage(input: {
       { id: "pay:cash", title: "Dinheiro" },
       { id: "pay:card", title: "Cartão" },
     ]);
+    return;
+  }
+
+  if (state === "awaiting_neighborhood") {
+    const zone = findNeighborhood(incoming, normalized, store.neighborhoods ?? []);
+    if (!zone) {
+      await sendText(input.from, "Escolha um bairro da lista.");
+      await askNeighborhoods(input.from, store);
+      return;
+    }
+    context.neighborhoodId = zone.id;
+    context.neighborhoodName = zone.name;
+    await persist("awaiting_address", context);
+    await goToAddress(input.from, zone);
     return;
   }
 
@@ -711,10 +778,10 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    const deliveryFee = resolveDeliveryFee(
-      context.fulfillment === "delivery" ? context.addressText : undefined,
-      store,
-    );
+    const deliveryFee = resolveDeliveryFee(store, {
+      neighborhoodId: context.neighborhoodId,
+      address: context.fulfillment === "delivery" ? context.addressText : undefined,
+    });
     const order = await createOrder({
       customer,
       fulfillment: context.fulfillment,

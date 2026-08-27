@@ -17,7 +17,7 @@ export function ListFilters({
 
   if (!isMobile) {
     return (
-      <div className="mb-4 flex flex-row flex-wrap items-center gap-2.5">
+      <div className="mb-4 flex flex-row flex-wrap items-center gap-2.5 [&_.ant-input-search]:!w-[280px] [&_.ant-input-search]:!max-w-[280px] [&_.ant-select]:!w-40">
         {children}
         {activeCount > 0 ? (
           <Button onClick={onClear}>Limpar</Button>

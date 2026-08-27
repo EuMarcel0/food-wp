@@ -63,8 +63,9 @@ export function NeighborhoodFees({ store }: { store?: Store }) {
       title="Taxas por bairro"
     >
       <p className="mb-4 max-w-xl text-sm leading-normal text-food-muted">
-        Se o endereço do cliente citar o bairro, o bot usa essa taxa no total.
-        Sem correspondência, vale a taxa default.
+        No WhatsApp, depois de Entrega, o cliente escolhe o bairro nesta lista
+        (com a taxa) e em seguida digita o endereço. Sem bairro cadastrado, vale
+        a taxa default.
       </p>
 
       <Formik

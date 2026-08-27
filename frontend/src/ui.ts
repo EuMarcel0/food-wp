@@ -50,6 +50,7 @@ export const formHint =
 export const formEmpty =
   "grid min-h-60 place-items-center rounded-2xl border border-dashed border-food-border bg-food-chip p-6 text-center [&_p]:mb-3.5 [&_p]:max-w-[28ch] [&_p]:text-[13px] [&_p]:leading-normal [&_p]:text-food-muted";
 
-export const filterSearch = "w-[280px] max-w-full shrink-0";
+export const filterSearch =
+  "!w-[280px] !max-w-[280px] shrink-0 [&_.ant-input-group-wrapper]:!w-[280px]";
 
-export const filterSelect = "w-40 shrink-0";
+export const filterSelect = "!w-40 shrink-0";

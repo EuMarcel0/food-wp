@@ -21,13 +21,23 @@ function addressHasNeighborhood(address: string, neighborhood: string) {
 }
 
 export function resolveDeliveryFee(
-  address: string | undefined,
   store: Pick<Store, "deliveryFeeCents" | "neighborhoods">,
+  options: { neighborhoodId?: string; address?: string } = {},
 ): { cents: number; neighborhood: DeliveryNeighborhood | null } {
-  const zones = [...(store.neighborhoods ?? [])].sort(
+  const zones = store.neighborhoods ?? [];
+  if (options.neighborhoodId) {
+    const chosen = zones.find((zone) => zone.id === options.neighborhoodId);
+    if (chosen) {
+      return { cents: Math.max(0, chosen.feeCents), neighborhood: chosen };
+    }
+  }
+
+  const ranked = [...zones].sort(
     (left, right) => right.name.length - left.name.length,
   );
-  const match = zones.find((zone) => addressHasNeighborhood(address ?? "", zone.name));
+  const match = ranked.find((zone) =>
+    addressHasNeighborhood(options.address ?? "", zone.name),
+  );
   if (match) return { cents: Math.max(0, match.feeCents), neighborhood: match };
   return { cents: Math.max(0, store.deliveryFeeCents), neighborhood: null };
 }

@@ -18,6 +18,7 @@ export type ConversationState =
   | "cart"
   | "awaiting_order_note"
   | "awaiting_fulfillment"
+  | "awaiting_neighborhood"
   | "awaiting_address"
   | "awaiting_payment"
   | "awaiting_order_code";
@@ -67,6 +68,8 @@ export type ConversationContext = {
   draftSelections?: CartSelection[];
   draftItem?: CartItem;
   fulfillment?: Fulfillment;
+  neighborhoodId?: string;
+  neighborhoodName?: string;
   addressText?: string;
   orderNotes?: string | null;
 };
