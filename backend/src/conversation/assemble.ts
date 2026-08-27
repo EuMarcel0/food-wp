@@ -137,24 +137,29 @@ function cheapestSum(group: ProductOptionGroup, count: number) {
     .reduce((sum, value) => sum + value, 0);
 }
 
-function isFlavorOrSizeGroup(group: ProductOptionGroup | undefined) {
-  if (!group) return false;
-  return group.maxSelect > 1 || Boolean(group.exclusiveSet?.trim());
+function isSizeGroup(group: ProductOptionGroup | undefined) {
+  return Boolean(group?.exclusiveSet?.trim());
 }
 
-function hasBasePrice(product: Product) {
-  return product.price > 0;
+function isFlavorOrSizeGroup(group: ProductOptionGroup | undefined) {
+  if (!group) return false;
+  return group.maxSelect > 1 || isSizeGroup(group);
+}
+
+function sizePrice(product: Product, group: ProductOptionGroup) {
+  return group.price > 0 ? group.price : product.price;
 }
 
 export function variantStartingPrice(product: Product, group: ProductOptionGroup) {
-  if (hasBasePrice(product)) return product.price;
+  if (isSizeGroup(group)) return sizePrice(product, group);
+  if (product.price > 0) return product.price;
   return Math.max(0, cheapestSum(group, Math.max(1, group.minSelect)));
 }
 
 export function variantPriceLabel(product: Product, group: ProductOptionGroup) {
   const price = variantStartingPrice(product, group);
   const formatted = formatReais(price);
-  if (hasBasePrice(product)) return formatted;
+  if (isSizeGroup(group) || product.price > 0) return formatted;
   const extras = group.options.map((option) => option.extraPrice);
   const varied = extras.length > 1 && extras.some((value) => value !== extras[0]);
   return varied ? `a partir de ${formatted}` : formatted;
@@ -167,13 +172,18 @@ export function soleGroupPick(group: ProductOptionGroup) {
 }
 
 export function unitPriceCents(product: Product, selections: CartSelection[]) {
-  let cents = Math.round(product.price * 100);
   const groups = activeGroups(product);
-  const freezeFlavors = hasBasePrice(product);
+  const selectedSize = selections
+    .map((selection) => groups.find((item) => item.id === selection.groupId))
+    .find((group) => isSizeGroup(group));
+
+  let cents = Math.round(
+    (selectedSize ? sizePrice(product, selectedSize) : product.price) * 100,
+  );
 
   for (const selection of selections) {
     const group = groups.find((item) => item.id === selection.groupId);
-    if (freezeFlavors && (isFlavorOrSizeGroup(group) || !group)) continue;
+    if (isFlavorOrSizeGroup(group) || !group) continue;
 
     const extra = selection.options.reduce(
       (max, option) => Math.max(max, Math.round(option.extraPrice * 100)),

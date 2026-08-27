@@ -88,6 +88,18 @@ export const productSchema = Yup.object({
           .oneOf(["addon", "replace"])
           .default("addon"),
         exclusiveSet: Yup.string().nullable().default(null),
+        price: Yup.string().default("0,00").when("exclusiveSet", {
+          is: (value: string | null | undefined) => Boolean(value),
+          then: (schema) =>
+            schema.test(
+              "size-price",
+              "Informe o preço do tamanho",
+              (value) => {
+                const amount = parseReais(value ?? "");
+                return amount !== null && amount > 0;
+              },
+            ),
+        }),
         options: Yup.array()
           .of(
             Yup.object({

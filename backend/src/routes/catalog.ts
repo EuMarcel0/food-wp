@@ -39,6 +39,7 @@ function parseOptionGroups(raw: unknown): ProductOptionGroup[] | undefined {
       maxSelect,
       priceMode,
       exclusiveSet: String(group.exclusiveSet ?? "").trim() || null,
+      price: Math.max(0, Number(group.price ?? 0)),
       sortOrder: Number(group.sortOrder ?? index),
       options: options.map((optionRaw, optionIndex) => {
         const option = optionRaw as Record<string, unknown>;

@@ -15,9 +15,22 @@ export function formatReais(value: number) {
 export function catalogPriceLabel(product: {
   price: number;
   customizable: boolean;
-  optionGroups?: { options: { extraPrice: number }[] }[];
+  optionGroups?: {
+    exclusiveSet?: string | null;
+    price?: number;
+    options: { extraPrice: number }[];
+  }[];
 }) {
   if (!product.customizable) return formatReais(product.price);
+  const sizePrices = (product.optionGroups ?? [])
+    .filter((group) => group.exclusiveSet)
+    .map((group) => Number(group.price ?? 0))
+    .filter((value) => value > 0);
+  if (sizePrices.length) {
+    const from = Math.min(...sizePrices);
+    const varied = sizePrices.some((value) => value !== from);
+    return varied ? `a partir de ${formatReais(from)}` : formatReais(from);
+  }
   if (product.price > 0) return formatReais(product.price);
   const extras = (product.optionGroups ?? []).flatMap((group) =>
     group.options.map((option) => option.extraPrice),

@@ -52,6 +52,7 @@ function mapOptionGroups(row: Record<string, unknown>): ProductOptionGroup[] {
         maxSelect: Number(group.max_select ?? 1),
         priceMode: group.price_mode === "replace" ? "replace" : "addon",
         exclusiveSet: (group.exclusive_set as string | null) ?? null,
+        price: Number(group.price ?? 0),
         sortOrder: Number(group.sort_order ?? 0),
         options: options
           .sort(
@@ -460,12 +461,18 @@ async function replaceProductOptions(
         max_select: group.maxSelect,
         price_mode: group.priceMode,
         exclusive_set: group.exclusiveSet?.trim() || null,
+        price: group.price ?? 0,
         sort_order: group.sortOrder ?? index,
       })
       .select("id")
       .single();
     if (error || !data) {
-      throw new Error(error?.message ?? "Não foi possível salvar as opções.");
+      const missingPrice = error?.message?.includes('column "price"');
+      throw new Error(
+        missingPrice
+          ? "Rode a migration 017_option_group_price.sql no Supabase."
+          : error?.message ?? "Não foi possível salvar as opções.",
+      );
     }
     const options = group.options.filter((option) => option.name.trim());
     if (!options.length) continue;

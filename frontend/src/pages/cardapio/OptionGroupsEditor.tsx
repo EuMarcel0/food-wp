@@ -20,6 +20,7 @@ function emptyGroup(
   maxSelect: number,
   required = true,
   exclusiveSet: string | null = null,
+  price = "0,00",
 ): ProductValues["optionGroups"][number] {
   return {
     id: newId(),
@@ -29,11 +30,16 @@ function emptyGroup(
     maxSelect,
     priceMode,
     exclusiveSet,
+    price,
     options: [emptyOption()],
   };
 }
 
 function groupMeta(group: ProductValues["optionGroups"][number]) {
+  const sizePrice =
+    group.exclusiveSet && group.price && group.price !== "0,00"
+      ? `R$ ${group.price}`
+      : null;
   const price =
     group.priceMode === "replace" ? "Substitui o preço" : "Soma no preço";
   const required = group.required ? "Obrigatório" : "Opcional";
@@ -41,14 +47,16 @@ function groupMeta(group: ProductValues["optionGroups"][number]) {
     Number(group.maxSelect) === 1
       ? "1 escolha"
       : `Até ${group.maxSelect} escolhas`;
-  return `${required} · ${price} · ${max}`;
+  return [required, sizePrice ?? price, max].filter(Boolean).join(" · ");
 }
 
 export function OptionGroupsEditor({
   groups,
+  defaultSizePrice = "0,00",
   onChange,
 }: {
   groups: ProductValues["optionGroups"];
+  defaultSizePrice?: string;
   onChange: (groups: ProductValues["optionGroups"]) => void;
 }) {
   function update(
@@ -58,6 +66,10 @@ export function OptionGroupsEditor({
     onChange(groups.map((group, current) => (current === index ? { ...group, ...patch } : group)));
   }
 
+  const sizePriceSeed = defaultSizePrice.replace(/\D/g, "")
+    ? defaultSizePrice
+    : "0,00";
+
   return (
     <div className="flex min-h-0 flex-1 flex-col max-lg:min-h-auto max-lg:flex-none">
       <div className="mb-3.5 flex shrink-0 flex-wrap gap-2 [&_.ant-btn]:h-8 [&_.ant-btn]:rounded-full [&_.ant-btn]:border-food-border [&_.ant-btn]:bg-food-chip [&_.ant-btn]:px-3 [&_.ant-btn]:text-food-text">
@@ -65,7 +77,10 @@ export function OptionGroupsEditor({
           size="small"
           icon={<PlusOutlined />}
           onClick={() =>
-            onChange([...groups, emptyGroup("Tamanho", "replace", 1, true, "tamanho")])
+            onChange([
+              ...groups,
+              emptyGroup("Tamanho", "replace", 1, true, "tamanho", sizePriceSeed),
+            ])
           }
         >
           Tamanho
@@ -124,9 +139,34 @@ export function OptionGroupsEditor({
               Remover
             </Button>
           </div>
-          <FormField name={`optionGroups.${groupIndex}.name`} label="Nome do grupo">
-            <Input placeholder="Tamanho, sabores, borda, ponto da carne…" />
-          </FormField>
+          <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2 max-sm:grid-cols-1">
+            <FormField
+              name={`optionGroups.${groupIndex}.name`}
+              label="Nome do grupo"
+            >
+              <Input
+                placeholder={
+                  group.exclusiveSet
+                    ? "P - Pequena, M - Média…"
+                    : "Tamanho, sabores, borda, ponto da carne…"
+                }
+              />
+            </FormField>
+            {group.exclusiveSet ? (
+              <FormControl name={`optionGroups.${groupIndex}.price`} label="Preço">
+                {({ value, setValue, setTouched }) => (
+                  <Input
+                    prefix="R$"
+                    inputMode="numeric"
+                    placeholder="0,00"
+                    value={String(value ?? "")}
+                    onChange={(event) => setValue(maskBRL(event.target.value))}
+                    onBlur={setTouched}
+                  />
+                )}
+              </FormControl>
+            ) : null}
+          </div>
           <div className="grid grid-cols-2 gap-2 max-lg:grid-cols-1">
             <FormControl
               name={`optionGroups.${groupIndex}.priceMode`}
@@ -194,14 +234,23 @@ export function OptionGroupsEditor({
             <Switch
               checked={Boolean(group.exclusiveSet)}
               onChange={(checked) =>
-                update(groupIndex, { exclusiveSet: checked ? "tamanho" : null })
+                update(groupIndex, {
+                  exclusiveSet: checked ? "tamanho" : null,
+                  ...(checked && !String(group.price ?? "").replace(/\D/g, "")
+                    ? { price: sizePriceSeed }
+                    : {}),
+                })
               }
             />
           </label>
           <div className="rounded-xl border border-food-border bg-food-card p-2.5">
-            {group.exclusiveSet || Number(group.maxSelect) > 1 ? (
+            {group.exclusiveSet ? (
               <p className="mb-2 px-0.5 text-xs text-food-muted">
-                Com preço base preenchido, o valor das opções de tamanho e sabor ainda não altera o total.
+                O preço ao lado do nome é o deste tamanho. O valor das opções de sabor ainda não altera o total.
+              </p>
+            ) : Number(group.maxSelect) > 1 ? (
+              <p className="mb-2 px-0.5 text-xs text-food-muted">
+                O valor das opções de sabor ainda não altera o total.
               </p>
             ) : null}
             <div className="mb-2 grid grid-cols-[minmax(0,1fr)_128px_32px] gap-2 px-0.5 text-[11px] font-bold uppercase tracking-wider text-food-muted max-sm:grid-cols-[minmax(0,1fr)_104px_32px]">

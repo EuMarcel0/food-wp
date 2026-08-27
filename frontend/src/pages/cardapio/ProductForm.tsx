@@ -27,6 +27,15 @@ function groupsFromProduct(product: Product | null): ProductValues["optionGroups
     maxSelect: group.maxSelect,
     priceMode: group.priceMode,
     exclusiveSet: group.exclusiveSet ?? null,
+    price: maskBRL(
+      String(
+        Math.round(
+          (group.exclusiveSet && !(group.price > 0)
+            ? product?.price ?? 0
+            : group.price ?? 0) * 100,
+        ),
+      ),
+    ),
     options: group.options.map((option) => ({
       id: option.id,
       name: option.name,
@@ -168,7 +177,7 @@ export function ProductForm({
                 </FormControl>
                 {values.customizable ? (
                   <p className={cn(formHint, "-mt-1")}>
-                    Se preenchido, este é o preço da pizza no WhatsApp — tamanhos e sabores não somam. Sem valor, o bot usa o preço das opções. A regra “sabor mais caro” ainda não entra.
+                    Cada tamanho tem o próprio preço na montagem. Este valor só entra se o item não tiver tamanhos.
                   </p>
                 ) : null}
                 <div className="mt-1 grid gap-2">
@@ -240,6 +249,7 @@ export function ProductForm({
                     ) : null}
                     <OptionGroupsEditor
                       groups={values.optionGroups ?? []}
+                      defaultSizePrice={String(values.price || "0,00")}
                       onChange={(next) => setFieldValue("optionGroups", next)}
                     />
                   </>
@@ -290,6 +300,7 @@ export function toProductPayload(values: ProductValues) {
         maxSelect: Math.max(1, group.maxSelect),
         priceMode: group.priceMode,
         exclusiveSet: group.exclusiveSet || null,
+        price: group.exclusiveSet ? parseReais(group.price) ?? 0 : 0,
         sortOrder: index,
         options: group.options.map((option, optionIndex) => ({
           id: option.id,

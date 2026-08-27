@@ -38,6 +38,7 @@ export type ProductOptionGroup = {
   maxSelect: number;
   priceMode: "addon" | "replace";
   exclusiveSet?: string | null;
+  price: number;
   sortOrder: number;
   options: ProductOption[];
 };

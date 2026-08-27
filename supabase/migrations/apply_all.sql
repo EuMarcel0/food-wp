@@ -455,3 +455,8 @@ alter table public.order_items
 -- ========== 016_product_notes_enabled ==========
 alter table public.products
   add column if not exists notes_enabled boolean not null default false;
+
+-- ========== 017_option_group_price ==========
+alter table public.product_option_groups
+  add column if not exists price numeric(12, 2) not null default 0 check (price >= 0);
+
