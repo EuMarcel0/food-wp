@@ -110,18 +110,6 @@ export async function sendText(to: string, body: string) {
   return send({ to, type: "text", text: { preview_url: false, body } });
 }
 
-export async function sendLocationRequest(to: string, body: string) {
-  return send({
-    to,
-    type: "interactive",
-    interactive: {
-      type: "location_request_message",
-      body: { text: body },
-      action: { name: "send_location" },
-    },
-  });
-}
-
 export async function sendButtons(to: string, body: string, buttons: Button[]) {
   return send({
     to,

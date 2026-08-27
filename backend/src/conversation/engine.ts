@@ -1,5 +1,5 @@
 import { formatBRL, formatReais } from "../lib/money.js";
-import { sendButtons, sendList, sendLocationRequest, sendText } from "../lib/whatsapp.js";
+import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
 import {
   createOrder,
   findLatestOrder,
@@ -331,16 +331,11 @@ async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
       ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`
       : null,
     "Qual o endereço completo da entrega?",
-    "Você também pode *enviar sua localização*.",
+    "Pode escrever a rua e o número ou, no celular, compartilhar a localização pelo clipe.",
   ]
     .filter(Boolean)
     .join("\n");
-  try {
-    await sendLocationRequest(to, intro);
-  } catch (error) {
-    console.warn("WhatsApp: location request indisponível, usando texto", error);
-    await sendText(to, intro);
-  }
+  await sendText(to, intro);
 }
 
 function formatLocation(location: {
