@@ -84,7 +84,7 @@ export function SettingsModal({
                 message={status}
               />
             ) : null}
-            <div className="settings-photo">
+            <div className="mb-4 flex flex-col items-center gap-2.5">
               <Avatar src={preview} size={88} />
               <Upload
                 accept="image/png,image/jpeg,image/webp"
@@ -100,7 +100,7 @@ export function SettingsModal({
               >
                 <Button icon={<CameraOutlined />}>Trocar foto</Button>
               </Upload>
-              <span>JPG, PNG ou WEBP · até 2 MB</span>
+              <span className="text-xs text-food-muted">JPG, PNG ou WEBP · até 2 MB</span>
             </div>
             <Form layout="vertical" requiredMark={false} component={false}>
               <Form.Item label="E-mail" style={{ marginBottom: 12 }}>
@@ -110,7 +110,7 @@ export function SettingsModal({
             <FormField name="name" label="Nome">
               <Input autoComplete="name" placeholder="Nome que aparece no painel…" />
             </FormField>
-            <p className="settings-section">Alterar senha</p>
+            <p className="mt-2 mb-3 text-xs font-bold uppercase tracking-wider text-food-muted">Alterar senha</p>
             <FormField name="currentPassword" label="Senha atual">
               <Input.Password autoComplete="current-password" placeholder="Necessária para trocar a senha…" />
             </FormField>
@@ -120,7 +120,7 @@ export function SettingsModal({
             <FormField name="confirmPassword" label="Confirmar nova senha">
               <Input.Password autoComplete="new-password" placeholder="Repita a nova senha…" />
             </FormField>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <div className="flex justify-end gap-2">
               <Button onClick={onClose}>Cancelar</Button>
               <Button type="primary" htmlType="submit" loading={isSubmitting}>
                 Salvar

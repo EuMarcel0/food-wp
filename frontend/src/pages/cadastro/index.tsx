@@ -85,7 +85,7 @@ export function SignupPage() {
           </FormikForm>
         )}
       </Formik>
-      <Typography.Paragraph className='auth-footer'>
+      <Typography.Paragraph className="!mt-4 !mb-0">
         Já tem conta? <Link to='/login'>Entrar</Link>
       </Typography.Paragraph>
     </AuthLayout>

@@ -16,6 +16,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import type { Category } from "../../types";
 import type { CategoryValues } from "../../lib/validation";
 import { CategoryForm, toCategoryPayload } from "./CategoryForm";
+import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
 
 export function CategoriesPage() {
   const dialog = useDialog();
@@ -112,14 +113,14 @@ export function CategoriesPage() {
         }}
       >
         <Input.Search
-          className="filter-search"
+          className={filterSearch}
           allowClear
           placeholder="Nome da categoria…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
         />
         <Select
-          className="filter-select"
+          className={filterSelect}
           allowClear
           placeholder="Situação"
           value={active === undefined ? undefined : active ? "1" : "0"}
@@ -132,9 +133,10 @@ export function CategoriesPage() {
           ]}
         />
       </ListFilters>
-      <div className="table-wrap list-table">
+      <div className={tableWrap}>
         <Table
           rowKey="id"
+          className={tableClass}
           loading={listQuery.isPending && !result}
           dataSource={categories}
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
@@ -183,7 +185,7 @@ export function CategoriesPage() {
           ]}
         />
       </div>
-      <div className="list-cards">
+      <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
           isEmpty={categories.length === 0}

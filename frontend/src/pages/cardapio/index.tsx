@@ -16,6 +16,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import type { Product } from "../../types";
 import { ProductForm, toProductPayload } from "./ProductForm";
 import type { ProductValues } from "../../lib/validation";
+import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
 
 export function CatalogPage() {
   const queryClient = useQueryClient();
@@ -118,14 +119,14 @@ export function CatalogPage() {
         }}
       >
         <Input.Search
-          className="filter-search"
+          className={filterSearch}
           allowClear
           placeholder="Nome ou descrição…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
         />
         <Select
-          className="filter-select"
+          className={filterSelect}
           allowClear
           showSearch
           optionFilterProp="label"
@@ -138,7 +139,7 @@ export function CatalogPage() {
           }))}
         />
         <Select
-          className="filter-select"
+          className={filterSelect}
           allowClear
           placeholder="Situação"
           value={active === undefined ? undefined : active ? "1" : "0"}
@@ -151,9 +152,10 @@ export function CatalogPage() {
           ]}
         />
       </ListFilters>
-      <div className="table-wrap list-table">
+      <div className={tableWrap}>
         <Table
           rowKey="id"
+          className={tableClass}
           loading={listQuery.isPending && !result}
           dataSource={products}
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
@@ -222,7 +224,7 @@ export function CatalogPage() {
           ]}
         />
       </div>
-      <div className="list-cards">
+      <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
           isEmpty={products.length === 0}

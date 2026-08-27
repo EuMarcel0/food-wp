@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "antd";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/queryKeys";
-import "./connection-status.css";
+import { cn } from "../lib/cn";
 
 function toneOf(whatsapp?: boolean, database?: boolean) {
   if (whatsapp === undefined || database === undefined) return "pending";
@@ -16,6 +16,13 @@ function labelOf(ok: boolean) {
   return ok ? "conectado" : "fora";
 }
 
+const DOT: Record<string, string> = {
+  pending: "bg-food-muted",
+  ok: "bg-green-500 shadow-[0_0_0_4px_rgba(34,197,94,0.18)] animate-pulse-dot motion-reduce:animate-none",
+  warn: "bg-amber-500 shadow-[0_0_0_4px_rgba(245,158,11,0.22)] animate-bounce-dot motion-reduce:animate-none",
+  bad: "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.22)] animate-bounce-dot-fast motion-reduce:animate-none",
+};
+
 export function ConnectionStatus() {
   const { data, isError } = useQuery({
     queryKey: queryKeys.health,
@@ -27,7 +34,7 @@ export function ConnectionStatus() {
   const database = isError ? false : data?.supabase;
   const tone = toneOf(whatsapp, database);
   const title = (
-    <div className="connection-tooltip">
+    <div className="flex flex-col gap-1.5 [&_p]:m-0 [&_p]:text-xs [&_p]:leading-snug [&_li]:m-0 [&_li]:text-xs [&_li]:leading-snug [&_ul]:mt-1 [&_ul]:mb-0 [&_ul]:pl-4">
       <p>WhatsApp: {whatsapp === undefined ? "verificando" : labelOf(whatsapp)}</p>
       <p>
         Banco de dados:{" "}
@@ -45,10 +52,10 @@ export function ConnectionStatus() {
     <Tooltip title={title} placement="bottomRight">
       <button
         type="button"
-        className="connection-status"
+        className="grid size-9 cursor-default place-items-center border-0 bg-transparent p-0"
         aria-label="Status das conexões"
       >
-        <span className={`connection-dot is-${tone}`} />
+        <span className={cn("size-2.5 rounded-full", DOT[tone])} />
       </button>
     </Tooltip>
   );

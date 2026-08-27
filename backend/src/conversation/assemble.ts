@@ -98,13 +98,14 @@ export function nextAssembly(
       if (!chosen) return { type: "variant", groups: cluster };
       const group = chosen;
       const draft = drafts.find((item) => item.groupId === group.id);
+      if (draft?.skipped && !group.required) continue;
       const count = draft?.options.length ?? 0;
       const need = Math.max(group.required ? 1 : 0, group.minSelect);
       if (count < need) {
         if (!group.options.length) continue;
         return { type: "options", group };
       }
-      if (count === 0 && group.options.length > 1) {
+      if (count === 0 && group.options.length > 1 && !draft?.skipped) {
         return { type: "options", group };
       }
       continue;
@@ -113,6 +114,7 @@ export function nextAssembly(
     const group = cluster[0];
     const draft = drafts.find((item) => item.groupId === group.id);
     const count = draft?.options.length ?? 0;
+    if (draft?.skipped && !group.required) continue;
     if (draft && count === 0 && !group.required) continue;
     if (count >= Math.max(group.required ? 1 : 0, group.minSelect) && count > 0) {
       continue;

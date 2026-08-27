@@ -57,7 +57,7 @@ export function UserMenu() {
                 key: `theme:${item.key}`,
                 icon: item.icon,
                 label: (
-                  <span className="user-menu-item">
+                  <span className="flex min-w-[132px] items-center justify-between gap-4">
                     {item.label}
                     {mode === item.key ? <CheckOutlined /> : null}
                   </span>
@@ -87,9 +87,9 @@ export function UserMenu() {
           },
         }}
       >
-        <button type="button" className="user-menu-trigger" aria-label="Menu da conta">
+        <button type="button" className="inline-flex cursor-pointer rounded-full border-0 bg-transparent p-0" aria-label="Menu da conta">
           <Avatar
-            className="user-avatar"
+            className="shrink-0"
             src={user ? getAvatarUrl(user) : undefined}
             icon={!user ? <UserOutlined /> : undefined}
             style={{ backgroundColor: "#E85D04" }}

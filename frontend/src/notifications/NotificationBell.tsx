@@ -4,9 +4,9 @@ import { Badge, Button, Drawer, Empty, Popover } from "antd";
 import { useNavigate } from "react-router-dom";
 import { formatDate } from "../lib/format";
 import { useMediaQuery } from "../lib/hooks";
+import { cn } from "../lib/cn";
 import type { AppNotification } from "../types";
 import { useNotifications } from "./NotificationProvider";
-import "./notifications.css";
 
 function NotificationList({
   items,
@@ -17,7 +17,7 @@ function NotificationList({
 }) {
   if (!items.length) {
     return (
-      <div className="notification-empty">
+      <div className="px-4 py-10 pb-8">
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="Nenhuma notificação ainda."
@@ -27,30 +27,30 @@ function NotificationList({
   }
 
   return (
-    <ul className="notification-list">
+    <ul className="m-0 max-h-[380px] list-none overflow-auto overscroll-contain p-1.5 max-lg:max-h-none max-lg:flex-1 max-lg:p-2">
       {items.map((item) => (
         <li key={item.id}>
           <button
             type="button"
-            className={item.read ? "notification-item is-read" : "notification-item"}
+            className={cn(
+              "flex w-full cursor-pointer flex-col items-start gap-1 rounded-xl border-0 bg-transparent px-3 py-2.5 text-left text-inherit hover:bg-food-chip",
+              item.read && "opacity-[0.58]",
+            )}
             onClick={() => onSelect(item.id)}
           >
             <span
-              className={
-                item.type === "order_created"
-                  ? "notification-kind is-created"
-                  : "notification-kind is-updated"
-              }
+              className={cn(
+                "text-[10px] font-extrabold uppercase tracking-wider",
+                item.type === "order_created" ? "text-green-500" : "text-food-accent",
+              )}
             >
               {item.type === "order_created" ? "Pedido criado" : "Pedido alterado"}
             </span>
-            <strong>{item.title}</strong>
-            {item.changeSummary ? (
-              <em>{item.changeSummary}</em>
-            ) : (
-              <em>Novo pedido no WhatsApp</em>
-            )}
-            <span className="notification-meta">
+            <strong className="text-[13px] tracking-tight">{item.title}</strong>
+            <em className="not-italic text-[13px] text-food-text">
+              {item.changeSummary || "Novo pedido no WhatsApp"}
+            </em>
+            <span className="text-xs text-food-muted">
               {formatDate(item.createdAt)} · {item.actorName}
             </span>
           </button>
@@ -86,7 +86,7 @@ export function NotificationBell() {
   const trigger = (
     <Badge count={unread} size="small" offset={[-2, 2]}>
       <Button
-        className="notification-bell"
+        className="size-9"
         type="text"
         aria-label="Notificações"
         aria-expanded={open}
@@ -108,12 +108,14 @@ export function NotificationBell() {
           arrow={false}
           open={open}
           onOpenChange={setOpen}
-          overlayClassName="notification-popover"
+          overlayClassName="[&_.ant-popover-inner]:overflow-hidden [&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-0"
           content={
-            <div className="notification-panel">
-              <div className="notification-panel-head">
-                <strong>Notificações</strong>
-                {unreadLabel ? <span>{unreadLabel}</span> : null}
+            <div className="w-[min(360px,calc(100vw-24px))]">
+              <div className="flex items-baseline justify-between gap-3 border-b border-food-border px-4 pt-3.5 pb-2.5">
+                <strong className="text-sm tracking-tight">Notificações</strong>
+                {unreadLabel ? (
+                  <span className="text-xs text-food-muted">{unreadLabel}</span>
+                ) : null}
               </div>
               {list}
             </div>
@@ -127,14 +129,14 @@ export function NotificationBell() {
           title="Notificações"
           extra={
             unreadLabel ? (
-              <span className="notification-drawer-count">{unreadLabel}</span>
+              <span className="text-xs text-food-muted">{unreadLabel}</span>
             ) : null
           }
           placement="right"
           open={open}
           onClose={() => setOpen(false)}
           width={isPhone ? "100%" : 400}
-          className="notification-drawer"
+          className="[&_.ant-drawer-header]:border-food-border [&_.ant-drawer-body]:min-h-0 [&_.ant-drawer-body]:pb-[env(safe-area-inset-bottom)]"
           destroyOnClose={false}
           styles={{
             body: { padding: 0, display: "flex", flexDirection: "column" },

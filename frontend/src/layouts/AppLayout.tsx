@@ -15,6 +15,8 @@ import { ConnectionStatus } from "./ConnectionStatus";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { NotificationProvider } from "../notifications/NotificationProvider";
 import { UserMenu } from "./UserMenu";
+import { cn } from "../lib/cn";
+import { foodMark } from "../ui";
 
 const SIDER_STORAGE_KEY = "food-wp-sider-collapsed";
 
@@ -34,14 +36,25 @@ function readSiderCollapsed() {
   }
 }
 
-function SiderBrand() {
+function SiderBrand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="food-sider-brand">
-      <div className="food-mark" aria-hidden="true">🍽️</div>
-      <div className="food-sider-copy">
-        <strong>Food WP</strong>
-        <span>Retaguarda do bot</span>
+    <div
+      className={cn(
+        "flex items-center gap-2.5 px-4 pb-3.5 pt-5 text-zinc-50",
+        compact && "justify-center px-3",
+      )}
+    >
+      <div className={foodMark} aria-hidden="true">
+        🍽️
       </div>
+      {compact ? null : (
+        <div>
+          <strong className="block text-base leading-tight tracking-tight">
+            Food WP
+          </strong>
+          <span className="block text-xs text-zinc-400">Retaguarda do bot</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -84,8 +97,11 @@ export function AppLayout() {
 
   return (
     <NotificationProvider>
-    <Layout className="app-shell" hasSider={!isMobile}>
-      <a className="skip-link" href="#conteudo">
+    <Layout className="relative h-full min-h-0 flex-1 overflow-hidden" hasSider={!isMobile}>
+      <a
+        className="absolute top-3 left-3 z-[4000] -translate-y-[160%] rounded-[10px] bg-food-accent px-3 py-2 text-[13px] font-bold text-white no-underline transition-transform duration-150 focus:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none"
+        href="#conteudo"
+      >
         Ir para o conteúdo
       </a>
       {isMobile ? (
@@ -94,7 +110,7 @@ export function AppLayout() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           width={236}
-          className="app-drawer"
+          className="[&_.ant-drawer-body]:border-r [&_.ant-drawer-body]:border-zinc-900"
           styles={{
             body: { padding: 0, background: "#050506" },
             header: { display: "none" },
@@ -105,22 +121,22 @@ export function AppLayout() {
         </Drawer>
       ) : (
         <Layout.Sider
-          className="app-sider"
+          className="h-full overflow-auto border-r border-zinc-900"
           width={236}
           collapsedWidth={72}
           collapsed={collapsed}
           theme="dark"
         >
-          <SiderBrand />
+          <SiderBrand compact={collapsed} />
           <nav aria-label="Menu principal">{menu}</nav>
         </Layout.Sider>
       )}
-      <Layout className="app-main">
+      <Layout className="h-full min-h-0 min-w-0 overflow-hidden">
         <Layout.Header
-          className="app-header"
+          className="flex h-[60px] shrink-0 items-center justify-between gap-3 px-5 leading-[60px] backdrop-blur-md max-lg:px-3"
           style={{ borderBottom: `1px solid ${token.colorBorder}` }}
         >
-          <div className="app-header-left">
+          <div className="flex min-w-0 items-center gap-2">
             <Tooltip
               title={
                 isMobile
@@ -131,7 +147,7 @@ export function AppLayout() {
               }
             >
               <Button
-                className="app-menu-trigger"
+                className="inline-flex"
                 type="text"
                 aria-label={
                   isMobile
@@ -152,18 +168,25 @@ export function AppLayout() {
                 onClick={() => (isMobile ? setDrawerOpen(true) : toggleSider())}
               />
             </Tooltip>
-            <Typography.Text strong className="app-header-title">
+            <Typography.Text
+              strong
+              className="truncate font-semibold tracking-tight max-sm:text-sm"
+            >
               Atendimento por WhatsApp
             </Typography.Text>
           </div>
-          <div className="app-header-right">
+          <div className="flex items-center gap-2">
             <ConnectionStatus />
             <NotificationBell />
             <UserMenu />
           </div>
         </Layout.Header>
-        <Layout.Content id="conteudo" className="app-content" tabIndex={-1}>
-          <div className="app-page">
+        <Layout.Content
+          id="conteudo"
+          className="min-h-0 min-w-0 flex-1 overflow-auto px-7 py-6 pb-8 scroll-mt-3 max-lg:px-3.5 max-lg:py-4 max-lg:pb-6"
+          tabIndex={-1}
+        >
+          <div className="mx-auto w-full max-w-[1200px]">
             <Outlet />
           </div>
         </Layout.Content>

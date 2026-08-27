@@ -10,6 +10,7 @@ import {
   formatBRL,
   formatDate,
 } from "../../lib/format";
+import { entityItems, entityMeta, entityPrice } from "../../ui";
 import type { Order, OrderStatus } from "../../types";
 
 export function OrderCard({
@@ -62,7 +63,7 @@ export function OrderCard({
       }
       footer={
         <>
-          <div className="entity-card-meta">
+          <div className={entityMeta}>
             <Tag color={STATUS_COLOR[order.status]}>
               {STATUS_LABEL[order.status]}
             </Tag>
@@ -73,14 +74,14 @@ export function OrderCard({
             ) : null}
             <span>{formatDate(order.createdAt)}</span>
           </div>
-          <strong className="entity-card-price">{formatBRL(order.totalCents)}</strong>
+          <strong className={entityPrice}>{formatBRL(order.totalCents)}</strong>
         </>
       }
     >
-      <div style={{ fontWeight: 700, color: "var(--food-text)", marginBottom: 8 }}>
+      <div className="mb-2 font-bold text-food-text">
         {order.customerName || order.customerPhone || "Cliente"}
       </div>
-      <ul className="entity-card-items">
+      <ul className={entityItems}>
         {(order.items ?? []).length
           ? order.items?.map((item, index) => (
               <li key={item.id ?? `${item.name}-${index}`}>
@@ -91,17 +92,16 @@ export function OrderCard({
           : <li>Sem itens</li>}
       </ul>
       {order.notes ? (
-        <p style={{ margin: "8px 0 0", color: "var(--food-muted)", fontSize: 13 }}>
+        <p className="mt-2 mb-0 text-[13px] text-food-muted">
           Pedido: {order.notes}
         </p>
       ) : null}
       {next ? (
         <Button
-          className="entity-card-action"
+          className="mt-3 w-full"
           type="primary"
           loading={updating}
           onClick={() => onChangeStatus(order, next)}
-          style={{ marginTop: 12 }}
         >
           {STATUS_LABEL[next]}
         </Button>

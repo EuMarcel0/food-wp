@@ -47,6 +47,7 @@ export type CartSelection = {
   groupName: string;
   priceMode: "addon" | "replace";
   options: { id: string; name: string; extraPrice: number }[];
+  skipped?: boolean;
 };
 
 export type CartItem = {

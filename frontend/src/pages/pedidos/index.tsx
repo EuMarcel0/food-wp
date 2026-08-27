@@ -29,6 +29,7 @@ import {
 import { useAuth } from "../../auth/AuthProvider";
 import { displayName } from "../../lib/profile";
 import type { Order, OrderStatus } from "../../types";
+import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
 
 const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
@@ -137,14 +138,14 @@ export function OrdersPage() {
         }}
       >
         <Input.Search
-          className="filter-search"
+          className={filterSearch}
           allowClear
           placeholder="Código, cliente ou item…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
         />
         <Select
-          className="filter-select"
+          className={filterSelect}
           allowClear
           placeholder="Status"
           value={status}
@@ -152,7 +153,7 @@ export function OrdersPage() {
           onChange={setStatus}
         />
         <Select
-          className="filter-select"
+          className={filterSelect}
           allowClear
           placeholder="Tipo"
           value={fulfillment}
@@ -163,10 +164,10 @@ export function OrdersPage() {
           ]}
         />
       </ListFilters>
-      <div className="table-wrap list-table">
+      <div className={tableWrap}>
       <Table
         rowKey="id"
-        className="orders-table"
+        className={`${tableClass} [&_.ant-table-cell-align-center]:whitespace-nowrap`}
         loading={listQuery.isPending && !result}
         dataSource={orders}
         tableLayout="fixed"
@@ -194,7 +195,7 @@ export function OrdersPage() {
                   })
                   .join(", ") || "—";
               return (
-                <span className="orders-items-cell" title={text}>
+                <span className="line-clamp-2 leading-snug break-words" title={text}>
                   {text}
                 </span>
               );
@@ -284,7 +285,7 @@ export function OrdersPage() {
         ]}
       />
       </div>
-      <div className="list-cards">
+      <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
           isEmpty={orders.length === 0}

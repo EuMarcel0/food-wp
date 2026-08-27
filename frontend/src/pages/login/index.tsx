@@ -61,7 +61,7 @@ export function LoginPage() {
           </FormikForm>
         )}
       </Formik>
-      <Typography.Paragraph className='auth-footer'>
+      <Typography.Paragraph className="!mt-4 !mb-0">
         Ainda não tem conta? <Link to='/cadastro'>Criar cadastro</Link>
       </Typography.Paragraph>
     </AuthLayout>

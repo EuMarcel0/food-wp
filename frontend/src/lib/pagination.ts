@@ -26,6 +26,7 @@ export function serverPagination(
     showSizeChanger: true,
     pageSizeOptions: ["20", "50", "100"],
     showTotal: (count) => (count === 1 ? "1 item" : `${count} itens`),
+    className: "!m-0 px-4 py-3",
     onChange,
   };
 }

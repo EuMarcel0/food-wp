@@ -15,7 +15,6 @@ import {
   type ReactNode,
 } from "react";
 import type { DialogApi, DialogOptions, DialogVariant } from "./types";
-import "./dialog.css";
 
 type DialogRequest = {
   id: number;
@@ -38,7 +37,7 @@ const VARIANT_DEFAULTS: Record<
     cancelText: "Cancelar",
     showCancel: true,
     okDanger: false,
-    icon: <ExclamationCircleFilled className="app-dialog-icon is-confirm" />,
+    icon: <ExclamationCircleFilled className="text-[22px] text-amber-600" />,
   },
   delete: {
     title: "Excluir",
@@ -46,21 +45,21 @@ const VARIANT_DEFAULTS: Record<
     cancelText: "Cancelar",
     showCancel: true,
     okDanger: true,
-    icon: <CloseCircleFilled className="app-dialog-icon is-delete" />,
+    icon: <CloseCircleFilled className="text-[22px] text-red-500" />,
   },
   alert: {
     title: "Atenção",
     okText: "Entendi",
     showCancel: false,
     okDanger: false,
-    icon: <ExclamationCircleFilled className="app-dialog-icon is-alert" />,
+    icon: <ExclamationCircleFilled className="text-[22px] text-amber-600" />,
   },
   info: {
     title: "Informação",
     okText: "Ok",
     showCancel: false,
     okDanger: false,
-    icon: <InfoCircleFilled className="app-dialog-icon is-info" />,
+    icon: <InfoCircleFilled className="text-[22px] text-blue-600" />,
   },
   warning: {
     title: "Atenção",
@@ -68,14 +67,14 @@ const VARIANT_DEFAULTS: Record<
     cancelText: "Cancelar",
     showCancel: true,
     okDanger: false,
-    icon: <ExclamationCircleFilled className="app-dialog-icon is-warning" />,
+    icon: <ExclamationCircleFilled className="text-[22px] text-amber-600" />,
   },
   success: {
     title: "Pronto",
     okText: "Ok",
     showCancel: false,
     okDanger: false,
-    icon: <CheckCircleFilled className="app-dialog-icon is-success" />,
+    icon: <CheckCircleFilled className="text-[22px] text-green-600" />,
   },
 };
 
@@ -145,12 +144,10 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {children}
       <Modal
         {...(options?.modalProps ?? {})}
-        className={["app-dialog", options?.modalProps?.className]
-          .filter(Boolean)
-          .join(" ")}
+        className={options?.modalProps?.className}
         open={Boolean(current)}
         title={
-          <div className="app-dialog-title">
+          <div className="flex items-center gap-2.5">
             {options?.icon ?? defaults?.icon}
             <span>{options?.title ?? defaults?.title}</span>
           </div>
@@ -190,8 +187,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           <Typography.Paragraph
             className={
               options.content
-                ? "app-dialog-description has-content"
-                : "app-dialog-description"
+                ? "!mb-3 text-food-muted"
+                : "!mb-0 text-food-muted"
             }
           >
             {options.description}

@@ -2,7 +2,6 @@ import { type ReactNode, useState } from "react";
 import { FilterOutlined } from "@ant-design/icons";
 import { Badge, Button, Modal } from "antd";
 import { useMediaQuery } from "../lib/hooks";
-import "./list-filters.css";
 
 export function ListFilters({
   activeCount,
@@ -18,7 +17,7 @@ export function ListFilters({
 
   if (!isMobile) {
     return (
-      <div className="filter-bar filter-bar-desktop">
+      <div className="mb-4 flex flex-wrap items-center gap-2.5">
         {children}
         {activeCount > 0 ? (
           <Button onClick={onClear}>Limpar</Button>
@@ -29,7 +28,7 @@ export function ListFilters({
 
   return (
     <>
-      <div className="filter-bar-mobile">
+      <div className="mb-3.5 flex">
         <Badge count={activeCount} size="small" offset={[-2, 2]}>
           <Button icon={<FilterOutlined />} onClick={() => setOpen(true)}>
             Filtros
@@ -42,7 +41,7 @@ export function ListFilters({
         onCancel={() => setOpen(false)}
         destroyOnClose={false}
         footer={
-          <div className="filter-modal-footer">
+          <div className="flex justify-end gap-2">
             <Button onClick={onClear} disabled={activeCount === 0}>
               Limpar
             </Button>
@@ -52,7 +51,9 @@ export function ListFilters({
           </div>
         }
       >
-        <div className="filter-modal-fields">{children}</div>
+        <div className="flex flex-col gap-3 [&_.ant-input-affix-wrapper]:w-full [&_.ant-select]:w-full">
+          {children}
+        </div>
       </Modal>
     </>
   );

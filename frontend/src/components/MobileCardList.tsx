@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Empty, Pagination, Skeleton } from "antd";
 import type { TablePaginationConfig } from "antd";
-import "./mobile-cards.css";
+import { entityCard } from "../ui";
 
 export function MobileCardList({
   loading,
@@ -17,11 +17,11 @@ export function MobileCardList({
   pagination: TablePaginationConfig;
 }) {
   return (
-    <div className="mobile-card-list">
+    <div className="flex flex-col gap-3">
       {loading ? (
-        <div className="mobile-card-grid">
+        <div className="grid gap-3">
           {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className="entity-card">
+            <div key={index} className={entityCard}>
               <Skeleton active title paragraph={{ rows: 2 }} />
             </div>
           ))}
@@ -29,10 +29,10 @@ export function MobileCardList({
       ) : isEmpty ? (
         <Empty description={empty ?? "Nada por aqui."} />
       ) : (
-        <div className="mobile-card-grid">{children}</div>
+        <div className="grid gap-3">{children}</div>
       )}
       {!loading && (pagination.total ?? 0) > 0 ? (
-        <div className="mobile-card-pager">
+        <div className="flex justify-center py-2 pb-0.5">
           <Pagination
             current={pagination.current}
             pageSize={pagination.pageSize}

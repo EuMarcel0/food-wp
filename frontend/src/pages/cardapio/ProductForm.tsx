@@ -9,7 +9,14 @@ import {
 } from "../../lib/validation";
 import type { Category, Product } from "../../types";
 import { OptionGroupsEditor } from "./OptionGroupsEditor";
-import "./product-form.css";
+import { cn } from "../../lib/cn";
+import {
+  formEmpty,
+  formHeading,
+  formHint,
+  formKicker,
+  formToggle,
+} from "../../ui";
 
 function groupsFromProduct(product: Product | null): ProductValues["optionGroups"] {
   return (product?.optionGroups ?? []).map((group) => ({
@@ -64,26 +71,14 @@ export function ProductForm({
       destroyOnClose
       centered
       width="80vw"
-      rootClassName="product-form-modal"
-      styles={{
-        content: {
-          display: "flex",
-          flexDirection: "column",
-          padding: 0,
-          overflow: "hidden",
-        },
-        header: {
-          margin: 0,
-          padding: "16px 24px",
-          borderBottom: "1px solid var(--food-card-border)",
-        },
-        body: {
-          flex: 1,
-          minHeight: 0,
-          padding: 0,
-          overflow: "hidden",
-        },
+      classNames={{
+        content:
+          "flex h-[75vh] flex-col overflow-hidden border border-food-border bg-food-surface p-0 shadow-food max-[1366px]:h-[99vh] max-[1366px]:max-h-[99vh] max-lg:h-[99dvh] max-lg:max-h-[99dvh] [@media(max-height:768px)]:h-[99vh]",
+        header:
+          "m-0 border-b border-food-border bg-transparent px-6 py-4",
+        body: "flex min-h-0 flex-1 flex-col overflow-hidden p-0",
       }}
+      rootClassName="[&_.ant-modal]:max-w-none [&_.ant-modal]:pb-0 max-[1366px]:[&_.ant-modal]:!w-[99vw] max-[1366px]:[&_.ant-modal]:top-[0.5vh] max-lg:[&_.ant-modal]:!w-[99vw] [&_.ant-modal-title]:text-lg [&_.ant-modal-title]:font-bold [&_.ant-modal-title]:tracking-tight [&_.ant-modal-close]:top-3.5"
     >
       <Formik
         enableReinitialize
@@ -108,20 +103,20 @@ export function ProductForm({
         }}
       >
         {({ isSubmitting, status, values, setFieldValue, errors, touched }) => (
-          <FormikForm className="product-form">
+          <FormikForm className="flex h-full min-h-0 flex-1 flex-col">
             {status ? (
               <Alert
-                className="product-form-alert"
+                className="mx-6 mt-4"
                 type="error"
                 showIcon
                 message={status}
               />
             ) : null}
-            <div className="product-form-body">
-              <section className="product-form-pane product-form-pane--identity">
-                <p className="product-form-kicker">Ficha</p>
-                <h3 className="product-form-heading">O que aparece no cardápio</h3>
-                <p className="product-form-hint">
+            <div className="grid min-h-0 flex-1 overflow-hidden max-lg:grid-cols-1 max-lg:overflow-auto min-[992px]:grid-cols-[minmax(280px,0.4fr)_minmax(0,1fr)]">
+              <section className="min-h-0 overflow-auto overscroll-contain border-food-border bg-food-chip/55 px-6 pt-5 pb-6 max-lg:min-h-auto max-lg:overflow-visible max-lg:border-r-0 max-lg:border-b min-[992px]:border-r">
+                <p className={formKicker}>Ficha</p>
+                <h3 className={formHeading}>O que aparece no cardápio</h3>
+                <p className={formHint}>
                   Nome, categoria e preço base. O cliente vê isso antes de montar o pedido.
                 </p>
                 <FormField name="name" label="Nome">
@@ -172,12 +167,12 @@ export function ProductForm({
                   )}
                 </FormControl>
                 {values.customizable ? (
-                  <p className="product-form-hint product-form-hint--tight">
+                  <p className={cn(formHint, "-mt-1")}>
                     Pode deixar vazio. O bot usa o preço do tamanho; sabores do mesmo grupo não somam entre si.
                   </p>
                 ) : null}
-                <div className="product-form-toggles">
-                  <label className="product-form-toggle">
+                <div className="mt-1 grid gap-2">
+                  <label className={formToggle}>
                     <div>
                       <strong>Ativo no WhatsApp</strong>
                       <p>Entra no cardápio do cliente</p>
@@ -191,7 +186,7 @@ export function ProductForm({
                       )}
                     </FormControl>
                   </label>
-                  <label className="product-form-toggle">
+                  <label className={formToggle}>
                     <div>
                       <strong>Montável</strong>
                       <p>Tamanho, sabores, extras e outros grupos</p>
@@ -205,7 +200,7 @@ export function ProductForm({
                       )}
                     </FormControl>
                   </label>
-                  <label className="product-form-toggle">
+                  <label className={formToggle}>
                     <div>
                       <strong>Habilitar observação</strong>
                       <p>Pergunta no WhatsApp. Deixe desligado em itens padrão, como refrigerante</p>
@@ -222,13 +217,17 @@ export function ProductForm({
                 </div>
               </section>
               <section
-                className={`product-form-pane product-form-pane--assembly${values.customizable ? " is-live" : ""}`}
+                className={cn(
+                  "relative flex min-h-0 flex-col overflow-hidden px-6 pt-5 pb-6 max-lg:min-h-auto max-lg:overflow-visible",
+                  values.customizable &&
+                    "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-food-accent before:content-['']",
+                )}
               >
-                <p className="product-form-kicker">Montagem</p>
-                <h3 className="product-form-heading">O cliente escolhe nesta ordem</h3>
+                <p className={formKicker}>Montagem</p>
+                <h3 className={formHeading}>O cliente escolhe nesta ordem</h3>
                 {values.customizable ? (
                   <>
-                    <p className="product-form-hint">
+                    <p className={formHint}>
                       Use + Tamanho uma vez por tamanho se cada um tiver os próprios sabores. O cliente escolhe o tamanho e, na sequência, marca os sabores de uma vez.
                     </p>
                     {typeof errors.optionGroups === "string" && touched.optionGroups ? (
@@ -245,7 +244,7 @@ export function ProductForm({
                     />
                   </>
                 ) : (
-                  <div className="product-form-empty">
+                  <div className={formEmpty}>
                     <p>
                       Ligue Montável para o cliente escolher tamanho, sabores ou extras no WhatsApp.
                     </p>
@@ -259,7 +258,7 @@ export function ProductForm({
                 )}
               </section>
             </div>
-            <div className="product-form-footer">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-food-border bg-food-surface px-6 py-3">
               <Button onClick={onCancel}>Cancelar</Button>
               <Button
                 type="primary"

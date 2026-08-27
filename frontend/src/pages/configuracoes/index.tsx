@@ -10,7 +10,6 @@ import {
   botSettingsSchema,
   type BotSettingsValues,
 } from "../../lib/validation";
-import "./configuracoes.css";
 
 function formatIdleLabel(minutes: number) {
   if (!Number.isFinite(minutes) || minutes < 1) return "—";
@@ -55,7 +54,10 @@ export function SettingsPage() {
         subtitle="Regras do bot no WhatsApp: quanto tempo esperar o cliente e quando recomeçar o atendimento."
       />
 
-      <Card className="panel-card settings-bot-card" title="Tempo sem resposta">
+      <Card
+        className="mt-4 overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
+        title="Tempo sem resposta"
+      >
         <Formik
           enableReinitialize
           initialValues={initialValues}
@@ -83,12 +85,12 @@ export function SettingsPage() {
                   message={status}
                 />
               ) : null}
-              <p className="settings-bot-copy">
+              <p className="mb-4 text-sm leading-normal text-food-muted">
                 Se o cliente não responder nesse prazo, a próxima mensagem dele
                 vira o começo de uma conversa nova. O pedido em andamento é
                 descartado.
               </p>
-              <div className="settings-timeout-row">
+              <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
                 <FormControl name="idleTimeoutMinutes" label="Tempo limite">
                   {({ value, setValue, setTouched }) => (
                     <InputNumber
@@ -103,7 +105,7 @@ export function SettingsPage() {
                     />
                   )}
                 </FormControl>
-                <p className="settings-timeout-preview" aria-live="polite">
+                <p className="mb-3 text-[22px] font-extrabold leading-tight tracking-tight text-food-accent tabular-nums" aria-live="polite">
                   {formatIdleLabel(Number(values.idleTimeoutMinutes))}
                 </p>
               </div>
@@ -120,8 +122,8 @@ export function SettingsPage() {
         </Formik>
       </Card>
 
-      <Card className="panel-card" title="Status da API">
-        <div className="settings-health">
+      <Card className="mt-4 overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft" title="Status da API">
+        <div className="flex flex-wrap gap-2">
           <Tag color={health?.ok ? "green" : "red"}>
             API {health?.ok ? "online" : "offline"}
           </Tag>

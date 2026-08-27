@@ -101,6 +101,19 @@ function renderCart(context: ConversationContext) {
   return `${lines.join("\n")}\n\nSubtotal: ${formatBRL(cartTotal(context))}`;
 }
 
+function isSkipStep(incoming: string, normalized: string) {
+  if (
+    incoming === "skip_group" ||
+    incoming === "done_options" ||
+    normalized === "pular" ||
+    normalized === "pronto"
+  ) {
+    return true;
+  }
+  const last = normalized.split(/[\n/|]+/).pop()?.trim() ?? "";
+  return last === "pular" || last === "pronto";
+}
+
 function isSkipNote(incoming: string, normalized: string) {
   return (
     incoming === "skip_note" ||
@@ -271,7 +284,7 @@ function groupWantingMore(product: Product, drafts: CartSelection[]) {
   for (let index = drafts.length - 1; index >= 0; index -= 1) {
     const draft = drafts[index];
     const group = groups.find((item) => item.id === draft.groupId);
-    if (!group || draft.options.length >= group.maxSelect) continue;
+    if (!group || draft.skipped || draft.options.length >= group.maxSelect) continue;
     const picked = new Set(draft.options.map((option) => option.id));
     if (group.options.some((option) => !picked.has(option.id))) return group;
   }
@@ -537,12 +550,7 @@ export async function handleIncomingMessage(input: {
         };
       if (!drafts.some((item) => item.groupId === group.id)) drafts.push(current);
 
-      if (
-        incoming === "skip_group" ||
-        normalized === "pular" ||
-        incoming === "done_options" ||
-        normalized === "pronto"
-      ) {
+      if (isSkipStep(incoming, normalized)) {
         if (group.required && current.options.length < Math.max(1, group.minSelect)) {
           await sendText(
             input.from,
@@ -551,6 +559,7 @@ export async function handleIncomingMessage(input: {
           await askAssembly(input.from, product, context);
           return;
         }
+        current.skipped = current.options.length === 0;
         await goNext();
         return;
       }

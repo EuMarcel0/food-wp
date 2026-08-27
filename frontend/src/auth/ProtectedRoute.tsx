@@ -9,7 +9,7 @@ export function ProtectedRoute() {
 
   if (loading) {
     return (
-      <div className="page-fill">
+      <div className="grid h-full place-items-center bg-food-bg">
         <Spin size="large" />
       </div>
     );
@@ -27,7 +27,7 @@ export function GuestRoute() {
 
   if (loading) {
     return (
-      <div className="page-fill">
+      <div className="grid h-full place-items-center bg-food-bg">
         <Spin size="large" />
       </div>
     );

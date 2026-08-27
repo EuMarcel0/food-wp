@@ -1,7 +1,32 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --breakpoint-sm: 36rem;
+  --breakpoint-lg: 62rem;
+  --font-sans: "Plus Jakarta Sans", "Nunito", "Segoe UI", sans-serif;
+  --animate-pulse-dot: pulse-dot 2.4s ease-in-out infinite;
+  --animate-bounce-dot: bounce-dot 1.1s ease-in-out infinite;
+  --animate-bounce-dot-fast: bounce-dot 0.8s ease-in-out infinite;
+}
+
+@theme inline {
+  --color-food-bg: var(--food-bg);
+  --color-food-text: var(--food-text);
+  --color-food-muted: var(--food-muted);
+  --color-food-card: var(--food-card-bg);
+  --color-food-border: var(--food-card-border);
+  --color-food-chip: var(--food-chip-bg);
+  --color-food-surface: var(--food-surface);
+  --color-food-header: var(--food-header);
+  --color-food-accent: var(--food-accent);
+  --color-food-accent-soft: var(--food-accent-soft);
+  --shadow-food: var(--food-card-shadow);
+  --shadow-food-soft: var(--food-card-shadow-soft);
 }
 
 :root,
@@ -17,10 +42,9 @@
   --food-header: #ffffff;
   --food-accent: #e85d04;
   --food-accent-soft: rgba(232, 93, 4, 0.12);
-  --food-focus: 0 0 0 3px rgba(232, 93, 4, 0.32);
   --food-card-shadow: 0 16px 40px rgba(24, 24, 27, 0.08);
-  --food-card-shadow-soft: 0 1px 0 rgba(24, 24, 27, 0.04),
-    0 8px 24px rgba(24, 24, 27, 0.06);
+  --food-card-shadow-soft:
+    0 1px 0 rgba(24, 24, 27, 0.04), 0 8px 24px rgba(24, 24, 27, 0.06);
 }
 
 [data-theme="dark"] {
@@ -35,512 +59,73 @@
   --food-header: #0c0c0e;
   --food-accent: #e85d04;
   --food-accent-soft: rgba(232, 93, 4, 0.16);
-  --food-focus: 0 0 0 3px rgba(232, 93, 4, 0.4);
   --food-card-shadow: 0 16px 40px rgba(9, 9, 11, 0.55);
-  --food-card-shadow-soft: 0 0 0 1px rgba(255, 255, 255, 0.03),
-    0 10px 28px rgba(9, 9, 11, 0.4);
+  --food-card-shadow-soft:
+    0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 28px rgba(9, 9, 11, 0.4);
 }
 
-html,
-body,
-#root,
-.ant-app {
-  height: 100%;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-html {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: rgba(232, 93, 4, 0.18);
-}
-
-body {
-  margin: 0;
-  background: var(--food-bg);
-  font-feature-settings: "ss01", "cv11";
-}
-
-.skip-link {
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  z-index: 4000;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--food-accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-  transform: translateY(-160%);
-  transition: transform 160ms ease;
-}
-
-.skip-link:focus {
-  transform: none;
-}
-
-.skip-link:focus-visible,
-a:focus-visible,
-button:focus-visible,
-.ant-btn:focus-visible,
-.ant-input:focus-visible,
-.ant-input-affix-wrapper:focus-within,
-.ant-select-focused .ant-select-selector {
-  outline: 2px solid var(--food-accent);
-  outline-offset: 2px;
-}
-
-.ant-btn:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.ant-modal-wrap,
-.ant-drawer-body,
-.ant-dropdown {
-  overscroll-behavior: contain;
-}
-
-#root,
-.ant-app {
-  display: flex;
-  flex-direction: column;
-}
-
-.food-sider-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 20px 16px 14px;
-  color: #fafafa;
-}
-
-.food-sider-brand strong {
-  display: block;
-  font-size: 16px;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-}
-
-.food-sider-brand span {
-  display: block;
-  font-size: 12px;
-  color: #a1a1aa;
-}
-
-.app-sider.ant-layout-sider-collapsed .food-sider-brand {
-  justify-content: center;
-  padding-inline: 12px;
-}
-
-.app-sider.ant-layout-sider-collapsed .food-sider-copy {
-  display: none;
-}
-
-.app-sider.ant-layout-sider,
-.app-drawer .ant-drawer-body {
-  border-right: 1px solid #18181b;
-}
-
-.food-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, #ff7a1a 0%, #e85d04 100%);
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  flex-shrink: 0;
-  box-shadow: 0 6px 16px rgba(232, 93, 4, 0.28);
-}
-
-.auth-shell {
-  height: 100%;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  overflow: auto;
-  background:
-    radial-gradient(900px 420px at 10% -10%, rgba(232, 93, 4, 0.18), transparent 55%),
-    var(--food-bg);
-}
-
-.auth-card {
-  width: min(400px, 100%);
-  border: 1px solid var(--food-card-border) !important;
-  box-shadow: var(--food-card-shadow);
-  border-radius: 20px !important;
-}
-
-.auth-card .ant-card-body {
-  padding: 24px 22px 20px;
-}
-
-.auth-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  color: var(--food-text);
-}
-
-.auth-brand strong {
-  display: block;
-  font-size: 17px;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-}
-
-.auth-brand span {
-  display: block;
-  font-size: 12px;
-  color: var(--food-muted);
-}
-
-.auth-title.ant-typography {
-  margin-top: 0 !important;
-  margin-bottom: 4px !important;
-  letter-spacing: -0.03em;
-}
-
-.auth-subtitle.ant-typography {
-  margin-bottom: 16px !important;
-}
-
-.auth-footer.ant-typography {
-  margin-top: 16px !important;
-  margin-bottom: 0 !important;
-}
-
-.user-avatar {
-  flex-shrink: 0;
-}
-
-.user-menu-trigger {
-  display: inline-flex;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 999px;
-}
-
-.settings-photo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.settings-photo span {
-  color: var(--food-muted);
-  font-size: 12px;
-}
-
-.settings-section {
-  margin: 8px 0 12px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--food-muted);
-}
-
-.user-menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 132px;
-}
-
-.app-shell.ant-layout {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.app-sider.ant-layout-sider {
-  height: 100%;
-  overflow: auto;
-}
-
-.app-main.ant-layout {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.app-header.ant-layout-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  height: 60px;
-  line-height: 60px;
-  padding-inline: 20px;
-  flex-shrink: 0;
-  backdrop-filter: blur(16px);
-}
-
-.app-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.app-header-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-
-.app-menu-trigger {
-  display: inline-flex;
-}
-
-.app-content {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  padding: 24px 28px 32px;
-  scroll-margin-top: 12px;
-}
-
-.app-page {
-  width: 100%;
-  max-width: 1200px;
-  margin-inline: auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.page-kicker {
-  margin: 0 0 6px;
-  color: var(--food-accent);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.page-header-pending {
-  visibility: hidden;
-  min-height: 76px;
-}
-
-.page-title.ant-typography,
-.app-page h3.ant-typography {
-  margin-top: 0 !important;
-  margin-bottom: 4px !important;
-  letter-spacing: -0.04em;
-  font-weight: 750;
-  min-height: 1.35em;
-  text-wrap: pretty;
-}
-
-.page-subtitle.ant-typography {
-  margin-bottom: 0 !important;
-  max-width: 42rem;
-  min-height: 1.5em;
-}
-
-.page-header-extra {
-  flex-shrink: 0;
-}
-
-.table-wrap {
-  width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--food-card-border);
-  border-radius: 16px;
-  background: var(--food-surface);
-  box-shadow: var(--food-card-shadow-soft);
-}
-
-.table-wrap .ant-table {
-  background: transparent;
-}
-
-.table-wrap .ant-table-thead > tr > th {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.table-wrap .ant-table-tbody > tr > td {
-  font-variant-numeric: tabular-nums;
-  vertical-align: middle;
-}
-
-.table-wrap .ant-table-cell-align-center .ant-tag {
-  margin-inline: 0;
-}
-
-.orders-items-cell {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-.orders-table .ant-table-cell-align-center {
-  white-space: nowrap;
-}
-
-.orders-table .ant-table-cell-fix-right {
-  background: var(--food-surface) !important;
-}
-
-.orders-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
-  background: var(--food-chip-bg) !important;
-}
-
-.table-wrap .ant-pagination {
-  margin: 0 !important;
-  padding: 12px 16px;
-}
-
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.stat-card,
-.panel-card {
-  position: relative;
-  overflow: hidden;
-  padding: 18px 18px 20px;
-  border-radius: 16px;
-  background: var(--food-surface);
-  border: 1px solid var(--food-card-border);
-  box-shadow: var(--food-card-shadow-soft);
-}
-
-.stat-card.is-priority {
-  background: color-mix(in srgb, var(--food-accent) 8%, var(--food-surface));
-  border-color: color-mix(in srgb, var(--food-accent) 35%, var(--food-card-border));
-}
-
-.stat-card.is-priority::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--food-accent);
-}
-
-.stat-label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--food-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.stat-value {
-  display: block;
-  color: var(--food-text);
-  font-size: 32px;
-  line-height: 1.1;
-  letter-spacing: -0.05em;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
-}
-
-.panel-card {
-  margin-top: 16px;
-}
-
-.panel-card h4 {
-  margin: 0 0 12px;
-  font-size: 15px;
-  letter-spacing: -0.02em;
-}
-
-.ant-app .ant-message {
-  z-index: 2000;
-}
-
-.page-fill {
-  height: 100%;
-  display: grid;
-  place-items: center;
-  background: var(--food-bg);
-}
-
-@media (max-width: 991px) {
-  .app-header.ant-layout-header {
-    padding-inline: 12px;
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
   }
-
-  .app-content {
-    padding: 16px 14px 24px;
-  }
-
-  .stat-grid {
-    grid-template-columns: 1fr;
+  50% {
+    transform: scale(1.18);
   }
 }
 
-@media (max-width: 575px) {
-  .auth-shell {
-    padding: 12px;
-    place-items: start center;
+@keyframes bounce-dot {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
   }
-
-  .auth-card {
-    margin: auto 0;
-  }
-
-  .auth-card .ant-card-body {
-    padding: 18px 16px 16px;
-  }
-
-  .app-header-title {
-    font-size: 14px;
-  }
-
-  .app-page h3.ant-typography,
-  .page-title.ant-typography {
-    font-size: 24px;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .page-header-extra {
-    align-self: flex-end;
+  50% {
+    transform: translateY(-3px) scale(1.2);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .skip-link,
-  .ant-btn:active:not(:disabled) {
-    transition: none;
-    transform: none;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(232, 93, 4, 0.18);
+  }
+
+  .skip-link:focus-visible,
+  a:focus-visible,
+  button:focus-visible,
+  .ant-btn:focus-visible,
+  .ant-input:focus-visible,
+  .ant-input-affix-wrapper:focus-within,
+  .ant-select-focused .ant-select-selector {
+    outline: 2px solid var(--food-accent);
+    outline-offset: 2px;
+  }
+
+  .ant-modal-wrap,
+  .ant-drawer-body,
+  .ant-dropdown {
+    overscroll-behavior: contain;
+  }
+
+  .ant-table-cell-align-center .ant-tag {
+    margin-inline: 0;
+  }
+
+  .ant-table-cell-fix-right {
+    background: var(--food-surface) !important;
+  }
+
+  .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
+    background: var(--food-chip-bg) !important;
+  }
+
+  .ant-app .ant-message {
+    z-index: 2000;
   }
 }

@@ -2,6 +2,7 @@ import { Tag } from "antd";
 import { EntityCard } from "../../components/EntityCard";
 import { RowActions } from "../../components/RowActions";
 import { catalogPriceLabel } from "../../lib/format";
+import { entityDesc, entityPrice } from "../../ui";
 import type { Product } from "../../types";
 
 export function ProductCard({
@@ -37,14 +38,14 @@ export function ProductCard({
           </Tag>
           {product.customizable ? <Tag color="orange">Montável</Tag> : null}
           {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
-          <strong className="entity-card-price">{catalogPriceLabel(product)}</strong>
+          <strong className={entityPrice}>{catalogPriceLabel(product)}</strong>
         </>
       }
     >
       {product.description ? (
-        <p className="entity-card-desc">{product.description}</p>
+        <p className={entityDesc}>{product.description}</p>
       ) : (
-        <p className="entity-card-desc">Sem descrição</p>
+        <p className={entityDesc}>Sem descrição</p>
       )}
     </EntityCard>
   );

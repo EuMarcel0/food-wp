@@ -3,6 +3,8 @@ import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { FormControl, FormField } from "../../components/FormField";
 import { maskBRL } from "../../lib/validation";
 import type { ProductValues } from "../../lib/validation";
+import { cn } from "../../lib/cn";
+import { formEmpty, formToggle } from "../../ui";
 
 function newId() {
   return crypto.randomUUID();
@@ -57,8 +59,8 @@ export function OptionGroupsEditor({
   }
 
   return (
-    <div className="product-form-groups">
-      <div className="product-form-templates">
+    <div className="flex min-h-0 flex-1 flex-col max-lg:min-h-auto max-lg:flex-none">
+      <div className="mb-3.5 flex shrink-0 flex-wrap gap-2 [&_.ant-btn]:h-8 [&_.ant-btn]:rounded-full [&_.ant-btn]:border-food-border [&_.ant-btn]:bg-food-chip [&_.ant-btn]:px-3 [&_.ant-btn]:text-food-text">
         <Button
           size="small"
           icon={<PlusOutlined />}
@@ -90,24 +92,26 @@ export function OptionGroupsEditor({
           Grupo livre
         </Button>
       </div>
-      <div className="product-form-groups-scroll">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-auto overscroll-contain pr-1 pb-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
       {groups.length === 0 ? (
-        <div className="product-form-empty">
+        <div className={formEmpty}>
           <p>
             Nenhuma etapa ainda. Comece por um atalho ou crie um grupo livre.
           </p>
         </div>
       ) : null}
       {groups.map((group, groupIndex) => (
-        <article key={group.id} className="product-form-group">
-          <div className="product-form-group-head">
-            <div className="product-form-group-title">
-              <span className="product-form-step">
+        <article key={group.id} className="rounded-[14px] border border-food-border bg-food-chip p-3.5">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-food-accent/16 text-[11px] font-extrabold tracking-wide text-food-accent">
                 {String(groupIndex + 1).padStart(2, "0")}
               </span>
               <div>
-                <strong>{group.name || `Etapa ${groupIndex + 1}`}</strong>
-                <div className="product-form-group-meta">{groupMeta(group)}</div>
+                <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
+                  {group.name || `Etapa ${groupIndex + 1}`}
+                </strong>
+                <div className="text-xs text-food-muted">{groupMeta(group)}</div>
               </div>
             </div>
             <Button
@@ -123,7 +127,7 @@ export function OptionGroupsEditor({
           <FormField name={`optionGroups.${groupIndex}.name`} label="Nome do grupo">
             <Input placeholder="Tamanho, sabores, borda, ponto da carne…" />
           </FormField>
-          <div className="product-form-group-grid">
+          <div className="grid grid-cols-2 gap-2 max-lg:grid-cols-1">
             <FormControl
               name={`optionGroups.${groupIndex}.priceMode`}
               label="Como entra no preço"
@@ -162,7 +166,7 @@ export function OptionGroupsEditor({
               )}
             </FormControl>
           </div>
-          <label className="product-form-toggle" style={{ marginBottom: 12 }}>
+          <label className={cn(formToggle, "mb-3")}>
             <div>
               <strong>Obrigatório</strong>
               <p>O cliente precisa responder esta etapa</p>
@@ -182,7 +186,7 @@ export function OptionGroupsEditor({
               )}
             </FormControl>
           </label>
-          <label className="product-form-toggle" style={{ marginBottom: 12 }}>
+          <label className={cn(formToggle, "mb-3")}>
             <div>
               <strong>É um tamanho</strong>
               <p>O cliente escolhe entre os tamanhos e só vê os sabores desse</p>
@@ -194,14 +198,14 @@ export function OptionGroupsEditor({
               }
             />
           </label>
-          <div className="product-form-options">
-            <div className="product-form-options-head">
+          <div className="rounded-xl border border-food-border bg-food-card p-2.5">
+            <div className="mb-2 grid grid-cols-[minmax(0,1fr)_128px_32px] gap-2 px-0.5 text-[11px] font-bold uppercase tracking-wider text-food-muted max-sm:grid-cols-[minmax(0,1fr)_104px_32px]">
               <span>Opção</span>
               <span>Preço</span>
               <span />
             </div>
             {group.options.map((option, optionIndex) => (
-              <div key={option.id} className="product-form-option">
+              <div key={option.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_128px_32px] items-start gap-2 max-sm:grid-cols-[minmax(0,1fr)_104px_32px]">
                 <FormField
                   name={`optionGroups.${groupIndex}.options.${optionIndex}.name`}
                   compact
@@ -223,7 +227,7 @@ export function OptionGroupsEditor({
                   )}
                 </FormControl>
                 <Button
-                  className="product-form-option-remove"
+                  className="h-10"
                   type="text"
                   danger
                   aria-label="Remover opção"
@@ -239,7 +243,7 @@ export function OptionGroupsEditor({
               </div>
             ))}
             <Button
-              className="product-form-add-option"
+              className="mt-1"
               size="small"
               icon={<PlusOutlined />}
               onClick={() =>
