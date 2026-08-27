@@ -1,5 +1,4 @@
 import { Skeleton } from "antd";
-import { tableWrap } from "../ui";
 
 export function HeaderSkeleton() {
   return (
@@ -26,15 +25,3 @@ export function StatCardsSkeleton() {
   );
 }
 
-export function TableSkeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className={tableWrap}>
-      <div className="flex flex-col gap-4 p-5">
-        <Skeleton active title={false} paragraph={{ rows: 1 }} />
-        {Array.from({ length: rows }, (_, index) => (
-          <Skeleton key={index} active title={false} paragraph={{ rows: 1 }} />
-        ))}
-      </div>
-    </div>
-  );
-}

@@ -9,7 +9,6 @@ import { Input, Select, Table, Tag } from "antd";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
-import { TableSkeleton } from "../../components/PageSkeletons";
 import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
 import { api } from "../../lib/api";
@@ -123,8 +122,6 @@ export function OrdersPage() {
       ? statusMutation.variables.order.id
       : null;
 
-  const initialLoading = listQuery.isLoading;
-
   return (
     <>
       <PageHeader
@@ -167,13 +164,11 @@ export function OrdersPage() {
           ]}
         />
       </ListFilters>
-      {initialLoading ? (
-        <TableSkeleton />
-      ) : (
       <div className={tableWrap}>
       <Table
         rowKey="id"
         className={`${tableClass} [&_.ant-table-cell-align-center]:whitespace-nowrap`}
+        loading={listQuery.isPending && !result}
         dataSource={orders}
         tableLayout="fixed"
         pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
@@ -290,10 +285,9 @@ export function OrdersPage() {
         ]}
       />
       </div>
-      )}
       <div className={listCards}>
         <MobileCardList
-          loading={initialLoading}
+          loading={listQuery.isPending && !result}
           isEmpty={orders.length === 0}
           empty={
             activeCount > 0
