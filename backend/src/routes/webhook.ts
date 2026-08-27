@@ -2,7 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { env } from "../config/env.js";
 import { handleIncomingMessage } from "../conversation/engine.js";
+import { sendText } from "../lib/whatsapp.js";
 import { noteWebhook } from "../lib/webhookStats.js";
+
+const SILENT_TYPES = new Set(["reaction", "system"]);
+const UNSUPPORTED_MEDIA_REPLY =
+  "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\n\nPara continuar, responda *por texto* ou toque nas opções da última mensagem.";
 
 export const webhookRouter = Router();
 
@@ -96,7 +101,18 @@ webhookRouter.post("/whatsapp", (req, res) => {
               }
             : undefined;
         const to = waId || message.from;
-        if (!to || (!text && !replyId && !location)) continue;
+        if (!to) continue;
+        if (!text && !replyId && !location) {
+          if (SILENT_TYPES.has(message.type ?? "")) continue;
+          incoming += 1;
+          console.log(
+            `WhatsApp inbound unsupported type=${message.type ?? "?"} from=${message.from}`,
+          );
+          sendText(to, UNSUPPORTED_MEDIA_REPLY).catch((error) => {
+            console.error("Falha ao avisar mensagem não suportada", error);
+          });
+          continue;
+        }
         incoming += 1;
         console.log(
           `WhatsApp inbound from=${message.from} wa_id=${waId ?? "-"} reply=${to}`,

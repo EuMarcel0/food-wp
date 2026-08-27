@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fluxo WhatsApp: bot × cliente</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "strict" });
+  </script>
+  <style>
+    :root {
+      --bg: #f6f4f0;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fff;
+      --bot: #f5f5f4;
+      --cli: #ecfdf5;
+      --accent: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    .bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .bar p { margin: 0; color: var(--muted); font-size: 13px; }
+    button {
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+    h1 { font-size: 28px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 32px 0 10px; }
+    .lead { color: var(--muted); margin: 0 0 20px; }
+    .note, .warn {
+      border: 1px solid var(--line);
+      background: var(--card);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+    .warn { border-color: #f5d0a9; background: #fff7ed; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); }
+    th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: #fafaf9; }
+    tr:first-child td { background: #ecfeff; }
+    tr:last-child td { background: #ecfdf5; }
+    .turns { display: grid; gap: 8px; }
+    .turn { display: grid; grid-template-columns: 36px 1fr 1fr; gap: 8px; }
+    .n { color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+    .bubble { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .bot { background: var(--bot); }
+    .cli { background: var(--cli); }
+    .bubble small { display: block; color: var(--muted); font-weight: 700; margin-bottom: 2px; }
+    .mermaid { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; }
+    ul.pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+    ul.pills li { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+    @media print {
+      .bar { display: none; }
+      body { background: #fff; }
+      main { max-width: none; padding: 0; }
+      h2 { break-after: avoid; }
+      table, .turn, .note, .warn, .mermaid { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <p>Atualizado em 27/08/2026 · engine de conversa do WhatsApp</p>
+    <button type="button" onclick="window.print()">Exportar PDF</button>
+  </div>
+  <main>
+    <h1>Fluxo WhatsApp: bot × cliente</h1>
+    <p class="lead">Cada etapa cruza o que o bot pergunta (lista ou botões) com o que o cliente responde.</p>
+
+    <div class="warn"><strong>Em qualquer etapa:</strong> Sair ou Cancelar encerra e não reabre o menu. Timeout ocioso (padrão 60 min) volta às boas-vindas. Oi / menu também reabre o welcome.</div>
+    <div class="note"><strong>Neste mapa:</strong> adicionais (depois da montagem, antes da quantidade), bairro com taxa quando há zonas, endereço só por texto ou clipe (sem botão nativo de localização) e troco em dinheiro.</div>
+
+    <h2>Mapa do pedido</h2>
+    <div class="mermaid">
+flowchart TD
+  welcome[Boas-vindas] --> menu[Cardápio]
+  welcome --> status[Consulta status]
+  menu --> size[Tamanho]
+  menu --> addons[Adicionais]
+  menu --> qty[Quantidade]
+  size --> flavors[Sabores]
+  flavors --> extras[Opcionais]
+  flavors --> addons
+  flavors --> qty
+  extras --> addons
+  extras --> qty
+  addons --> qty
+  qty --> itemNote[Obs. do item]
+  qty --> cart[Carrinho]
+  itemNote --> cart
+  cart -->|Adicionar mais| menu
+  cart --> orderNote[Obs. do pedido]
+  orderNote --> fulfill[Entrega / Retirada]
+  fulfill --> neighborhood[Bairro]
+  fulfill --> address[Endereço]
+  fulfill --> pay[Pagamento]
+  neighborhood --> address
+  address --> pay
+  pay --> change[Troco]
+  pay --> ok[Pedido confirmado]
+  change --> ok
+    </div>
+
+    <h2>Cruzamento pergunta × resposta</h2>
+    <table>
+      <thead>
+        <tr><th>Etapa</th><th>Bot pergunta</th><th>Cliente responde</th><th>Segue para</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Boas-vindas</td><td>Olá! Cardápio, pedido ou status. Digite Sair para encerrar.</td><td>Ver cardápio · Fazer pedido · Status do pedido · oi</td><td>Cardápio ou consulta</td></tr>
+        <tr><td>Cardápio</td><td>Escolha um item (lista por categoria). Pedido: Vamos montar…</td><td>Toca um item (product:id)</td><td>Tamanho se montável; senão adicionais ou quantidade</td></tr>
+        <tr><td>Tamanho</td><td>Escolha o tamanho. Preço na linha da lista Tamanhos.</td><td>Um tamanho da lista</td><td>Sabores</td></tr>
+        <tr><td>Sabores</td><td>Escolha o grupo. Sem preço na linha do sabor.</td><td>Sabor · depois Mais um ou Pronto</td><td>Próximo grupo, adicionais ou quantidade</td></tr>
+        <tr><td>Opcionais</td><td>Esta etapa é opcional. + botão Pular.</td><td>Opção da lista ou Pular</td><td>Adicionais se o item tiver; senão quantidade</td></tr>
+        <tr><td>Adicionais</td><td>Quer um adicional? Lista com preço. Opcional: Sem adicional.</td><td>Item da lista · Mais um / Pronto · Sem adicional</td><td>Quantidade (preço do extra soma)</td></tr>
+        <tr><td>Quantidade</td><td>Nome + preço. Quantas unidades? Ou digite 1 a 20.</td><td>1 · 2 · 3 ou número</td><td>Obs. do item se a flag estiver ligada; senão carrinho</td></tr>
+        <tr><td>Obs. do item</td><td>Observação para o item? Ex.: sem cebola. Ou Pular.</td><td>Texto ou Pular</td><td>Carrinho</td></tr>
+        <tr><td>Carrinho</td><td>Adicionado + resumo.</td><td>Adicionar mais · Fechar pedido · Limpar carrinho</td><td>Cardápio, obs. do pedido, ou welcome se limpar</td></tr>
+        <tr><td>Obs. do pedido</td><td>Observação para o pedido inteiro? Ou Pular.</td><td>Texto ou Pular</td><td>Entrega / Retirada</td></tr>
+        <tr><td>Recebimento</td><td>Como você prefere receber?</td><td>Entrega ou Retirada</td><td>Bairro se entrega com zonas; endereço se entrega; senão pagamento</td></tr>
+        <tr><td>Bairro</td><td>Escolha o bairro. A taxa já aparece em cada opção.</td><td>Um bairro da lista</td><td>Endereço</td></tr>
+        <tr><td>Endereço</td><td>Qual o endereço? Texto, ou localização pelo clipe no celular.</td><td>Rua e número, ou pin pelo clipe (sem botão nativo)</td><td>Pagamento</td></tr>
+        <tr><td>Pagamento</td><td>Como deseja pagar?</td><td>Pix · Dinheiro · Cartão crédito · Cartão débito</td><td>Dinheiro pede troco; senão confirma</td></tr>
+        <tr><td>Troco</td><td>Troco para quanto? Total na mensagem. Ou sem troco.</td><td>Valor ≥ total, ou sem troco</td><td>Pedido confirmado</td></tr>
+        <tr><td>Confirmado</td><td>Pedido #CODE confirmado. Depois avisa status pelo WhatsApp.</td><td>—</td><td>Welcome limpo</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Ramificações</h2>
+    <ul class="pills">
+      <li>Simples → adicional / quantidade</li>
+      <li>Montável → tamanho → sabores → opcionais</li>
+      <li>Terá adicional ligado → lista de extras (soma no preço)</li>
+      <li>Obs. do item só se a flag do produto estiver ligada</li>
+      <li>Entrega → bairro (se houver zonas) → endereço</li>
+      <li>Retirada → pagamento</li>
+      <li>Dinheiro → troco; Pix/crédito/débito → confirma</li>
+      <li>Preço de sabor = máximo do grupo, não a soma</li>
+    </ul>
+
+    <h2>Consulta de status</h2>
+    <table>
+      <thead>
+        <tr><th>Bot pergunta</th><th>Cliente responde</th><th>Bot responde</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Status do pedido (nas boas-vindas)</td><td>Toca Status, ou já tem pedido recente</td><td>Último #CODE + status + total</td></tr>
+        <tr><td>Me envie o código do pedido (ex.: A7K2).</td><td>Código, se não houver pedido recente</td><td>Status daquele código, ou pede de novo</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Exemplo: pizza grande mussarela + calabresa + azeitona</h2>
+    <div class="turns">
+      <div class="turn"><div class="n">1</div><div class="bubble bot"><small>Bot</small>Olá! Bem-vindo. Cardápio, pedido ou status?</div><div class="bubble cli"><small>Cliente</small>Fazer pedido</div></div>
+      <div class="turn"><div class="n">2</div><div class="bubble bot"><small>Bot</small>Vamos montar seu pedido. Escolha o primeiro item.</div><div class="bubble cli"><small>Cliente</small>Pizza</div></div>
+      <div class="turn"><div class="n">3</div><div class="bubble bot"><small>Bot</small>Pizza — escolha o tamanho. (preço na linha)</div><div class="bubble cli"><small>Cliente</small>Grande</div></div>
+      <div class="turn"><div class="n">4</div><div class="bubble bot"><small>Bot</small>Escolha: Sabores. Pode marcar até N.</div><div class="bubble cli"><small>Cliente</small>Mussarela</div></div>
+      <div class="turn"><div class="n">5</div><div class="bubble bot"><small>Bot</small>Sabores: 1/2 Mussarela. Mais um ou Pronto?</div><div class="bubble cli"><small>Cliente</small>Mais um → Calabresa → Pronto</div></div>
+      <div class="turn"><div class="n">6</div><div class="bubble bot"><small>Bot</small>Quer um adicional? (opcional)</div><div class="bubble cli"><small>Cliente</small>Azeitona → Pronto</div></div>
+      <div class="turn"><div class="n">7</div><div class="bubble bot"><small>Bot</small>Pizza Grande 1/2 Mussarela 1/2 Calabresa. Quantas?</div><div class="bubble cli"><small>Cliente</small>1</div></div>
+      <div class="turn"><div class="n">8</div><div class="bubble bot"><small>Bot</small>Adicionado. Adicionar mais, Fechar ou Limpar?</div><div class="bubble cli"><small>Cliente</small>Fechar pedido</div></div>
+      <div class="turn"><div class="n">9</div><div class="bubble bot"><small>Bot</small>Observação para o pedido inteiro? Ou Pular.</div><div class="bubble cli"><small>Cliente</small>Pular</div></div>
+      <div class="turn"><div class="n">10</div><div class="bubble bot"><small>Bot</small>Como você prefere receber?</div><div class="bubble cli"><small>Cliente</small>Entrega</div></div>
+      <div class="turn"><div class="n">11</div><div class="bubble bot"><small>Bot</small>Escolha o bairro. A taxa já aparece em cada opção.</div><div class="bubble cli"><small>Cliente</small>Um bairro da lista</div></div>
+      <div class="turn"><div class="n">12</div><div class="bubble bot"><small>Bot</small>Qual o endereço completo? Texto ou localização pelo clipe.</div><div class="bubble cli"><small>Cliente</small>Rua X, 12</div></div>
+      <div class="turn"><div class="n">13</div><div class="bubble bot"><small>Bot</small>Endereço anotado. Como deseja pagar?</div><div class="bubble cli"><small>Cliente</small>Dinheiro</div></div>
+      <div class="turn"><div class="n">14</div><div class="bubble bot"><small>Bot</small>Troco para quanto? O total é R$ 97,00.</div><div class="bubble cli"><small>Cliente</small>100</div></div>
+      <div class="turn"><div class="n">15</div><div class="bubble bot"><small>Bot</small>Pedido #A7K2 confirmado!</div><div class="bubble cli"><small>Cliente</small>—</div></div>
+    </div>
+  </main>
+</body>
+</html>
