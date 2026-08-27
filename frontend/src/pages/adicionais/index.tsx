@@ -6,55 +6,44 @@ import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
-import { ProductCard } from "./ProductCard";
+import { useDialog } from "../../dialog";
+import { AddonCard } from "./AddonCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
-import { catalogPriceLabel } from "../../lib/format";
+import { formatReais } from "../../lib/format";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
-import type { Product } from "../../types";
-import { ProductForm, toProductPayload } from "./ProductForm";
-import type { ProductValues } from "../../lib/validation";
+import type { Addon } from "../../types";
+import type { AddonValues } from "../../lib/validation";
+import { AddonForm, toAddonPayload } from "./AddonForm";
 import { filterSearch, filterSelect, listCards, tableClass, tableWrap } from "../../ui";
 
-export function CatalogPage() {
+export function AddonsPage() {
+  const dialog = useDialog();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Product | null>(null);
+  const [editing, setEditing] = useState<Addon | null>(null);
   const [qInput, setQInput] = useState("");
-  const [categoryId, setCategoryId] = useState<string | undefined>();
   const [active, setActive] = useState<boolean | undefined>();
   const q = useDebouncedValue(qInput.trim(), 300);
-  const filters = { q: q || undefined, categoryId, active };
-  const activeCount = [q, categoryId, active !== undefined].filter(Boolean).length;
+  const filters = { q: q || undefined, active };
+  const activeCount = [q, active !== undefined].filter(Boolean).length;
 
   useEffect(() => {
     setPage(1);
-  }, [q, categoryId, active]);
-
-  const categoriesQuery = useQuery({
-    queryKey: queryKeys.categories.options,
-    queryFn: () => api.categories(true),
-  });
-  const categories = categoriesQuery.data ?? [];
-
-  const addonsQuery = useQuery({
-    queryKey: queryKeys.addons.options,
-    queryFn: () => api.addons(true),
-  });
-  const addons = addonsQuery.data ?? [];
+  }, [q, active]);
 
   const listQuery = useQuery({
-    queryKey: queryKeys.products.list(page, limit, filters),
-    queryFn: () => api.products(page, limit, filters),
+    queryKey: queryKeys.addons.list(page, limit, filters),
+    queryFn: () => api.listAddons(page, limit, filters),
     placeholderData: keepPreviousData,
   });
 
   const result = listQuery.data;
-  const products = result?.items ?? [];
+  const addons = result?.items ?? [];
   const total = result?.total ?? 0;
 
   useEffect(() => {
@@ -63,56 +52,59 @@ export function CatalogPage() {
     if (nextPage !== page) setPage(nextPage);
   }, [limit, page, result]);
 
-  async function refreshCatalog() {
+  async function refreshAddons() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.addons.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
     ]);
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (values: ProductValues) => {
-      const payload = toProductPayload(values);
-      if (editing) return api.updateProduct(editing.id, payload);
-      return api.createProduct(payload);
+    mutationFn: async (values: AddonValues) => {
+      const payload = toAddonPayload(values);
+      if (editing) return api.updateAddon(editing.id, payload);
+      return api.createAddon(payload);
     },
     onSuccess: async () => {
-      toast.success(editing ? "Item atualizado." : "Item incluído no cardápio.");
+      toast.success(editing ? "Adicional atualizado." : "Adicional incluído.");
       setOpen(false);
       setEditing(null);
-      await refreshCatalog();
+      await refreshAddons();
     },
   });
 
-  const toggleMutation = useMutation({
-    mutationFn: (product: Product) =>
-      api.updateProduct(product.id, { active: !product.active }),
-    onSuccess: async (_updated, product) => {
-      toast.success(
-        product.active
-          ? "Item desativado no WhatsApp."
-          : "Item ativado no WhatsApp.",
-      );
-      await refreshCatalog();
+  const deleteMutation = useMutation({
+    mutationFn: (addon: Addon) => api.deleteAddon(addon.id),
+    onSuccess: async () => {
+      toast.success("Adicional excluído.");
+      await refreshAddons();
     },
   });
+
+  function askDelete(addon: Addon) {
+    void dialog.delete({
+      title: "Excluir adicional",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{addon.name}</strong>? Os itens
+          do cardápio que usam este adicional deixam de oferecê-lo.
+        </>
+      ),
+      onConfirm: () => deleteMutation.mutateAsync(addon),
+    });
+  }
 
   return (
     <>
       <PageHeader
-        kicker="Itens"
-        title="Cardápio"
-        subtitle="Os itens ativos aparecem para o cliente no WhatsApp."
+        kicker="Extras"
+        title="Adicionais"
+        subtitle="Cadastre extras como bacon ou cheddar. Depois marque quais entram em cada item do cardápio."
         extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}>
             Incluir
           </Button>
         }
@@ -121,29 +113,15 @@ export function CatalogPage() {
         activeCount={activeCount}
         onClear={() => {
           setQInput("");
-          setCategoryId(undefined);
           setActive(undefined);
         }}
       >
         <Input.Search
           className={filterSearch}
           allowClear
-          placeholder="Nome ou descrição…"
+          placeholder="Nome do adicional…"
           value={qInput}
           onChange={(event) => setQInput(event.target.value)}
-        />
-        <Select
-          className={filterSelect}
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder="Categoria"
-          value={categoryId}
-          onChange={setCategoryId}
-          options={categories.map((category) => ({
-            value: category.id,
-            label: category.name,
-          }))}
         />
         <Select
           className={filterSelect}
@@ -164,37 +142,21 @@ export function CatalogPage() {
           rowKey="id"
           className={tableClass}
           loading={listQuery.isPending && !result}
-          dataSource={products}
+          dataSource={addons}
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);
             setLimit(nextSize);
           })}
-          scroll={{ x: 800 }}
+          scroll={{ x: 640 }}
           columns={[
-            { title: "Categoria", dataIndex: "categoryName", width: 180 },
-            { title: "Item", dataIndex: "name" },
+            { title: "Nome", dataIndex: "name" },
             {
-              title: "Tipo",
-              width: 240,
-              render: (_, product) => (
-                <>
-                  {product.customizable ? (
-                    <Tag color="orange">Montável</Tag>
-                  ) : (
-                    <Tag>Simples</Tag>
-                  )}
-                  {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
-                  {product.addonsEnabled ? <Tag color="purple">Adicional</Tag> : null}
-                </>
-              ),
-            },
-            { title: "Descrição", dataIndex: "description" },
-            {
-              title: "Preço",
+              title: "Valor",
               dataIndex: "price",
               width: 120,
-              render: (_, product) => catalogPriceLabel(product),
+              render: (value: number) => formatReais(value),
             },
+            { title: "Ordem", dataIndex: "sortOrder", width: 100 },
             {
               title: "Ativo",
               dataIndex: "active",
@@ -209,21 +171,22 @@ export function CatalogPage() {
               title: "Ações",
               width: 72,
               align: "center",
-              render: (_, product) => (
+              render: (_, addon) => (
                 <RowActions
                   items={[
                     {
                       key: "edit",
                       label: "Editar",
                       onClick: () => {
-                        setEditing(product);
+                        setEditing(addon);
                         setOpen(true);
                       },
                     },
                     {
-                      key: "toggle",
-                      label: product.active ? "Desativar" : "Ativar",
-                      onClick: () => toggleMutation.mutate(product),
+                      key: "delete",
+                      label: "Excluir",
+                      danger: true,
+                      onClick: () => askDelete(addon),
                     },
                   ]}
                 />
@@ -235,37 +198,33 @@ export function CatalogPage() {
       <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
-          isEmpty={products.length === 0}
+          isEmpty={addons.length === 0}
           empty={
             activeCount > 0
-              ? "Nenhum item encontrado com esses filtros."
-              : "Inclua o primeiro item do cardápio."
+              ? "Nenhum adicional encontrado com esses filtros."
+              : "Inclua o primeiro adicional para oferecer extras no WhatsApp."
           }
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);
             setLimit(nextSize);
           })}
         >
-          {products.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
+          {addons.map((addon) => (
+            <AddonCard
+              key={addon.id}
+              addon={addon}
               onEdit={(item) => {
                 setEditing(item);
                 setOpen(true);
               }}
-              onToggle={(item) => toggleMutation.mutate(item)}
+              onDelete={askDelete}
             />
           ))}
         </MobileCardList>
       </div>
-      <ProductForm
+      <AddonForm
         open={open}
-        product={editing}
-        categories={categories.filter(
-          (category) => category.active || category.id === editing?.categoryId,
-        )}
-        addons={addons}
+        addon={editing}
         submitting={saveMutation.isPending}
         onCancel={() => {
           setOpen(false);

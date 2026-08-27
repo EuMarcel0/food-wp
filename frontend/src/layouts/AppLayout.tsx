@@ -4,6 +4,7 @@ import {
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
+  PlusCircleOutlined,
   SettingOutlined,
   ShoppingOutlined,
   TagsOutlined,
@@ -25,6 +26,7 @@ const items = [
   { key: "/pedidos", icon: <ShoppingOutlined />, label: "Pedidos" },
   { key: "/cardapio", icon: <AppstoreOutlined />, label: "Cardápio" },
   { key: "/categorias", icon: <TagsOutlined />, label: "Categorias" },
+  { key: "/adicionais", icon: <PlusCircleOutlined />, label: "Adicionais" },
   { key: "/configuracoes", icon: <SettingOutlined />, label: "Configurações" },
 ];
 

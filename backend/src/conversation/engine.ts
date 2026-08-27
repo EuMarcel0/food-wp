@@ -14,6 +14,7 @@ import {
 import { describeOrderStatus, formatPrepDuration } from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
+  ADDON_GROUP_ID,
   assembledName,
   flavorShareLine,
   groupPrompt,
@@ -142,6 +143,31 @@ function isSkipNote(incoming: string, normalized: string) {
 
 function clipNote(raw: string) {
   return raw.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function productAddons(product: Product) {
+  if (!product.addonsEnabled) return [];
+  return (product.addons ?? [])
+    .filter((addon) => addon.active)
+    .sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.name.localeCompare(right.name, "pt-BR"),
+    );
+}
+
+function productHasAddons(product: Product) {
+  return productAddons(product).length > 0;
+}
+
+function isSkipAddon(incoming: string, normalized: string) {
+  return (
+    incoming === "skip_addon" ||
+    isSkipStep(incoming, normalized) ||
+    normalized === "sem adicional" ||
+    normalized === "nenhum" ||
+    normalized === "nao"
+  );
 }
 
 function commitDraftToCart(context: ConversationContext) {
@@ -502,6 +528,46 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   );
 }
 
+async function askAddons(to: string, product: Product) {
+  const addons = productAddons(product);
+  const rows = addons.slice(0, 10).map((addon) => ({
+    id: `addon:${addon.id}`,
+    title: addon.name.slice(0, 24),
+    description: `+ ${formatReais(addon.price)}`,
+  }));
+  if (rows.length < 10) {
+    rows.push({
+      id: "skip_addon",
+      title: "Sem adicional",
+      description: "Pular esta etapa",
+    });
+  }
+  await sendList(to, `*${product.name}*\nQuer um adicional? (opcional)`, "Adicionais", [
+    {
+      title: "Adicionais",
+      rows,
+    },
+  ]);
+  await sendButtons(to, "Pode pular se não quiser adicional.", [
+    { id: "skip_addon", title: "Sem adicional" },
+  ]);
+}
+
+async function continueProductFlow(
+  to: string,
+  product: Product,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+) {
+  if (isCustomizable(product)) {
+    await persist("awaiting_option", context);
+    await askAssembly(to, product, context);
+    return;
+  }
+  await persist("awaiting_quantity", context);
+  await askQuantity(to, product, context.draftSelections ?? []);
+}
+
 async function finishOrder(
   to: string,
   store: Store,
@@ -841,6 +907,49 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  if (state === "awaiting_addon" && !incoming.startsWith("product:")) {
+    const product = context.selectedProductId
+      ? await getProduct(context.selectedProductId)
+      : null;
+    if (!product || !productHasAddons(product)) {
+      if (product) {
+        await continueProductFlow(input.from, product, context, persist);
+        return;
+      }
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "Escolha um item do cardápio:");
+      return;
+    }
+
+    if (isSkipAddon(incoming, normalized)) {
+      await continueProductFlow(input.from, product, context, persist);
+      return;
+    }
+
+    const addons = productAddons(product);
+    const addon = incoming.startsWith("addon:")
+      ? addons.find((item) => item.id === incoming.slice("addon:".length))
+      : addons.find((item) => normalize(item.name) === normalized);
+
+    if (!addon) {
+      await sendText(input.from, "Escolha um adicional da lista ou toque em Sem adicional.");
+      await persist("awaiting_addon", context);
+      await askAddons(input.from, product);
+      return;
+    }
+
+    context.draftSelections = [
+      {
+        groupId: ADDON_GROUP_ID,
+        groupName: "Adicional",
+        priceMode: "addon",
+        options: [{ id: addon.id, name: addon.name, extraPrice: addon.price }],
+      },
+    ];
+    await continueProductFlow(input.from, product, context, persist);
+    return;
+  }
+
   if (incoming.startsWith("product:") || state === "awaiting_product") {
     const productId = incoming.startsWith("product:")
       ? incoming.slice("product:".length)
@@ -859,14 +968,13 @@ export async function handleIncomingMessage(input: {
     context.draftSelections = [];
     context.optionGroupIndex = 0;
 
-    if (isCustomizable(product)) {
-      await persist("awaiting_option", context);
-      await askAssembly(input.from, product, context);
+    if (productHasAddons(product)) {
+      await persist("awaiting_addon", context);
+      await askAddons(input.from, product);
       return;
     }
 
-    await persist("awaiting_quantity", context);
-    await askQuantity(input.from, product, []);
+    await continueProductFlow(input.from, product, context, persist);
     return;
   }
 

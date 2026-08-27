@@ -13,6 +13,15 @@ export const queryKeys = {
       filters: { q?: string; active?: boolean },
     ) => ["categories", "list", page, limit, filters] as const,
   },
+  addons: {
+    all: ["addons"] as const,
+    options: ["addons", "options"] as const,
+    list: (
+      page: number,
+      limit: number,
+      filters: { q?: string; active?: boolean },
+    ) => ["addons", "list", page, limit, filters] as const,
+  },
   products: {
     all: ["products"] as const,
     list: (

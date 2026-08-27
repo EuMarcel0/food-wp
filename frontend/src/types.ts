@@ -40,6 +40,14 @@ export type Category = {
   active: boolean;
 };
 
+export type Addon = {
+  id: string;
+  name: string;
+  price: number;
+  sortOrder: number;
+  active: boolean;
+};
+
 export type Product = {
   id: string;
   categoryId: string;
@@ -50,6 +58,8 @@ export type Product = {
   active: boolean;
   customizable: boolean;
   notesEnabled: boolean;
+  addonsEnabled: boolean;
+  addons: Addon[];
   optionGroups: ProductOptionGroup[];
 };
 

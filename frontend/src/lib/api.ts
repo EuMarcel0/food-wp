@@ -2,6 +2,7 @@ import { toast } from "./toast";
 import { PAGE_SIZE, type PageResult } from "./pagination";
 import { withQuery } from "./query";
 import type {
+  Addon,
   AppNotification,
   Category,
   Health,
@@ -100,6 +101,42 @@ export const api = {
     }),
   deleteCategory: (id: string) =>
     request<void>(`/api/categories/${id}`, { method: "DELETE" }),
+  addons: (all = false) =>
+    request<Addon[]>(`/api/addons${all ? "?all=1" : ""}`),
+  listAddons: (
+    page = 1,
+    limit = PAGE_SIZE,
+    filters?: { q?: string; active?: boolean },
+  ) =>
+    request<PageResult<Addon>>(
+      withQuery("/api/addons", {
+        all: 1,
+        page,
+        limit,
+        q: filters?.q,
+        active: filters?.active,
+      }),
+    ),
+  createAddon: (payload: {
+    name: string;
+    price: number;
+    sortOrder: number;
+    active: boolean;
+  }) =>
+    request<Addon>("/api/addons", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAddon: (
+    id: string,
+    payload: { name: string; price: number; sortOrder: number; active: boolean },
+  ) =>
+    request<Addon>(`/api/addons/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteAddon: (id: string) =>
+    request<void>(`/api/addons/${id}`, { method: "DELETE" }),
   products: (
     page = 1,
     limit = PAGE_SIZE,
@@ -122,6 +159,8 @@ export const api = {
     active: boolean;
     customizable: boolean;
     notesEnabled: boolean;
+    addonsEnabled: boolean;
+    addonIds: string[];
     optionGroups: Product["optionGroups"];
   }) =>
     request<Product>("/api/products", {
@@ -138,6 +177,8 @@ export const api = {
       active: boolean;
       customizable: boolean;
       notesEnabled: boolean;
+      addonsEnabled: boolean;
+      addonIds: string[];
       optionGroups: Product["optionGroups"];
     }>,
   ) =>

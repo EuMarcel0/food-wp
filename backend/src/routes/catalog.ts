@@ -1,15 +1,21 @@
 import { Router } from "express";
 import {
+  createAddon,
   createCategory,
   createNeighborhood,
   createProduct,
+  deleteAddon,
   deleteCategory,
   deleteNeighborhood,
   getStore,
+  listAddons,
+  listAddonsPage,
+  listAllAddons,
   listAllCategories,
   listCategories,
   listCategoriesPage,
   listProductsPage,
+  updateAddon,
   updateCategory,
   updateProduct,
   updateStore,
@@ -204,6 +210,85 @@ catalogRouter.delete("/categories/:id", async (req, res) => {
   }
 });
 
+function addonPayload(body: Record<string, unknown>) {
+  const name = String(body.name ?? "").trim();
+  const price = Number(body.price ?? 0);
+  const sortOrder = Number(body.sortOrder ?? 0);
+  const active = body.active !== false;
+  if (!name || !Number.isFinite(price) || price < 0 || !Number.isInteger(sortOrder) || sortOrder < 0) {
+    return null;
+  }
+  return { name, price: Math.round(price * 100) / 100, sortOrder, active };
+}
+
+function parseAddonIds(raw: unknown) {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((value) => String(value)).filter(Boolean);
+}
+
+catalogRouter.get("/addons", async (req, res) => {
+  const all = String(req.query.all ?? "") === "1";
+  const paged =
+    req.query.page !== undefined || req.query.limit !== undefined;
+  if (paged) {
+    const { page, limit } = parsePageQuery(req.query);
+    res.json(
+      await listAddonsPage(page, limit, all, {
+        q: parseSearch(req.query.q),
+        active: parseOptionalBoolean(req.query.active),
+      }),
+    );
+    return;
+  }
+  res.json(all ? await listAllAddons() : await listAddons());
+});
+
+catalogRouter.post("/addons", async (req, res) => {
+  const payload = addonPayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({ error: "Preencha o nome e o valor." });
+    return;
+  }
+  try {
+    res.status(201).json(await createAddon(payload));
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao incluir adicional.",
+    });
+  }
+});
+
+catalogRouter.patch("/addons/:id", async (req, res) => {
+  const payload = addonPayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({ error: "Preencha o nome e o valor." });
+    return;
+  }
+  try {
+    const addon = await updateAddon(String(req.params.id), payload);
+    if (!addon) {
+      res.status(404).json({ error: "Adicional não encontrado." });
+      return;
+    }
+    res.json(addon);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao atualizar adicional.",
+    });
+  }
+});
+
+catalogRouter.delete("/addons/:id", async (req, res) => {
+  try {
+    await deleteAddon(String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao excluir adicional.",
+    });
+  }
+});
+
 catalogRouter.get("/products", async (req, res) => {
   const { page, limit } = parsePageQuery(req.query);
   res.json(
@@ -227,6 +312,8 @@ catalogRouter.post("/products", async (req, res) => {
   const active = req.body?.active !== false;
   const customizable = Boolean(req.body?.customizable);
   const notesEnabled = Boolean(req.body?.notesEnabled);
+  const addonsEnabled = Boolean(req.body?.addonsEnabled);
+  const addonIds = parseAddonIds(req.body?.addonIds) ?? [];
   const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
   if (!name || !categoryId || !Number.isFinite(price) || price < 0) {
@@ -244,6 +331,11 @@ catalogRouter.post("/products", async (req, res) => {
     return;
   }
 
+  if (addonsEnabled && addonIds.length === 0) {
+    res.status(400).json({ error: "Escolha pelo menos um adicional para este item." });
+    return;
+  }
+
   try {
     res.status(201).json(
       await createProduct({
@@ -254,6 +346,8 @@ catalogRouter.post("/products", async (req, res) => {
         active,
         customizable,
         notesEnabled,
+        addonsEnabled,
+        addonIds: addonsEnabled ? addonIds : [],
         optionGroups,
       }),
     );
@@ -273,6 +367,8 @@ function productPatch(body: Record<string, unknown>) {
     active?: boolean;
     customizable?: boolean;
     notesEnabled?: boolean;
+    addonsEnabled?: boolean;
+    addonIds?: string[];
     optionGroups?: ProductOptionGroup[];
   } = {};
 
@@ -303,6 +399,12 @@ function productPatch(body: Record<string, unknown>) {
   if (body.notesEnabled !== undefined) {
     patch.notesEnabled = Boolean(body.notesEnabled);
   }
+  if (body.addonsEnabled !== undefined) {
+    patch.addonsEnabled = Boolean(body.addonsEnabled);
+  }
+  if (body.addonIds !== undefined) {
+    patch.addonIds = parseAddonIds(body.addonIds) ?? [];
+  }
   if (body.optionGroups !== undefined) {
     patch.optionGroups = parseOptionGroups(body.optionGroups) ?? [];
   }
@@ -320,6 +422,10 @@ catalogRouter.patch("/products/:id", async (req, res) => {
     res.status(400).json({
       error: "Item montável precisa de pelo menos um grupo de opções.",
     });
+    return;
+  }
+  if (patch.addonsEnabled && patch.addonIds && patch.addonIds.length === 0) {
+    res.status(400).json({ error: "Escolha pelo menos um adicional para este item." });
     return;
   }
   try {

@@ -8,6 +8,7 @@ import type {
 import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
 import type {
+  Addon,
   AppNotification,
   CartItem,
   Category,
@@ -28,8 +29,9 @@ import type {
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
 
-const PRODUCT_SELECT =
+const PRODUCT_SELECT_CORE =
   "*, categories(name), product_option_groups(*, product_options(*))";
+const PRODUCT_SELECT = `${PRODUCT_SELECT_CORE}, product_addons(addon_id, addons(id, name, price, sort_order, active))`;
 
 function mapOptionGroups(row: Record<string, unknown>): ProductOptionGroup[] {
   const groups = row.product_option_groups;
@@ -89,6 +91,40 @@ function mapStore(row: Record<string, unknown>): Store {
   };
 }
 
+function mapAddon(row: Record<string, unknown>): Addon {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    price: Number(row.price ?? 0),
+    sortOrder: Number(row.sort_order ?? 0),
+    active: Boolean(row.active ?? true),
+  };
+}
+
+function mapProductAddons(row: Record<string, unknown>): Addon[] {
+  const links = row.product_addons;
+  if (!Array.isArray(links)) return [];
+  return links
+    .map((link) => {
+      const typed = link as { addons?: Record<string, unknown> | Record<string, unknown>[] };
+      const raw = Array.isArray(typed.addons) ? typed.addons[0] : typed.addons;
+      return raw ? mapAddon(raw) : null;
+    })
+    .filter((item): item is Addon => Boolean(item))
+    .sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+    );
+}
+
+function missingAddonsTable(message?: string) {
+  return Boolean(
+    message?.includes("addons") ||
+      message?.includes("product_addons") ||
+      message?.includes("addons_enabled"),
+  );
+}
+
 function mapProduct(row: Record<string, unknown>): Product {
   const category = row.categories as { name?: string } | null;
   return {
@@ -104,6 +140,8 @@ function mapProduct(row: Record<string, unknown>): Product {
     active: Boolean(row.active ?? true),
     customizable: Boolean(row.customizable ?? false),
     notesEnabled: Boolean(row.notes_enabled ?? false),
+    addonsEnabled: Boolean(row.addons_enabled ?? false),
+    addons: mapProductAddons(row),
     optionGroups: mapOptionGroups(row),
   };
 }
@@ -288,11 +326,19 @@ export async function listProducts(): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.listProducts();
 
-  const { data, error } = await supabase
+  const first = await supabase
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("active", true)
     .order("name");
+  const { data, error } =
+    first.error && missingAddonsTable(first.error.message)
+      ? await supabase
+          .from("products")
+          .select(PRODUCT_SELECT_CORE)
+          .eq("active", true)
+          .order("name")
+      : first;
   if (error || !data) return memoryStore.listProducts();
   return data.map((row) => mapProduct(row as Record<string, unknown>));
 }
@@ -301,10 +347,11 @@ export async function listAllProducts(): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.listAllProducts();
 
-  const { data, error } = await supabase
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .order("name");
+  const first = await supabase.from("products").select(PRODUCT_SELECT).order("name");
+  const { data, error } =
+    first.error && missingAddonsTable(first.error.message)
+      ? await supabase.from("products").select(PRODUCT_SELECT_CORE).order("name")
+      : first;
   if (error || !data) return memoryStore.listAllProducts();
   return data.map((row) => mapProduct(row as Record<string, unknown>));
 }
@@ -331,7 +378,21 @@ export async function listProductsPage(
     );
   }
 
-  const { data, error, count } = await query.range(from, to);
+  let { data, error, count } = await query.range(from, to);
+  if (error && missingAddonsTable(error.message)) {
+    let fallback = supabase
+      .from("products")
+      .select(PRODUCT_SELECT_CORE, { count: "exact" })
+      .order("name");
+    if (filter.categoryId) fallback = fallback.eq("category_id", filter.categoryId);
+    if (filter.active !== undefined) fallback = fallback.eq("active", filter.active);
+    if (filter.q) {
+      fallback = fallback.or(
+        `name.ilike.%${filter.q}%,description.ilike.%${filter.q}%`,
+      );
+    }
+    ({ data, error, count } = await fallback.range(from, to));
+  }
   if (error) return memoryStore.listProductsPage(page, limit, filter);
   return {
     items: (data ?? []).map((row) => mapProduct(row as Record<string, unknown>)),
@@ -470,6 +531,149 @@ export async function deleteCategory(id: string) {
   return true;
 }
 
+export async function listAddons(): Promise<Addon[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAddons();
+  const { data, error } = await supabase
+    .from("addons")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingAddonsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapAddon(row as Record<string, unknown>));
+}
+
+export async function listAllAddons(): Promise<Addon[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAllAddons();
+  const { data, error } = await supabase
+    .from("addons")
+    .select("*")
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingAddonsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapAddon(row as Record<string, unknown>));
+}
+
+export async function listAddonsPage(
+  page: number,
+  limit: number,
+  all: boolean,
+  filter: { q?: string; active?: boolean } = {},
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAddonsPage(page, limit, all, filter);
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  let query = supabase
+    .from("addons")
+    .select("*", { count: "exact" })
+    .order("sort_order")
+    .order("name");
+  if (!all) query = query.eq("active", true);
+  if (filter.active !== undefined) query = query.eq("active", filter.active);
+  if (filter.q) query = query.ilike("name", `%${filter.q}%`);
+
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    if (missingAddonsTable(error.message)) {
+      return { items: [] as Addon[], total: 0, page, limit };
+    }
+    return memoryStore.listAddonsPage(page, limit, all, filter);
+  }
+  return {
+    items: (data ?? []).map((row) => mapAddon(row as Record<string, unknown>)),
+    total: count ?? 0,
+    page,
+    limit,
+  };
+}
+
+export async function createAddon(input: {
+  name: string;
+  price: number;
+  sortOrder: number;
+  active: boolean;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.createAddon(input);
+  const store = await getStore();
+  const { data, error } = await supabase
+    .from("addons")
+    .insert({
+      store_id: store.id,
+      name: input.name,
+      price: input.price,
+      sort_order: input.sortOrder,
+      active: input.active,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(
+      missingAddonsTable(error?.message)
+        ? "Rode a migration 021_addons.sql no Supabase."
+        : error?.message ?? "Não foi possível salvar o adicional.",
+    );
+  }
+  return mapAddon(data as Record<string, unknown>);
+}
+
+export async function updateAddon(
+  id: string,
+  input: { name: string; price: number; sortOrder: number; active: boolean },
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updateAddon(id, input);
+  const { data, error } = await supabase
+    .from("addons")
+    .update({
+      name: input.name,
+      price: input.price,
+      sort_order: input.sortOrder,
+      active: input.active,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !data) return null;
+  return mapAddon(data as Record<string, unknown>);
+}
+
+export async function deleteAddon(id: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.deleteAddon(id);
+  const { error } = await supabase.from("addons").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+async function replaceProductAddons(productId: string, addonIds: string[]) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.replaceProductAddons(productId, addonIds);
+  await supabase.from("product_addons").delete().eq("product_id", productId);
+  const unique = [...new Set(addonIds.filter(Boolean))];
+  if (!unique.length) return;
+  const { error } = await supabase.from("product_addons").insert(
+    unique.map((addonId) => ({ product_id: productId, addon_id: addonId })),
+  );
+  if (error) {
+    throw new Error(
+      missingAddonsTable(error.message)
+        ? "Rode a migration 021_addons.sql no Supabase."
+        : error.message,
+    );
+  }
+}
+
 export async function createProduct(input: {
   categoryId: string;
   name: string;
@@ -478,6 +682,8 @@ export async function createProduct(input: {
   active: boolean;
   customizable?: boolean;
   notesEnabled?: boolean;
+  addonsEnabled?: boolean;
+  addonIds?: string[];
   optionGroups?: ProductOptionGroup[];
 }) {
   const supabase = getSupabase();
@@ -495,17 +701,23 @@ export async function createProduct(input: {
       active: input.active,
       customizable: Boolean(input.customizable),
       notes_enabled: Boolean(input.notesEnabled),
+      addons_enabled: Boolean(input.addonsEnabled),
     })
     .select(PRODUCT_SELECT)
     .single();
   if (error || !data) {
-    throw new Error(error?.message ?? "Não foi possível salvar o item.");
+    throw new Error(
+      missingAddonsTable(error?.message)
+        ? "Rode a migration 021_addons.sql no Supabase."
+        : error?.message ?? "Não foi possível salvar o item.",
+    );
   }
   const product = mapProduct(data as Record<string, unknown>);
+  if (input.addonIds) await replaceProductAddons(product.id, input.addonIds);
   if (input.optionGroups) {
     return (await replaceProductOptions(product.id, input.optionGroups)) ?? product;
   }
-  return product;
+  return (await getProduct(product.id)) ?? product;
 }
 
 export async function updateProduct(
@@ -518,6 +730,8 @@ export async function updateProduct(
     active: boolean;
     customizable: boolean;
     notesEnabled: boolean;
+    addonsEnabled: boolean;
+    addonIds: string[];
     optionGroups: ProductOptionGroup[];
   }>,
 ) {
@@ -532,13 +746,25 @@ export async function updateProduct(
   if (input.active !== undefined) payload.active = input.active;
   if (input.customizable !== undefined) payload.customizable = input.customizable;
   if (input.notesEnabled !== undefined) payload.notes_enabled = input.notesEnabled;
+  if (input.addonsEnabled !== undefined) payload.addons_enabled = input.addonsEnabled;
 
   if (Object.keys(payload).length) {
     const { error } = await supabase.from("products").update(payload).eq("id", id);
-    if (error) return null;
+    if (error) {
+      if (missingAddonsTable(error.message)) {
+        throw new Error("Rode a migration 021_addons.sql no Supabase.");
+      }
+      return null;
+    }
   }
   if (input.optionGroups) {
-    return replaceProductOptions(id, input.optionGroups);
+    await replaceProductOptions(id, input.optionGroups);
+  }
+  if (input.addonIds !== undefined || input.addonsEnabled === false) {
+    await replaceProductAddons(
+      id,
+      input.addonsEnabled === false ? [] : (input.addonIds ?? []),
+    );
   }
   return getProduct(id);
 }
@@ -597,11 +823,19 @@ export async function getProduct(id: string) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.getProduct(id);
 
-  const { data, error } = await supabase
+  const first = await supabase
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("id", id)
     .maybeSingle();
+  const { data, error } =
+    first.error && missingAddonsTable(first.error.message)
+      ? await supabase
+          .from("products")
+          .select(PRODUCT_SELECT_CORE)
+          .eq("id", id)
+          .maybeSingle()
+      : first;
   if (error || !data) return null;
   return mapProduct(data as Record<string, unknown>);
 }

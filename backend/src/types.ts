@@ -12,6 +12,7 @@ export type OrderStatus =
 export type ConversationState =
   | "welcome"
   | "awaiting_product"
+  | "awaiting_addon"
   | "awaiting_option"
   | "awaiting_quantity"
   | "awaiting_item_note"
@@ -97,6 +98,14 @@ export type Store = {
   neighborhoods: DeliveryNeighborhood[];
 };
 
+export type Addon = {
+  id: string;
+  name: string;
+  price: number;
+  sortOrder: number;
+  active: boolean;
+};
+
 export type Product = {
   id: string;
   categoryId: string;
@@ -107,6 +116,8 @@ export type Product = {
   active: boolean;
   customizable: boolean;
   notesEnabled: boolean;
+  addonsEnabled: boolean;
+  addons: Addon[];
   optionGroups: ProductOptionGroup[];
 };
 

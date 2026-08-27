@@ -141,6 +141,8 @@ function isSizeGroup(group: ProductOptionGroup | undefined) {
   return Boolean(group?.exclusiveSet?.trim());
 }
 
+export const ADDON_GROUP_ID = "__addon__";
+
 function isFlavorOrSizeGroup(group: ProductOptionGroup | undefined) {
   if (!group) return false;
   return group.maxSelect > 1 || isSizeGroup(group);
@@ -183,7 +185,8 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
 
   for (const selection of selections) {
     const group = groups.find((item) => item.id === selection.groupId);
-    if (isFlavorOrSizeGroup(group) || !group) continue;
+    if (isFlavorOrSizeGroup(group)) continue;
+    if (!group && selection.groupId !== ADDON_GROUP_ID) continue;
 
     const extra = selection.options.reduce(
       (max, option) => Math.max(max, Math.round(option.extraPrice * 100)),

@@ -7,7 +7,7 @@ import {
   productSchema,
   type ProductValues,
 } from "../../lib/validation";
-import type { Category, Product } from "../../types";
+import type { Addon, Category, Product } from "../../types";
 import { OptionGroupsEditor } from "./OptionGroupsEditor";
 import { cn } from "../../lib/cn";
 import {
@@ -45,10 +45,22 @@ function groupsFromProduct(product: Product | null): ProductValues["optionGroups
   }));
 }
 
+function addonChoices(addons: Addon[], product: Product | null) {
+  const map = new Map<string, Addon>();
+  for (const item of addons) map.set(item.id, item);
+  for (const item of product?.addons ?? []) map.set(item.id, item);
+  return [...map.values()].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.name.localeCompare(right.name, "pt-BR"),
+  );
+}
+
 export function ProductForm({
   open,
   product,
   categories,
+  addons,
   submitting,
   onCancel,
   onSubmit,
@@ -56,6 +68,7 @@ export function ProductForm({
   open: boolean;
   product: Product | null;
   categories: Category[];
+  addons: Addon[];
   submitting: boolean;
   onCancel: () => void;
   onSubmit: (values: ProductValues) => Promise<void>;
@@ -68,6 +81,8 @@ export function ProductForm({
     active: product?.active ?? true,
     customizable: product?.customizable ?? false,
     notesEnabled: product?.notesEnabled ?? false,
+    addonsEnabled: product?.addonsEnabled ?? false,
+    addonIds: (product?.addons ?? []).map((addon) => addon.id),
     optionGroups: groupsFromProduct(product),
   };
 
@@ -223,6 +238,57 @@ export function ProductForm({
                       )}
                     </FormControl>
                   </label>
+                  <label className={formToggle}>
+                    <div>
+                      <strong>Terá adicional</strong>
+                      <p>Depois do item, o cliente pode escolher um extra ou pular</p>
+                    </div>
+                    <FormControl name="addonsEnabled" compact>
+                      {({ value, setValue }) => (
+                        <Switch
+                          checked={Boolean(value)}
+                          onChange={(checked) => {
+                            setValue(checked);
+                            if (!checked) setFieldValue("addonIds", []);
+                          }}
+                        />
+                      )}
+                    </FormControl>
+                  </label>
+                  {values.addonsEnabled ? (
+                    <FormControl name="addonIds" label="Adicionais deste item">
+                      {({ value, setValue, setTouched }) => {
+                        const selected = new Set(
+                          Array.isArray(value) ? value.map(String) : [],
+                        );
+                        const options = addonChoices(addons, product).filter(
+                          (addon) => addon.active || selected.has(addon.id),
+                        );
+                        return (
+                          <Select
+                            mode="multiple"
+                            style={{ width: "100%" }}
+                            placeholder={
+                              options.length
+                                ? "Escolha os adicionais"
+                                : "Cadastre adicionais na tela Adicionais"
+                            }
+                            value={Array.isArray(value) ? value : []}
+                            onChange={setValue}
+                            onBlur={setTouched}
+                            optionFilterProp="label"
+                            showSearch
+                            options={options.map((addon) => ({
+                              value: addon.id,
+                              label: addon.active
+                                ? addon.name
+                                : `${addon.name} (inativo)`,
+                            }))}
+                          />
+                        );
+                      }}
+                    </FormControl>
+                  ) : null}
                 </div>
               </section>
               <section
@@ -319,6 +385,8 @@ export function toProductPayload(values: ProductValues) {
     active: values.active,
     customizable: Boolean(values.customizable),
     notesEnabled: Boolean(values.notesEnabled),
+    addonsEnabled: Boolean(values.addonsEnabled),
+    addonIds: values.addonsEnabled ? values.addonIds ?? [] : [],
     optionGroups,
   };
 }

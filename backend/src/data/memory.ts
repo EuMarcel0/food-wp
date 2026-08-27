@@ -8,6 +8,7 @@ import { paginateItems } from "../lib/pagination.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { env } from "../config/env.js";
 import type {
+  Addon,
   AppNotification,
   Category,
   Conversation,
@@ -54,6 +55,8 @@ const products: Product[] = [
     active: true,
     customizable: false,
     notesEnabled: false,
+    addonsEnabled: false,
+    addons: [],
     optionGroups: [],
   },
   {
@@ -66,6 +69,8 @@ const products: Product[] = [
     active: true,
     customizable: false,
     notesEnabled: false,
+    addonsEnabled: false,
+    addons: [],
     optionGroups: [],
   },
   {
@@ -78,6 +83,8 @@ const products: Product[] = [
     active: true,
     customizable: false,
     notesEnabled: false,
+    addonsEnabled: false,
+    addons: [],
     optionGroups: [],
   },
   {
@@ -90,9 +97,14 @@ const products: Product[] = [
     active: true,
     customizable: false,
     notesEnabled: false,
+    addonsEnabled: false,
+    addons: [],
     optionGroups: [],
   },
 ];
+
+const addons: Addon[] = [];
+const productAddonIds = new Map<string, string[]>();
 
 const customers = new Map<string, Customer>();
 const conversations = new Map<string, Conversation>();
@@ -244,8 +256,101 @@ export const memoryStore = {
     return true;
   },
 
+  listAddons() {
+    return addons.filter((item) => item.active);
+  },
+
+  listAllAddons() {
+    return [...addons].sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+    );
+  },
+
+  listAddonsPage(
+    page: number,
+    limit: number,
+    all: boolean,
+    filter: { q?: string; active?: boolean } = {},
+  ) {
+    const items = (all ? [...addons] : this.listAddons())
+      .filter((item) => {
+        if (filter.active !== undefined && item.active !== filter.active) return false;
+        if (filter.q && !item.name.toLowerCase().includes(filter.q.toLowerCase())) {
+          return false;
+        }
+        return true;
+      })
+      .sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+      );
+    return paginateItems(items, page, limit);
+  },
+
+  createAddon(input: {
+    name: string;
+    price: number;
+    sortOrder: number;
+    active: boolean;
+  }) {
+    const addon: Addon = {
+      id: `addon-${Date.now()}`,
+      name: input.name,
+      price: input.price,
+      sortOrder: input.sortOrder,
+      active: input.active,
+    };
+    addons.push(addon);
+    return addon;
+  },
+
+  updateAddon(
+    id: string,
+    input: { name: string; price: number; sortOrder: number; active: boolean },
+  ) {
+    const addon = addons.find((item) => item.id === id);
+    if (!addon) return null;
+    addon.name = input.name;
+    addon.price = input.price;
+    addon.sortOrder = input.sortOrder;
+    addon.active = input.active;
+    return addon;
+  },
+
+  deleteAddon(id: string) {
+    const index = addons.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    addons.splice(index, 1);
+    for (const [productId, ids] of productAddonIds) {
+      productAddonIds.set(
+        productId,
+        ids.filter((addonId) => addonId !== id),
+      );
+    }
+    return true;
+  },
+
+  replaceProductAddons(productId: string, addonIds: string[]) {
+    productAddonIds.set(productId, [...new Set(addonIds.filter(Boolean))]);
+    const product = products.find((item) => item.id === productId);
+    if (product) {
+      product.addons = this.linkedAddons(productId);
+    }
+    return product ?? null;
+  },
+
+  linkedAddons(productId: string) {
+    const ids = productAddonIds.get(productId) ?? [];
+    return ids
+      .map((id) => addons.find((item) => item.id === id))
+      .filter((item): item is Addon => Boolean(item));
+  },
+
   getProduct(id: string) {
-    return products.find((product) => product.id === id) ?? null;
+    const product = products.find((item) => item.id === id) ?? null;
+    if (product) product.addons = this.linkedAddons(id);
+    return product;
   },
 
   createProduct(input: {
@@ -256,6 +361,8 @@ export const memoryStore = {
     active: boolean;
     customizable?: boolean;
     notesEnabled?: boolean;
+    addonsEnabled?: boolean;
+    addonIds?: string[];
     optionGroups?: ProductOptionGroup[];
   }) {
     const category = categories.find((item) => item.id === input.categoryId);
@@ -269,10 +376,13 @@ export const memoryStore = {
       active: input.active,
       customizable: Boolean(input.customizable),
       notesEnabled: Boolean(input.notesEnabled),
+      addonsEnabled: Boolean(input.addonsEnabled),
+      addons: [],
       optionGroups: input.optionGroups ?? [],
     };
     products.push(product);
-    return product;
+    if (input.addonIds) this.replaceProductAddons(product.id, input.addonIds);
+    return this.getProduct(product.id) ?? product;
   },
 
   updateProduct(
@@ -285,6 +395,8 @@ export const memoryStore = {
       active: boolean;
       customizable: boolean;
       notesEnabled: boolean;
+      addonsEnabled: boolean;
+      addonIds: string[];
       optionGroups: ProductOptionGroup[];
     }>,
   ) {
@@ -302,8 +414,15 @@ export const memoryStore = {
     if (input.active !== undefined) product.active = input.active;
     if (input.customizable !== undefined) product.customizable = input.customizable;
     if (input.notesEnabled !== undefined) product.notesEnabled = input.notesEnabled;
+    if (input.addonsEnabled !== undefined) product.addonsEnabled = input.addonsEnabled;
     if (input.optionGroups !== undefined) product.optionGroups = input.optionGroups;
-    return product;
+    if (input.addonIds !== undefined || input.addonsEnabled === false) {
+      this.replaceProductAddons(
+        id,
+        input.addonsEnabled === false ? [] : (input.addonIds ?? []),
+      );
+    }
+    return this.getProduct(id);
   },
 
   upsertCustomer(waPhone: string, name?: string | null) {

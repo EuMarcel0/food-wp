@@ -76,6 +76,8 @@ export const productSchema = Yup.object({
   active: Yup.boolean().default(true),
   customizable: Yup.boolean().default(false),
   notesEnabled: Yup.boolean().default(false),
+  addonsEnabled: Yup.boolean().default(false),
+  addonIds: Yup.array().of(Yup.string().required()).default([]),
   optionGroups: Yup.array()
     .of(
       Yup.object({
@@ -123,10 +125,36 @@ export const productSchema = Yup.object({
     });
   }
   return true;
+}).test("adicionais", "", function (values) {
+  if (!values.addonsEnabled) return true;
+  if (!values.addonIds?.length) {
+    return this.createError({
+      path: "addonIds",
+      message: "Escolha pelo menos um adicional para este item.",
+    });
+  }
+  return true;
 });
 
 export const categorySchema = Yup.object({
   name: Yup.string().trim().required("Informe o nome da categoria"),
+  sortOrder: Yup.string()
+    .required("Informe a ordem")
+    .test("order", "Informe um número inteiro a partir de 0", (value) => {
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed >= 0;
+    }),
+  active: Yup.boolean().default(true),
+});
+
+export const addonSchema = Yup.object({
+  name: Yup.string().trim().required("Informe o nome do adicional"),
+  price: Yup.string()
+    .required("Informe o valor")
+    .test("price", "Informe um valor válido", (value) => {
+      const amount = parseReais(value ?? "");
+      return amount !== null && amount >= 0;
+    }),
   sortOrder: Yup.string()
     .required("Informe a ordem")
     .test("order", "Informe um número inteiro a partir de 0", (value) => {
@@ -172,6 +200,7 @@ export type SignupValues = Yup.InferType<typeof signupSchema>;
 export type SettingsValues = Yup.InferType<typeof settingsSchema>;
 export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
+export type AddonValues = Yup.InferType<typeof addonSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
 export type DefaultDeliveryFeeValues = Yup.InferType<typeof defaultDeliveryFeeSchema>;
 export type NeighborhoodFeeValues = Yup.InferType<typeof neighborhoodFeeSchema>;
