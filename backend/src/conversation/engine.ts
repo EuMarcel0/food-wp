@@ -12,6 +12,7 @@ import {
   upsertCustomer,
 } from "../data/repository.js";
 import { describeOrderStatus } from "./status.js";
+import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
   assembledName,
   flavorShareLine,
@@ -710,25 +711,35 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    const deliveryFee =
-      context.fulfillment === "delivery" ? store.deliveryFeeCents : 0;
+    const deliveryFee = resolveDeliveryFee(
+      context.fulfillment === "delivery" ? context.addressText : undefined,
+      store,
+    );
     const order = await createOrder({
       customer,
       fulfillment: context.fulfillment,
       paymentMethod: payment,
       addressText: context.addressText,
       notes: context.orderNotes ?? null,
-      deliveryFeeCents: deliveryFee,
+      deliveryFeeCents: context.fulfillment === "delivery" ? deliveryFee.cents : 0,
       items: context.cart,
     });
 
     await persist("welcome", emptyContext());
+    const feeLine =
+      context.fulfillment !== "delivery"
+        ? "Retirada no local"
+        : deliveryFee.neighborhood
+          ? `Taxa de entrega (${deliveryFee.neighborhood.name}): ${formatBRL(deliveryFee.cents)}`
+          : deliveryFee.cents
+            ? `Taxa de entrega: ${formatBRL(deliveryFee.cents)}`
+            : "Entrega sem taxa";
     await sendText(
       input.from,
       [
         `Pedido *#${order.code}* confirmado!`,
         renderCart(context),
-        deliveryFee ? `Taxa de entrega: ${formatBRL(deliveryFee)}` : "Retirada no local",
+        feeLine,
         `Total: *${formatBRL(order.totalCents)}*`,
         context.addressText ? `Entrega: ${context.addressText}` : "",
         context.orderNotes ? `Obs. do pedido: ${context.orderNotes}` : "",

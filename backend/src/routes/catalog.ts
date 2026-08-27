@@ -1,8 +1,10 @@
 import { Router } from "express";
 import {
   createCategory,
+  createNeighborhood,
   createProduct,
   deleteCategory,
+  deleteNeighborhood,
   getStore,
   listAllCategories,
   listCategories,
@@ -70,21 +72,71 @@ catalogRouter.get("/store", async (_req, res) => {
 });
 
 catalogRouter.patch("/store", async (req, res) => {
-  const idleTimeoutMinutes = Number(req.body?.idleTimeoutMinutes);
-  if (!Number.isFinite(idleTimeoutMinutes) || idleTimeoutMinutes < 1 || idleTimeoutMinutes > 10080) {
-    res.status(400).json({
-      error: "Informe o tempo limite em minutos (1 a 10080).",
-    });
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const patch: { idleTimeoutMinutes?: number; deliveryFeeCents?: number } = {};
+
+  if (body.idleTimeoutMinutes !== undefined) {
+    const idleTimeoutMinutes = Number(body.idleTimeoutMinutes);
+    if (!Number.isFinite(idleTimeoutMinutes) || idleTimeoutMinutes < 1 || idleTimeoutMinutes > 10080) {
+      res.status(400).json({
+        error: "Informe o tempo limite em minutos (1 a 10080).",
+      });
+      return;
+    }
+    patch.idleTimeoutMinutes = idleTimeoutMinutes;
+  }
+
+  if (body.deliveryFeeCents !== undefined) {
+    const deliveryFeeCents = Number(body.deliveryFeeCents);
+    if (!Number.isFinite(deliveryFeeCents) || deliveryFeeCents < 0) {
+      res.status(400).json({ error: "Informe uma taxa default válida." });
+      return;
+    }
+    patch.deliveryFeeCents = Math.round(deliveryFeeCents);
+  }
+
+  if (!Object.keys(patch).length) {
+    res.status(400).json({ error: "Nada para atualizar." });
     return;
   }
+
   try {
-    res.json(await updateStore({ idleTimeoutMinutes }));
+    res.json(await updateStore(patch));
   } catch (error) {
     res.status(400).json({
       error:
         error instanceof Error
           ? error.message
           : "Falha ao salvar as configurações.",
+    });
+  }
+});
+
+catalogRouter.post("/store/neighborhoods", async (req, res) => {
+  const name = String(req.body?.name ?? "").trim();
+  const feeCents = Number(req.body?.feeCents);
+  if (!name || !Number.isFinite(feeCents) || feeCents < 0) {
+    res.status(400).json({ error: "Informe o bairro e a taxa." });
+    return;
+  }
+  try {
+    res.status(201).json(
+      await createNeighborhood({ name, feeCents: Math.round(feeCents) }),
+    );
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao incluir o bairro.",
+    });
+  }
+});
+
+catalogRouter.delete("/store/neighborhoods/:id", async (req, res) => {
+  try {
+    await deleteNeighborhood(String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao excluir o bairro.",
     });
   }
 });

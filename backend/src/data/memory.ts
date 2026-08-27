@@ -14,6 +14,7 @@ import type {
   ConversationContext,
   ConversationState,
   Customer,
+  DeliveryNeighborhood,
   Fulfillment,
   NotificationType,
   Order,
@@ -33,6 +34,7 @@ const store: Store = {
   pickupEnabled: true,
   deliveryFeeCents: 700,
   idleTimeoutMinutes: 60,
+  neighborhoods: [],
 };
 
 const categories: Category[] = [
@@ -111,12 +113,43 @@ export const memoryStore = {
     return store;
   },
 
-  updateStore(patch: { idleTimeoutMinutes: number }) {
-    store.idleTimeoutMinutes = Math.min(
-      10080,
-      Math.max(1, Math.round(patch.idleTimeoutMinutes)),
-    );
+  updateStore(patch: { idleTimeoutMinutes?: number; deliveryFeeCents?: number }) {
+    if (patch.idleTimeoutMinutes !== undefined) {
+      store.idleTimeoutMinutes = Math.min(
+        10080,
+        Math.max(1, Math.round(patch.idleTimeoutMinutes)),
+      );
+    }
+    if (patch.deliveryFeeCents !== undefined) {
+      store.deliveryFeeCents = Math.max(0, Math.round(patch.deliveryFeeCents));
+    }
     return store;
+  },
+
+  listNeighborhoods() {
+    return [...store.neighborhoods].sort((left, right) =>
+      left.name.localeCompare(right.name, "pt-BR"),
+    );
+  },
+
+  createNeighborhood(input: { name: string; feeCents: number }): DeliveryNeighborhood {
+    const name = input.name.trim();
+    const exists = store.neighborhoods.some(
+      (item) =>
+        item.name.localeCompare(name, "pt-BR", { sensitivity: "base" }) === 0,
+    );
+    if (exists) throw new Error("Esse bairro já está cadastrado.");
+    const neighborhood: DeliveryNeighborhood = {
+      id: `nbh-${Date.now()}`,
+      name,
+      feeCents: Math.max(0, Math.round(input.feeCents)),
+    };
+    store.neighborhoods.push(neighborhood);
+    return neighborhood;
+  },
+
+  deleteNeighborhood(id: string) {
+    store.neighborhoods = store.neighborhoods.filter((item) => item.id !== id);
   },
 
   listProducts() {

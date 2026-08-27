@@ -10,6 +10,7 @@ import {
   botSettingsSchema,
   type BotSettingsValues,
 } from "../../lib/validation";
+import { NeighborhoodFees } from "./NeighborhoodFees";
 
 function formatIdleLabel(minutes: number) {
   if (!Number.isFinite(minutes) || minutes < 1) return "—";
@@ -51,90 +52,97 @@ export function SettingsPage() {
       <PageHeader
         kicker="Retaguarda"
         title="Configurações"
-        subtitle="Regras do bot no WhatsApp: quanto tempo esperar o cliente e quando recomeçar o atendimento."
+        subtitle="Regras do bot no WhatsApp: tempo sem resposta, taxa default e taxas por bairro."
       />
 
-      <Card
-        className="mt-4 overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
-        title="Tempo sem resposta"
-      >
-        <Formik
-          enableReinitialize
-          initialValues={initialValues}
-          validationSchema={botSettingsSchema}
-          onSubmit={async (values, helpers) => {
-            helpers.setStatus(undefined);
-            try {
-              await saveMutation.mutateAsync(values);
-            } catch (error) {
-              helpers.setStatus(
-                error instanceof Error
-                  ? error.message
-                  : "Não foi possível salvar.",
-              );
-            }
-          }}
+      <div className="flex flex-col gap-6">
+        <Card
+          className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
+          title="Tempo sem resposta"
         >
-          {({ isSubmitting, status, values }) => (
-            <FormikForm>
-              {status ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message={status}
-                />
-              ) : null}
-              <p className="mb-4 text-sm leading-normal text-food-muted">
-                Se o cliente não responder nesse prazo, a próxima mensagem dele
-                vira o começo de uma conversa nova. O pedido em andamento é
-                descartado.
-              </p>
-              <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
-                <FormControl name="idleTimeoutMinutes" label="Tempo limite">
-                  {({ value, setValue, setTouched }) => (
-                    <InputNumber
-                      min={1}
-                      max={10080}
-                      step={5}
-                      value={Number(value) || undefined}
-                      addonAfter="minutos"
-                      style={{ width: "100%", maxWidth: 220 }}
-                      onChange={(next) => setValue(next ?? 60)}
-                      onBlur={setTouched}
-                    />
-                  )}
-                </FormControl>
-                <p className="mb-3 text-[22px] font-extrabold leading-tight tracking-tight text-food-accent tabular-nums" aria-live="polite">
-                  {formatIdleLabel(Number(values.idleTimeoutMinutes))}
+          <Formik
+            enableReinitialize
+            initialValues={initialValues}
+            validationSchema={botSettingsSchema}
+            onSubmit={async (values, helpers) => {
+              helpers.setStatus(undefined);
+              try {
+                await saveMutation.mutateAsync(values);
+              } catch (error) {
+                helpers.setStatus(
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível salvar.",
+                );
+              }
+            }}
+          >
+            {({ isSubmitting, status, values }) => (
+              <FormikForm>
+                {status ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={status}
+                  />
+                ) : null}
+                <p className="mb-4 text-sm leading-normal text-food-muted">
+                  Se o cliente não responder nesse prazo, a próxima mensagem dele
+                  vira o começo de uma conversa nova. O pedido em andamento é
+                  descartado.
                 </p>
-              </div>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={isSubmitting || saveMutation.isPending}
-                disabled={!storeQuery.isFetched}
-              >
-                Salvar
-              </Button>
-            </FormikForm>
-          )}
-        </Formik>
-      </Card>
+                <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
+                  <FormControl name="idleTimeoutMinutes" label="Tempo limite">
+                    {({ value, setValue, setTouched }) => (
+                      <InputNumber
+                        min={1}
+                        max={10080}
+                        step={5}
+                        value={Number(value) || undefined}
+                        addonAfter="minutos"
+                        style={{ width: "100%", maxWidth: 220 }}
+                        onChange={(next) => setValue(next ?? 60)}
+                        onBlur={setTouched}
+                      />
+                    )}
+                  </FormControl>
+                  <p className="mb-3 text-[22px] font-extrabold leading-tight tracking-tight text-food-accent tabular-nums" aria-live="polite">
+                    {formatIdleLabel(Number(values.idleTimeoutMinutes))}
+                  </p>
+                </div>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={isSubmitting || saveMutation.isPending}
+                  disabled={!storeQuery.isFetched}
+                >
+                  Salvar
+                </Button>
+              </FormikForm>
+            )}
+          </Formik>
+        </Card>
 
-      <Card className="mt-4 overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft" title="Status da API">
-        <div className="flex flex-wrap gap-2">
-          <Tag color={health?.ok ? "green" : "red"}>
-            API {health?.ok ? "online" : "offline"}
-          </Tag>
-          <Tag color={health?.supabase ? "green" : "orange"}>
-            Supabase {health?.supabase ? "ok" : "pendente"}
-          </Tag>
-          <Tag color={health?.whatsapp ? "green" : "orange"}>
-            WhatsApp {health?.whatsapp ? "ok" : "pendente"}
-          </Tag>
-        </div>
-      </Card>
+        <Card
+          className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft"
+          title="Status da API"
+        >
+          <div className="flex flex-wrap gap-2">
+            <Tag color={health?.ok ? "green" : "red"}>
+              API {health?.ok ? "online" : "offline"}
+            </Tag>
+            <Tag color={health?.supabase ? "green" : "orange"}>
+              Supabase {health?.supabase ? "ok" : "pendente"}
+            </Tag>
+            <Tag color={health?.whatsapp ? "green" : "orange"}>
+              WhatsApp {health?.whatsapp ? "ok" : "pendente"}
+            </Tag>
+          </div>
+        </Card>
+
+        <NeighborhoodFees store={store} />
+      </div>
     </>
   );
 }

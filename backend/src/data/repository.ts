@@ -15,6 +15,7 @@ import type {
   ConversationContext,
   ConversationState,
   Customer,
+  DeliveryNeighborhood,
   Fulfillment,
   NotificationType,
   Order,
@@ -84,6 +85,7 @@ function mapStore(row: Record<string, unknown>): Store {
     pickupEnabled: Boolean(row.pickup_enabled ?? true),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     idleTimeoutMinutes: Math.max(1, Number(row.idle_timeout_minutes ?? 60)),
+    neighborhoods: [],
   };
 }
 
@@ -143,6 +145,40 @@ function mapOrder(row: Record<string, unknown>): Order {
   };
 }
 
+function mapNeighborhood(row: Record<string, unknown>): DeliveryNeighborhood {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    feeCents: Math.max(0, Number(row.fee_cents ?? 0)),
+  };
+}
+
+function missingNeighborhoodsTable(message?: string) {
+  return Boolean(message?.includes("delivery_neighborhoods"));
+}
+
+async function listNeighborhoods(storeId: string): Promise<DeliveryNeighborhood[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listNeighborhoods();
+
+  const { data, error } = await supabase
+    .from("delivery_neighborhoods")
+    .select("id, name, fee_cents")
+    .eq("store_id", storeId)
+    .order("name");
+  if (error) {
+    if (missingNeighborhoodsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapNeighborhood(row as Record<string, unknown>));
+}
+
+async function hydrateStore(row: Record<string, unknown>): Promise<Store> {
+  const store = mapStore(row);
+  store.neighborhoods = await listNeighborhoods(store.id);
+  return store;
+}
+
 export async function getStore(): Promise<Store> {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.getStore();
@@ -153,23 +189,33 @@ export async function getStore(): Promise<Store> {
     .limit(1)
     .maybeSingle();
   if (error || !data) return memoryStore.getStore();
-  return mapStore(data);
+  return hydrateStore(data as Record<string, unknown>);
 }
 
 export async function updateStore(patch: {
-  idleTimeoutMinutes: number;
+  idleTimeoutMinutes?: number;
+  deliveryFeeCents?: number;
 }): Promise<Store> {
-  const idleTimeoutMinutes = Math.min(
-    10080,
-    Math.max(1, Math.round(Number(patch.idleTimeoutMinutes))),
-  );
+  const payload: Record<string, number> = {};
+  if (patch.idleTimeoutMinutes !== undefined) {
+    payload.idle_timeout_minutes = Math.min(
+      10080,
+      Math.max(1, Math.round(Number(patch.idleTimeoutMinutes))),
+    );
+  }
+  if (patch.deliveryFeeCents !== undefined) {
+    payload.delivery_fee_cents = Math.max(
+      0,
+      Math.round(Number(patch.deliveryFeeCents)),
+    );
+  }
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.updateStore({ idleTimeoutMinutes });
+  if (!supabase) return memoryStore.updateStore(patch);
 
   const current = await getStore();
   const { data, error } = await supabase
     .from("stores")
-    .update({ idle_timeout_minutes: idleTimeoutMinutes })
+    .update(payload)
     .eq("id", current.id)
     .select("*")
     .maybeSingle();
@@ -180,7 +226,58 @@ export async function updateStore(patch: {
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }
-  return mapStore(data);
+  return hydrateStore(data as Record<string, unknown>);
+}
+
+export async function createNeighborhood(input: {
+  name: string;
+  feeCents: number;
+}): Promise<DeliveryNeighborhood> {
+  const name = input.name.trim();
+  const feeCents = Math.max(0, Math.round(Number(input.feeCents)));
+  if (!name) throw new Error("Informe o bairro.");
+
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.createNeighborhood({ name, feeCents });
+
+  const store = await getStore();
+  const { data, error } = await supabase
+    .from("delivery_neighborhoods")
+    .insert({
+      store_id: store.id,
+      name,
+      fee_cents: feeCents,
+    })
+    .select("id, name, fee_cents")
+    .single();
+  if (error || !data) {
+    if (missingNeighborhoodsTable(error?.message)) {
+      throw new Error("Rode a migration 018_delivery_neighborhoods.sql no Supabase.");
+    }
+    if (error?.code === "23505") {
+      throw new Error("Esse bairro já está cadastrado.");
+    }
+    throw new Error(error?.message ?? "Não foi possível incluir o bairro.");
+  }
+  return mapNeighborhood(data as Record<string, unknown>);
+}
+
+export async function deleteNeighborhood(id: string): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    memoryStore.deleteNeighborhood(id);
+    return;
+  }
+  const { error } = await supabase
+    .from("delivery_neighborhoods")
+    .delete()
+    .eq("id", id);
+  if (error) {
+    if (missingNeighborhoodsTable(error.message)) {
+      throw new Error("Rode a migration 018_delivery_neighborhoods.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function listProducts(): Promise<Product[]> {

@@ -72,6 +72,12 @@ export type ProductOptionGroup = {
   options: ProductOption[];
 };
 
+export type DeliveryNeighborhood = {
+  id: string;
+  name: string;
+  feeCents: number;
+};
+
 export type Store = {
   id: string;
   name: string;
@@ -80,6 +86,7 @@ export type Store = {
   pickupEnabled: boolean;
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
+  neighborhoods: DeliveryNeighborhood[];
 };
 
 export type Health = {

@@ -50,11 +50,21 @@ async function readError(response: Response) {
 export const api = {
   health: () => request<Health>("/health", { silent: true }),
   store: () => request<Store>("/api/store", { silent: true }),
-  updateStore: (payload: { idleTimeoutMinutes: number }) =>
+  updateStore: (payload: {
+    idleTimeoutMinutes?: number;
+    deliveryFeeCents?: number;
+  }) =>
     request<Store>("/api/store", {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  createNeighborhood: (payload: { name: string; feeCents: number }) =>
+    request<Store["neighborhoods"][number]>("/api/store/neighborhoods", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteNeighborhood: (id: string) =>
+    request<void>(`/api/store/neighborhoods/${id}`, { method: "DELETE" }),
   categories: (all = false) =>
     request<Category[]>(`/api/categories${all ? "?all=1" : ""}`),
   listCategories: (

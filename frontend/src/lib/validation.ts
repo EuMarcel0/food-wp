@@ -145,12 +145,36 @@ export const botSettingsSchema = Yup.object({
     .max(10080, "Máximo de 7 dias"),
 });
 
+export const defaultDeliveryFeeSchema = Yup.object({
+  deliveryFee: Yup.string().test(
+    "fee",
+    "Informe um valor válido",
+    (value) => {
+      if (!value || !value.trim()) return true;
+      const amount = parseReais(value);
+      return amount !== null && amount >= 0;
+    },
+  ),
+});
+
+export const neighborhoodFeeSchema = Yup.object({
+  name: Yup.string().trim().required("Informe o bairro"),
+  fee: Yup.string()
+    .required("Informe a taxa")
+    .test("fee", "Informe um valor válido", (value) => {
+      const amount = parseReais(value ?? "");
+      return amount !== null && amount >= 0;
+    }),
+});
+
 export type LoginValues = Yup.InferType<typeof loginSchema>;
 export type SignupValues = Yup.InferType<typeof signupSchema>;
 export type SettingsValues = Yup.InferType<typeof settingsSchema>;
 export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
+export type DefaultDeliveryFeeValues = Yup.InferType<typeof defaultDeliveryFeeSchema>;
+export type NeighborhoodFeeValues = Yup.InferType<typeof neighborhoodFeeSchema>;
 
 export function parseReais(value: string) {
   const normalized = value.trim().replace(/\./g, "").replace(",", ".");
