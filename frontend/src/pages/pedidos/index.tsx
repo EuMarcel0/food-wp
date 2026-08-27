@@ -11,6 +11,7 @@ import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
+import { OrderItemsLeaders } from "./OrderItemsLeaders";
 import { PrepTimeModal } from "./PrepTimeModal";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
@@ -26,7 +27,6 @@ import {
   STATUS_LABEL,
   formatBRL,
   formatDate,
-  addonLabel,
   cashChangeLabel,
 } from "../../lib/format";
 import { useAuth } from "../../auth/AuthProvider";
@@ -253,7 +253,7 @@ export function OrdersPage() {
         dataSource={orders}
         tableLayout="fixed"
         pagination={false}
-        scroll={{ x: 1380, y: bodyHeight }}
+        scroll={{ x: 1320, y: bodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
@@ -263,53 +263,15 @@ export function OrdersPage() {
             render: (_, order) => order.customerName || order.customerPhone || "—",
           },
           {
-            title: "Itens",
-            render: (_, order) => {
-              const items = order.items ?? [];
-              if (!items.length) return "—";
-              return (
-                <div className="flex flex-col gap-1.5 leading-snug">
-                  {items.map((item, index) => {
-                    const addons = addonLabel(item.extras);
-                    return (
-                      <div key={item.id ?? `${item.name}-${index}`}>
-                        <span>
-                          {item.name}
-                          {item.notes ? ` (obs.: ${item.notes})` : ""}
-                        </span>
-                        {addons ? (
-                          <div className="text-[12px] text-food-muted">{addons}</div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            },
-          },
-          {
-            title: "Quantidade",
-            width: 108,
-            align: "center",
-            render: (_, order) => {
-              const items = order.items ?? [];
-              if (!items.length) return "—";
-              return (
-                <div className="flex flex-col gap-1.5 leading-snug tabular-nums">
-                  {items.map((item, index) => {
-                    const addons = addonLabel(item.extras);
-                    return (
-                      <div key={item.id ?? `${item.name}-${index}`}>
-                        <span>{item.quantity}</span>
-                        {addons ? (
-                          <div className="invisible text-[12px]">&nbsp;</div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            },
+            title: (
+              <span className="flex w-full items-baseline justify-between gap-3">
+                <span>Itens</span>
+                <span>Quantidade</span>
+              </span>
+            ),
+            render: (_, order) => (
+              <OrderItemsLeaders items={order.items ?? []} />
+            ),
           },
           {
             title: "Obs.",
