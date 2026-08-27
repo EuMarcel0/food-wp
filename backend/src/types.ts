@@ -96,7 +96,20 @@ export type Store = {
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
   profilePhotoUrl: string | null;
+  legalName: string | null;
+  cnpj: string | null;
+  receiptFooter: string | null;
   neighborhoods: DeliveryNeighborhood[];
+};
+
+export type StorePatch = {
+  idleTimeoutMinutes?: number;
+  deliveryFeeCents?: number;
+  name?: string;
+  profilePhotoUrl?: string | null;
+  legalName?: string | null;
+  cnpj?: string | null;
+  receiptFooter?: string | null;
 };
 
 export type Addon = {

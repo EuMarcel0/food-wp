@@ -573,4 +573,10 @@ create policy "store_branding_public_read"
   to public
   using (bucket_id = 'store-branding');
 
+-- ========== 023_store_receipt ==========
+alter table public.stores
+  add column if not exists legal_name text,
+  add column if not exists cnpj text,
+  add column if not exists receipt_footer text;
+
 

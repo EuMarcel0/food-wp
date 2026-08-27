@@ -5,7 +5,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Input, Pagination, Select, Table, Tag } from "antd";
+import { Button, Input, Pagination, Select, Table, Tag, Tooltip } from "antd";
+import { FileTextOutlined } from "@ant-design/icons";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -13,6 +14,7 @@ import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
 import { OrderItemsLeaders } from "./OrderItemsLeaders";
 import { PrepTimeModal } from "./PrepTimeModal";
+import { ReceiptPreviewModal } from "./ReceiptPreviewModal";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
@@ -97,6 +99,7 @@ export function OrdersPage() {
   const [fulfillment, setFulfillment] = useState<
     Order["fulfillment"] | undefined
   >();
+  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const q = useDebouncedValue(qInput.trim(), 300);
   const filters = { q: q || undefined, status, fulfillment };
   const activeCount = [q, status, fulfillment].filter(Boolean).length;
@@ -109,6 +112,10 @@ export function OrdersPage() {
     queryKey: queryKeys.orders.list(page, limit, filters),
     queryFn: () => api.orders(page, limit, true, filters),
     placeholderData: keepPreviousData,
+  });
+  const storeQuery = useQuery({
+    queryKey: queryKeys.store,
+    queryFn: api.store,
   });
 
   const result = listQuery.data;
@@ -253,7 +260,7 @@ export function OrdersPage() {
         dataSource={orders}
         tableLayout="fixed"
         pagination={false}
-        scroll={{ x: 1320, y: bodyHeight }}
+        scroll={{ x: 1420, y: bodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
@@ -332,6 +339,21 @@ export function OrdersPage() {
             render: (value: string) => formatDate(value),
           },
           {
+            title: "Impressão",
+            width: 96,
+            align: "center",
+            render: (_, order) => (
+              <Tooltip title="Ver cupom">
+                <Button
+                  type="text"
+                  aria-label={`Ver cupom do pedido ${order.code}`}
+                  icon={<FileTextOutlined />}
+                  onClick={() => setReceiptOrder(order)}
+                />
+              </Tooltip>
+            ),
+          },
+          {
             title: "Ações",
             width: 76,
             align: "center",
@@ -391,10 +413,17 @@ export function OrdersPage() {
               order={order}
               updating={updatingId === order.id}
               onChangeStatus={changeStatus}
+              onPreviewReceipt={setReceiptOrder}
             />
           ))}
         </MobileCardList>
       </div>
+      <ReceiptPreviewModal
+        order={receiptOrder}
+        store={storeQuery.data}
+        open={Boolean(receiptOrder)}
+        onClose={() => setReceiptOrder(null)}
+      />
       <PrepTimeModal
         order={prepOrder}
         open={Boolean(prepOrder)}

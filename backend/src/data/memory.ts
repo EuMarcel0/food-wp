@@ -25,6 +25,7 @@ import type {
   ProductOptionGroup,
   CartSelection,
   Store,
+  StorePatch,
 } from "../types.js";
 
 const store: Store = {
@@ -37,6 +38,9 @@ const store: Store = {
   deliveryFeeCents: 700,
   idleTimeoutMinutes: 60,
   profilePhotoUrl: null,
+  legalName: null,
+  cnpj: null,
+  receiptFooter: null,
   neighborhoods: [],
 };
 
@@ -127,12 +131,7 @@ export const memoryStore = {
     return store;
   },
 
-  updateStore(patch: {
-    idleTimeoutMinutes?: number;
-    deliveryFeeCents?: number;
-    name?: string;
-    profilePhotoUrl?: string | null;
-  }) {
+  updateStore(patch: StorePatch) {
     if (patch.idleTimeoutMinutes !== undefined) {
       store.idleTimeoutMinutes = Math.min(
         10080,
@@ -144,6 +143,9 @@ export const memoryStore = {
     }
     if (patch.name !== undefined) store.name = patch.name;
     if (patch.profilePhotoUrl !== undefined) store.profilePhotoUrl = patch.profilePhotoUrl;
+    if (patch.legalName !== undefined) store.legalName = patch.legalName;
+    if (patch.cnpj !== undefined) store.cnpj = patch.cnpj;
+    if (patch.receiptFooter !== undefined) store.receiptFooter = patch.receiptFooter;
     return store;
   },
 

@@ -1,4 +1,5 @@
 import { Button, Tag } from "antd";
+import { FileTextOutlined } from "@ant-design/icons";
 import { EntityCard } from "../../components/EntityCard";
 import { RowActions } from "../../components/RowActions";
 import {
@@ -19,10 +20,12 @@ export function OrderCard({
   order,
   updating,
   onChangeStatus,
+  onPreviewReceipt,
 }: {
   order: Order;
   updating: boolean;
   onChangeStatus: (order: Order, status: OrderStatus) => void;
+  onPreviewReceipt: (order: Order) => void;
 }) {
   const next = nextStatus(order.status, order.fulfillment);
   const canCancel =
@@ -41,7 +44,14 @@ export function OrderCard({
       }
       title={`#${order.code}`}
       extra={
-        <RowActions
+        <span className="flex items-center">
+          <Button
+            type="text"
+            aria-label="Ver cupom"
+            icon={<FileTextOutlined />}
+            onClick={() => onPreviewReceipt(order)}
+          />
+          <RowActions
           disabled={order.status === "delivered"}
           items={[
             next
@@ -63,6 +73,7 @@ export function OrderCard({
               : null,
           ]}
         />
+        </span>
       }
       footer={
         <>

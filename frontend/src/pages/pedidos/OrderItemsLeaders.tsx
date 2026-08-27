@@ -16,7 +16,7 @@ export function OrderItemsLeaders({ items }: { items: OrderItem[] }) {
               </span>
               <span
                 aria-hidden
-                className="mb-[0.28em] min-w-4 flex-1 border-b border-dotted border-food-muted/60"
+                className="mb-[0.32em] min-w-4 flex-1 border-b border-food-muted/20"
               />
               <span className="w-6 shrink-0 text-right tabular-nums font-semibold">
                 {item.quantity}

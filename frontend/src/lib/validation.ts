@@ -172,6 +172,24 @@ export const storeBrandingSchema = Yup.object({
     .max(80, "Use no máximo 80 caracteres"),
 });
 
+export const storeReceiptSchema = Yup.object({
+  legalName: Yup.string()
+    .trim()
+    .max(120, "Use no máximo 120 caracteres")
+    .default(""),
+  cnpj: Yup.string()
+    .trim()
+    .default("")
+    .test("cnpj", "Informe um CNPJ com 14 dígitos", (value) => {
+      const digits = (value ?? "").replace(/\D/g, "");
+      return digits.length === 0 || digits.length === 14;
+    }),
+  receiptFooter: Yup.string()
+    .trim()
+    .max(240, "Use no máximo 240 caracteres")
+    .default(""),
+});
+
 export const botSettingsSchema = Yup.object({
   idleTimeoutMinutes: Yup.number()
     .typeError("Informe o tempo em minutos")
@@ -210,6 +228,7 @@ export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
 export type AddonValues = Yup.InferType<typeof addonSchema>;
 export type StoreBrandingValues = Yup.InferType<typeof storeBrandingSchema>;
+export type StoreReceiptValues = Yup.InferType<typeof storeReceiptSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
 export type DefaultDeliveryFeeValues = Yup.InferType<typeof defaultDeliveryFeeSchema>;
 export type NeighborhoodFeeValues = Yup.InferType<typeof neighborhoodFeeSchema>;

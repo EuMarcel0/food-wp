@@ -28,7 +28,7 @@ import {
 } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
-import type { ProductOptionGroup } from "../types.js";
+import type { ProductOptionGroup, StorePatch } from "../types.js";
 
 export const catalogRouter = Router();
 
@@ -81,12 +81,7 @@ catalogRouter.get("/store", async (_req, res) => {
 
 catalogRouter.patch("/store", async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const patch: {
-    idleTimeoutMinutes?: number;
-    deliveryFeeCents?: number;
-    name?: string;
-    profilePhotoUrl?: string | null;
-  } = {};
+  const patch: StorePatch = {};
 
   if (body.idleTimeoutMinutes !== undefined) {
     const idleTimeoutMinutes = Number(body.idleTimeoutMinutes);
@@ -115,6 +110,29 @@ catalogRouter.patch("/store", async (req, res) => {
       return;
     }
     patch.name = name;
+  }
+
+  if (body.legalName !== undefined) {
+    const legalName = String(body.legalName ?? "").trim();
+    if (legalName.length > 120) {
+      res.status(400).json({ error: "A razão social pode ter no máximo 120 caracteres." });
+      return;
+    }
+    patch.legalName = legalName || null;
+  }
+
+  if (body.cnpj !== undefined) {
+    const cnpj = String(body.cnpj ?? "").replace(/\D/g, "");
+    if (cnpj && cnpj.length !== 14) {
+      res.status(400).json({ error: "Informe um CNPJ com 14 dígitos." });
+      return;
+    }
+    patch.cnpj = cnpj || null;
+  }
+
+  if (body.receiptFooter !== undefined) {
+    const receiptFooter = String(body.receiptFooter ?? "").trim().slice(0, 240);
+    patch.receiptFooter = receiptFooter || null;
   }
 
   const photo = body.photo as { mime?: string; data?: string } | undefined;

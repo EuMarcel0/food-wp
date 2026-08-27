@@ -56,6 +56,9 @@ export const api = {
     deliveryFeeCents?: number;
     name?: string;
     photo?: { mime: string; data: string };
+    legalName?: string | null;
+    cnpj?: string | null;
+    receiptFooter?: string | null;
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",

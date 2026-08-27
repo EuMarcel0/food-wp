@@ -26,6 +26,7 @@ import type {
   Product,
   ProductOptionGroup,
   Store,
+  StorePatch,
 } from "../types.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
@@ -89,6 +90,9 @@ function mapStore(row: Record<string, unknown>): Store {
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     idleTimeoutMinutes: Math.max(1, Number(row.idle_timeout_minutes ?? 60)),
     profilePhotoUrl: (row.profile_photo_url as string | null) ?? null,
+    legalName: (row.legal_name as string | null) ?? null,
+    cnpj: (row.cnpj as string | null) ?? null,
+    receiptFooter: (row.receipt_footer as string | null) ?? null,
     neighborhoods: [],
   };
 }
@@ -239,12 +243,7 @@ export async function getStore(): Promise<Store> {
   return hydrateStore(data as Record<string, unknown>);
 }
 
-export async function updateStore(patch: {
-  idleTimeoutMinutes?: number;
-  deliveryFeeCents?: number;
-  name?: string;
-  profilePhotoUrl?: string | null;
-}): Promise<Store> {
+export async function updateStore(patch: StorePatch): Promise<Store> {
   const payload: Record<string, unknown> = {};
   if (patch.idleTimeoutMinutes !== undefined) {
     payload.idle_timeout_minutes = Math.min(
@@ -264,6 +263,15 @@ export async function updateStore(patch: {
   if (patch.profilePhotoUrl !== undefined) {
     payload.profile_photo_url = patch.profilePhotoUrl;
   }
+  if (patch.legalName !== undefined) {
+    payload.legal_name = patch.legalName;
+  }
+  if (patch.cnpj !== undefined) {
+    payload.cnpj = patch.cnpj;
+  }
+  if (patch.receiptFooter !== undefined) {
+    payload.receipt_footer = patch.receiptFooter;
+  }
   const supabase = getSupabase();
   if (!supabase) return memoryStore.updateStore(patch);
 
@@ -280,6 +288,10 @@ export async function updateStore(patch: {
         ? "Rode a migration 014_store_idle_timeout.sql no Supabase."
         : error?.message?.includes("profile_photo_url")
           ? "Rode a migration 022_store_branding.sql no Supabase."
+        : error?.message?.includes("legal_name") ||
+            error?.message?.includes("receipt_footer") ||
+            /\bcnpj\b/i.test(error?.message ?? "")
+          ? "Rode a migration 023_store_receipt.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }

@@ -103,6 +103,9 @@ export type Store = {
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
   profilePhotoUrl: string | null;
+  legalName: string | null;
+  cnpj: string | null;
+  receiptFooter: string | null;
   neighborhoods: DeliveryNeighborhood[];
 };
 
