@@ -8,6 +8,22 @@ import {
 } from "../../lib/format";
 import type { Order, Store } from "../../types";
 
+function receiptNeighborhood(order: Order, store?: Store) {
+  const saved = order.neighborhoodName?.trim();
+  if (saved) return saved;
+  if (order.fulfillment !== "delivery") return null;
+  const zones = store?.neighborhoods ?? [];
+  if (!zones.length) return null;
+  const address = (order.addressText ?? "").toLowerCase();
+  const byAddress = zones.find((zone) =>
+    address.includes(zone.name.trim().toLowerCase()),
+  );
+  if (byAddress) return byAddress.name;
+  const byFee = zones.filter((zone) => zone.feeCents === order.deliveryFeeCents);
+  if (byFee.length === 1) return byFee[0].name;
+  return null;
+}
+
 function Dash() {
   return (
     <div
@@ -72,6 +88,7 @@ export function ReceiptTicket({
   const footer = store?.receiptFooter?.trim();
   const items = order.items ?? [];
   const payment = order.paymentMethod ? PAYMENT_LABEL[order.paymentMethod] : null;
+  const neighborhood = receiptNeighborhood(order, store);
 
   return (
     <article
@@ -107,6 +124,7 @@ export function ReceiptTicket({
           {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
           {payment ? ` · ${payment}` : ""}
         </div>
+        {neighborhood ? <div>Bairro: {neighborhood}</div> : null}
         {order.fulfillment === "delivery" && order.addressText ? (
           <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
             {order.addressText}
@@ -152,7 +170,11 @@ export function ReceiptTicket({
         <Line left="Subtotal" right={formatBRL(order.subtotalCents)} />
         {order.fulfillment === "delivery" ? (
           <Line
-            left="Taxa de entrega"
+            left={
+              neighborhood
+                ? `Taxa de entrega (${neighborhood})`
+                : "Taxa de entrega"
+            }
             right={formatBRL(order.deliveryFeeCents)}
           />
         ) : null}

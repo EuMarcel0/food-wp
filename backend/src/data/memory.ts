@@ -490,6 +490,8 @@ export const memoryStore = {
       notes?: string | null;
     }[];
     deliveryFeeCents: number;
+    neighborhoodId?: string | null;
+    neighborhoodName?: string | null;
   }) {
     const subtotalCents = input.items.reduce(
       (sum, item) => sum + item.quantity * item.unitPriceCents,
@@ -508,6 +510,7 @@ export const memoryStore = {
       changeForCents:
         input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
       addressText: input.addressText ?? null,
+      neighborhoodName: input.neighborhoodName?.trim() || null,
       notes: input.notes?.trim() || null,
       subtotalCents,
       deliveryFeeCents: input.deliveryFeeCents,

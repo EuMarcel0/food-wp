@@ -26,6 +26,7 @@ export type Order = {
   paymentMethod: "pix" | "cash" | "card" | "credit" | "debit" | null;
   changeForCents?: number | null;
   addressText: string | null;
+  neighborhoodName?: string | null;
   notes?: string | null;
   customerPhone?: string;
   customerName?: string | null;

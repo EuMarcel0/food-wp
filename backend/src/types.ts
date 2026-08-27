@@ -170,6 +170,7 @@ export type Order = {
   paymentMethod: PaymentMethod | null;
   changeForCents: number | null;
   addressText: string | null;
+  neighborhoodName: string | null;
   notes: string | null;
   subtotalCents: number;
   deliveryFeeCents: number;

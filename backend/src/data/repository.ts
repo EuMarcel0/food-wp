@@ -185,6 +185,7 @@ function mapOrder(row: Record<string, unknown>): Order {
     changeForCents:
       row.change_for_cents == null ? null : Math.max(0, Number(row.change_for_cents)),
     addressText: (row.address_text as string | null) ?? null,
+    neighborhoodName: (row.neighborhood_name as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
     subtotalCents: Number(row.subtotal_cents ?? 0),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
@@ -1007,6 +1008,8 @@ export async function createOrder(input: {
     notes?: string | null;
   }[];
   deliveryFeeCents: number;
+  neighborhoodId?: string | null;
+  neighborhoodName?: string | null;
 }) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.createOrder(input);
@@ -1025,6 +1028,8 @@ export async function createOrder(input: {
     change_for_cents:
       input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
     address_text: input.addressText ?? null,
+    neighborhood_id: input.neighborhoodId ?? null,
+    neighborhood_name: input.neighborhoodName?.trim() || null,
     notes: input.notes?.trim() || null,
     subtotal_cents: subtotalCents,
     delivery_fee_cents: input.deliveryFeeCents,
@@ -1036,11 +1041,23 @@ export async function createOrder(input: {
     .insert(payload)
     .select("*")
     .single();
-  if (error || !data) return memoryStore.createOrder(input);
+  let row = data;
+  if (
+    (error || !row) &&
+    (error?.message?.includes("neighborhood_name") ||
+      error?.message?.includes("neighborhood_id"))
+  ) {
+    const { neighborhood_id: _id, neighborhood_name: _name, ...legacy } = payload;
+    const retry = await supabase.from("orders").insert(legacy).select("*").single();
+    row = retry.data;
+    if (retry.error || !row) return memoryStore.createOrder(input);
+  } else if (error || !row) {
+    return memoryStore.createOrder(input);
+  }
 
   await supabase.from("order_items").insert(
     input.items.map((item) => ({
-      order_id: data.id,
+      order_id: row.id,
       product_id: item.productId ?? null,
       name: item.name,
       quantity: item.quantity,
@@ -1051,7 +1068,11 @@ export async function createOrder(input: {
   );
 
   const order = mapOrder({
-    ...data,
+    ...row,
+    neighborhood_name:
+      (row as Record<string, unknown>).neighborhood_name ??
+      input.neighborhoodName ??
+      null,
     customers: { wa_phone: input.customer.waPhone, name: input.customer.name },
     order_items: input.items,
   });

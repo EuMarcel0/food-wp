@@ -695,6 +695,14 @@ async function finishOrder(
     addressText: context.addressText,
     notes: context.orderNotes ?? null,
     deliveryFeeCents: context.fulfillment === "delivery" ? deliveryFee.cents : 0,
+    neighborhoodId:
+      context.fulfillment === "delivery"
+        ? (deliveryFee.neighborhood?.id ?? context.neighborhoodId ?? null)
+        : null,
+    neighborhoodName:
+      context.fulfillment === "delivery"
+        ? (deliveryFee.neighborhood?.name ?? context.neighborhoodName ?? null)
+        : null,
     items: context.cart,
   });
 

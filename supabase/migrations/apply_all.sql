@@ -579,4 +579,9 @@ alter table public.stores
   add column if not exists cnpj text,
   add column if not exists receipt_footer text;
 
+-- ========== 024_order_neighborhood ==========
+alter table public.orders
+  add column if not exists neighborhood_id uuid references public.delivery_neighborhoods(id) on delete set null,
+  add column if not exists neighborhood_name text;
+
 
