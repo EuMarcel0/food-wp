@@ -110,6 +110,17 @@ export type Store = {
   neighborhoods: DeliveryNeighborhood[];
 };
 
+export type InstalledPrinter = {
+  name: string;
+  isDefault: boolean;
+  offline: boolean;
+};
+
+export type PrinterList = {
+  host: string;
+  printers: InstalledPrinter[];
+};
+
 export type Health = {
   ok: boolean;
   supabase: boolean;

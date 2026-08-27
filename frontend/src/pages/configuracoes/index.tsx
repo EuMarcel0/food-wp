@@ -13,6 +13,7 @@ import {
 import { NeighborhoodFees } from "./NeighborhoodFees";
 import { BrandingCard } from "./BrandingCard";
 import { ReceiptSettingsCard } from "./ReceiptSettingsCard";
+import { PrinterSettingsCard } from "./PrinterSettingsCard";
 
 function formatIdleLabel(minutes: number) {
   if (!Number.isFinite(minutes) || minutes < 1) return "—";
@@ -54,13 +55,15 @@ export function SettingsPage() {
       <PageHeader
         kicker="Retaguarda"
         title="Configurações"
-        subtitle="Perfil no WhatsApp, cupom de impressão, tempo sem resposta e taxas de entrega."
+        subtitle="Perfil no WhatsApp, cupom, impressora, tempo sem resposta e taxas de entrega."
       />
 
       <div className="flex flex-col gap-6">
         <BrandingCard store={store} whatsappReady={health?.whatsapp} />
 
         <ReceiptSettingsCard store={store} />
+
+        <PrinterSettingsCard />
 
         <Card
           className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
