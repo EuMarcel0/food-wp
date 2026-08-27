@@ -188,10 +188,10 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
     if (isFlavorOrSizeGroup(group)) continue;
     if (!group && selection.groupId !== ADDON_GROUP_ID) continue;
 
-    const extra = selection.options.reduce(
-      (max, option) => Math.max(max, Math.round(option.extraPrice * 100)),
-      0,
-    );
+    const extra = selection.options.reduce((total, option) => {
+      const cents = Math.round(option.extraPrice * 100);
+      return selection.groupId === ADDON_GROUP_ID ? total + cents : Math.max(total, cents);
+    }, 0);
     if (selection.priceMode === "replace") cents = extra;
     else cents += extra;
   }

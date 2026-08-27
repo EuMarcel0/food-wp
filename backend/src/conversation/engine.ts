@@ -164,18 +164,55 @@ function addonStepDone(drafts?: CartSelection[]) {
   return (drafts ?? []).some((item) => item.groupId === ADDON_GROUP_ID);
 }
 
-function applyDraftAddon(drafts: CartSelection[], addon: { id: string; name: string; price: number } | null) {
-  const next = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
-  next.push({
-    groupId: ADDON_GROUP_ID,
-    groupName: "Adicional",
-    priceMode: "addon",
-    options: addon
-      ? [{ id: addon.id, name: addon.name, extraPrice: addon.price }]
-      : [],
-    skipped: !addon,
-  });
-  return next;
+function draftAddon(drafts?: CartSelection[]) {
+  return (drafts ?? []).find((item) => item.groupId === ADDON_GROUP_ID);
+}
+
+function pickedAddonIds(drafts?: CartSelection[]) {
+  return new Set(draftAddon(drafts)?.options.map((option) => option.id) ?? []);
+}
+
+function remainingAddons(product: Product, drafts?: CartSelection[]) {
+  const picked = pickedAddonIds(drafts);
+  return productAddons(product).filter((addon) => !picked.has(addon.id));
+}
+
+function addDraftAddon(
+  drafts: CartSelection[],
+  addon: { id: string; name: string; price: number },
+) {
+  const others = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
+  const current = draftAddon(drafts);
+  const options = [...(current?.options ?? [])];
+  if (!options.some((option) => option.id === addon.id)) {
+    options.push({ id: addon.id, name: addon.name, extraPrice: addon.price });
+  }
+  return [
+    ...others,
+    {
+      groupId: ADDON_GROUP_ID,
+      groupName: "Adicional",
+      priceMode: "addon" as const,
+      options,
+      skipped: false,
+    },
+  ];
+}
+
+function skipDraftAddon(drafts: CartSelection[]) {
+  const current = draftAddon(drafts);
+  if (current?.options.length) return drafts;
+  const others = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
+  return [
+    ...others,
+    {
+      groupId: ADDON_GROUP_ID,
+      groupName: "Adicional",
+      priceMode: "addon" as const,
+      options: [],
+      skipped: true,
+    },
+  ];
 }
 
 function isSkipAddon(incoming: string, normalized: string) {
@@ -546,29 +583,61 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   );
 }
 
-async function askAddons(to: string, product: Product) {
-  const addons = productAddons(product);
-  const rows = addons.slice(0, 10).map((addon) => ({
+async function askAddons(to: string, product: Product, drafts?: CartSelection[]) {
+  const remaining = remainingAddons(product, drafts);
+  if (!remaining.length) return true;
+
+  const picked = draftAddon(drafts)?.options.map((option) => option.name) ?? [];
+  const prompt = [
+    `*${product.name}*`,
+    picked.length
+      ? `Já escolheu: ${picked.join(" + ")}.`
+      : "Quer um adicional? (opcional)",
+    picked.length ? "Quer outro adicional?" : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const rows = remaining.slice(0, 10).map((addon) => ({
     id: `addon:${addon.id}`,
     title: addon.name.slice(0, 24),
     description: `+ ${formatReais(addon.price)}`,
   }));
-  if (rows.length < 10) {
+  if (!picked.length && rows.length < 10) {
     rows.push({
       id: "skip_addon",
       title: "Sem adicional",
       description: "Pular esta etapa",
     });
   }
-  await sendList(to, `*${product.name}*\nQuer um adicional? (opcional)`, "Adicionais", [
+
+  await sendList(to, prompt, "Adicionais", [
     {
       title: "Adicionais",
       rows,
     },
   ]);
-  await sendButtons(to, "Esta etapa é opcional.", [
-    { id: "skip_addon", title: "Sem adicional" },
-  ]);
+  if (!picked.length) {
+    await sendButtons(to, "Esta etapa é opcional.", [
+      { id: "skip_addon", title: "Sem adicional" },
+    ]);
+  } else {
+    await sendButtons(to, "Pode marcar mais de um, um de cada vez.", [
+      { id: "done_addons", title: "Pronto" },
+    ]);
+  }
+  return false;
+}
+
+async function confirmMoreAddons(to: string, names: string[]) {
+  await sendButtons(
+    to,
+    `*Adicional:*\n${names.join(" + ")}`,
+    [
+      { id: "more_addons", title: "Mais um" },
+      { id: "done_addons", title: "Pronto" },
+    ],
+  );
 }
 
 async function askQuantityStage(
@@ -579,7 +648,7 @@ async function askQuantityStage(
 ) {
   if (productHasAddons(product) && !addonStepDone(context.draftSelections)) {
     await persist("awaiting_addon", context);
-    await askAddons(to, product);
+    await askAddons(to, product, context.draftSelections);
     return;
   }
   await persist("awaiting_quantity", context);
@@ -947,26 +1016,72 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
+    const drafts = context.draftSelections ?? [];
+    const picked = draftAddon(drafts)?.options ?? [];
+    const finishAddons = async () => {
+      if (!picked.length) {
+        context.draftSelections = skipDraftAddon(drafts);
+      }
+      await askQuantityStage(input.from, product, context, persist);
+    };
+
+    if (
+      incoming === "more_addons" ||
+      incoming === "more_options" ||
+      normalized === "mais um"
+    ) {
+      const finished = await askAddons(input.from, product, drafts);
+      if (finished) await finishAddons();
+      return;
+    }
+
+    if (
+      incoming === "done_addons" ||
+      incoming === "done_options" ||
+      (isSkipAddon(incoming, normalized) && picked.length > 0)
+    ) {
+      await finishAddons();
+      return;
+    }
+
     if (isSkipAddon(incoming, normalized)) {
-      context.draftSelections = applyDraftAddon(context.draftSelections ?? [], null);
+      context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
       return;
     }
 
-    const addons = productAddons(product);
     const addon = incoming.startsWith("addon:")
-      ? addons.find((item) => item.id === incoming.slice("addon:".length))
-      : addons.find((item) => normalize(item.name) === normalized);
+      ? remainingAddons(product, drafts).find(
+          (item) => item.id === incoming.slice("addon:".length),
+        ) ??
+        productAddons(product).find(
+          (item) => item.id === incoming.slice("addon:".length),
+        )
+      : productAddons(product).find((item) => normalize(item.name) === normalized);
 
     if (!addon) {
-      await sendText(input.from, "Escolha um adicional da lista ou toque em Sem adicional.");
+      await sendText(
+        input.from,
+        picked.length
+          ? "Escolha outro adicional da lista ou toque em Pronto."
+          : "Escolha um adicional da lista ou toque em Sem adicional.",
+      );
       await persist("awaiting_addon", context);
-      await askAddons(input.from, product);
+      await askAddons(input.from, product, drafts);
       return;
     }
 
-    context.draftSelections = applyDraftAddon(context.draftSelections ?? [], addon);
-    await askQuantityStage(input.from, product, context, persist);
+    context.draftSelections = addDraftAddon(drafts, addon);
+    await persist("awaiting_addon", context);
+
+    const names = (draftAddon(context.draftSelections)?.options ?? []).map(
+      (option) => option.name,
+    );
+    if (!remainingAddons(product, context.draftSelections).length) {
+      await askQuantityStage(input.from, product, context, persist);
+      return;
+    }
+    await confirmMoreAddons(input.from, names);
     return;
   }
 
