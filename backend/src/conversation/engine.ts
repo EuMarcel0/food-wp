@@ -263,10 +263,9 @@ async function askCrusts(to: string, product: Product, crusts: Crust[]) {
         rows: visible.map((crust) => ({
           id: `crust:${crust.id}`,
           title: crust.name.slice(0, 24),
-          description:
-            crust.addsPrice && crust.price > 0
-              ? `+ ${formatReais(crust.price)}`
-              : "Incluído",
+          ...(crust.addsPrice && crust.price > 0
+            ? { description: `+ ${formatReais(crust.price)}` }
+            : {}),
         })),
       },
     ],
@@ -330,7 +329,7 @@ async function askItemNote(to: string, item: CartItem) {
 async function askOrderNote(to: string) {
   await sendButtons(
     to,
-    "Observação para o *pedido inteiro*?\nEx.: interfone 12, não bater na porta.\nSe não quiser, toque em *Pular*.",
+    "Observação para *entrega*?\nEx.: interfone 12, não bater na porta.\nSe não quiser, toque em *Pular*.",
     [{ id: "skip_note", title: "Pular" }],
   );
 }
@@ -530,10 +529,9 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
     rows: items.map((product) => ({
       id: `product:${product.id}`,
       title: product.name,
-      description: product.customizable
-        ? product.description || undefined
-        : [formatReais(product.price), product.description].filter(Boolean).join(" · ") ||
-          undefined,
+      ...(product.customizable
+        ? {}
+        : { description: formatReais(product.price) }),
     })),
   }));
 
@@ -672,11 +670,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
       rows,
     },
   ]);
-  if (!picked.length) {
-    await sendButtons(to, "Esta etapa é opcional.", [
-      { id: "skip_addon", title: "Sem adicional" },
-    ]);
-  } else {
+  if (picked.length) {
     await sendButtons(to, "Pode marcar mais de um, um de cada vez.", [
       { id: "done_addons", title: "Pronto" },
     ]);
@@ -880,7 +874,12 @@ export async function handleIncomingMessage(input: {
 
   if (["order", "fazer pedido", "pedir"].includes(normalized)) {
     await persist("awaiting_product", context);
-    await showMenu(input.from, "Vamos montar seu pedido. Escolha o primeiro item:");
+    await showMenu(
+      input.from,
+      context.cart.length
+        ? "Escolha o próximo item:"
+        : "Vamos montar seu pedido. Escolha o primeiro item:",
+    );
     return;
   }
 
