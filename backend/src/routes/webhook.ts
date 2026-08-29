@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { env } from "../config/env.js";
 import { handleIncomingMessage } from "../conversation/engine.js";
+import { enqueueByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { sendText } from "../lib/whatsapp.js";
 import { noteWebhook } from "../lib/webhookStats.js";
 
@@ -102,13 +103,16 @@ webhookRouter.post("/whatsapp", (req, res) => {
             : undefined;
         const to = waId || message.from;
         if (!to) continue;
+        const queueKey = queueKeyForPhone(to);
         if (!text && !replyId && !location) {
           if (SILENT_TYPES.has(message.type ?? "")) continue;
           incoming += 1;
           console.log(
             `WhatsApp inbound unsupported type=${message.type ?? "?"} from=${message.from}`,
           );
-          sendText(to, UNSUPPORTED_MEDIA_REPLY).catch((error) => {
+          enqueueByUser(queueKey, async () => {
+            await sendText(to, UNSUPPORTED_MEDIA_REPLY);
+          }).catch((error) => {
             console.error("Falha ao avisar mensagem não suportada", error);
           });
           continue;
@@ -118,12 +122,14 @@ webhookRouter.post("/whatsapp", (req, res) => {
           `WhatsApp inbound from=${message.from} wa_id=${waId ?? "-"} reply=${to}`,
         );
 
-        handleIncomingMessage({
-          from: to,
-          name,
-          text,
-          replyId,
-          location,
+        enqueueByUser(queueKey, async () => {
+          await handleIncomingMessage({
+            from: to,
+            name,
+            text,
+            replyId,
+            location,
+          });
         }).catch((error) => {
           console.error("Falha ao processar mensagem WhatsApp", error);
         });
