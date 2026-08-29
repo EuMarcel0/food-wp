@@ -57,6 +57,14 @@ export function CategoriesPage() {
     if (nextPage !== page) setPage(nextPage);
   }, [limit, page, result]);
 
+  useEffect(() => {
+    const ids = new Set(categories.map((category) => category.id));
+    setSelectedKeys((keys) => {
+      const next = keys.filter((key) => ids.has(String(key)));
+      return next.length === keys.length ? keys : next;
+    });
+  }, [categories]);
+
   const saveMutation = useMutation({
     mutationFn: async (values: CategoryValues) => {
       const payload = toCategoryPayload(values);
@@ -73,8 +81,11 @@ export function CategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (category: Category) => api.deleteCategory(category.id),
-    onSuccess: async () => {
+    onSuccess: async (_data, category) => {
       toast.success("Categoria excluída.");
+      setSelectedKeys((keys) =>
+        keys.filter((key) => String(key) !== category.id),
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),

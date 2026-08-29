@@ -74,6 +74,14 @@ export function CatalogPage() {
     if (nextPage !== page) setPage(nextPage);
   }, [limit, page, result]);
 
+  useEffect(() => {
+    const ids = new Set(products.map((product) => product.id));
+    setSelectedKeys((keys) => {
+      const next = keys.filter((key) => ids.has(String(key)));
+      return next.length === keys.length ? keys : next;
+    });
+  }, [products]);
+
   async function refreshCatalog() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),

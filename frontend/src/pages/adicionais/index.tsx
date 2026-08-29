@@ -75,6 +75,15 @@ export function AddonsPage() {
     if (nextPage !== page) setPage(nextPage);
   }, [limit, page, result]);
 
+  useEffect(() => {
+    const items = isCrusts ? crusts : addons;
+    const ids = new Set(items.map((item) => item.id));
+    setSelectedKeys((keys) => {
+      const next = keys.filter((key) => ids.has(String(key)));
+      return next.length === keys.length ? keys : next;
+    });
+  }, [isCrusts, addons, crusts]);
+
   async function refreshAddons() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.addons.all }),
@@ -102,8 +111,11 @@ export function AddonsPage() {
 
   const deleteAddonMutation = useMutation({
     mutationFn: (addon: Addon) => api.deleteAddon(addon.id),
-    onSuccess: async () => {
+    onSuccess: async (_data, addon) => {
       toast.success("Adicional excluído.");
+      setSelectedKeys((keys) =>
+        keys.filter((key) => String(key) !== addon.id),
+      );
       await refreshAddons();
     },
   });
@@ -139,8 +151,11 @@ export function AddonsPage() {
 
   const deleteCrustMutation = useMutation({
     mutationFn: (crust: Crust) => api.deleteCrust(crust.id),
-    onSuccess: async () => {
+    onSuccess: async (_data, crust) => {
       toast.success("Borda excluída.");
+      setSelectedKeys((keys) =>
+        keys.filter((key) => String(key) !== crust.id),
+      );
       await refreshCrusts();
     },
   });
