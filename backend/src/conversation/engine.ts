@@ -90,7 +90,7 @@ function parseQuantity(raw: string) {
   const match = text.match(/\d{1,3}/);
   if (!match) return null;
   const quantity = Number(match[0]);
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) return null;
+  if (!Number.isInteger(quantity) || quantity < 1) return null;
   return quantity;
 }
 
@@ -106,12 +106,10 @@ function cartTotal(context: ConversationContext) {
 }
 
 function itemHeading(
-  item: Pick<CartItem, "name" | "catalogName" | "catalogDescription" | "extras">,
+  item: Pick<CartItem, "name" | "catalogName" | "extras">,
 ) {
   const title = item.catalogName?.trim() || item.name;
   const lines = [`*${title}*`];
-  const description = item.catalogDescription?.trim();
-  if (description) lines.push(description);
   const crust = crustLabel(item.extras);
   if (crust) lines.push(crust);
   const addons = addonLabel(item.extras);
@@ -265,7 +263,7 @@ async function askCrusts(to: string, product: Product, crusts: Crust[]) {
   const visible = crusts.slice(0, 10);
   await sendList(
     to,
-    `*${product.name}*\nEscolha a borda. Esta etapa é obrigatória.`,
+    `*${product.name}*\nEscolha a borda.`,
     "Ver bordas",
     [
       {
@@ -676,7 +674,6 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   const price = unitPriceCents(product, extras);
   const heading = [
     `*${product.name}*`,
-    product.description?.trim() || null,
     variant !== product.name ? variant : null,
     crustLabel(extras),
     addonLabel(extras),
@@ -686,7 +683,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
     .join("\n");
   await sendButtons(
     to,
-    `${heading}\nQuantas unidades?\nOu digite um número de 1 a 20.`,
+    `${heading}\nQuantas unidades?\nOu digite um número.`,
     [
       { id: "qty:1", title: "1" },
       { id: "qty:2", title: "2" },
@@ -805,6 +802,13 @@ async function finishOrder(
     neighborhoodId: context.neighborhoodId,
     address: context.fulfillment === "delivery" ? context.addressText : undefined,
   });
+  const cartSummary = renderCart(context);
+  const addressText = context.addressText;
+  const orderNotes = context.orderNotes;
+  const fulfillment = context.fulfillment;
+  const paymentMethod = context.paymentMethod;
+  const changeForCents = context.changeForCents;
+
   const order = await createOrder({
     customer,
     fulfillment: context.fulfillment,
@@ -826,7 +830,7 @@ async function finishOrder(
 
   await persist("welcome", emptyContext());
   const feeLine =
-    context.fulfillment !== "delivery"
+    fulfillment !== "delivery"
       ? "Retirada no local"
       : deliveryFee.neighborhood
         ? `Taxa de entrega (${deliveryFee.neighborhood.name}): ${formatBRL(deliveryFee.cents)}`
@@ -834,22 +838,22 @@ async function finishOrder(
           ? `Taxa de entrega: ${formatBRL(deliveryFee.cents)}`
           : "Entrega sem taxa";
   const changeLine =
-    context.paymentMethod === "cash"
-      ? context.changeForCents
-        ? `Troco para ${formatBRL(context.changeForCents)}`
+    paymentMethod === "cash"
+      ? changeForCents
+        ? `Troco para ${formatBRL(changeForCents)}`
         : "Sem troco"
       : "";
   await sendText(
     to,
     [
       `Pedido *#${order.code}* confirmado!`,
-      renderCart(context),
+      cartSummary,
       feeLine,
-      `Pagamento: ${paymentLabel(context.paymentMethod)}`,
+      `Pagamento: ${paymentLabel(paymentMethod)}`,
       changeLine,
       `Total: *${formatBRL(order.totalCents)}*`,
-      context.addressText ? `Entrega: ${context.addressText}` : "",
-      context.orderNotes ? `Obs. do pedido: ${context.orderNotes}` : "",
+      addressText ? `Entrega: ${addressText}` : "",
+      orderNotes ? `Obs. do pedido: ${orderNotes}` : "",
       "Assim que o status mudar, eu te aviso por aqui.",
     ]
       .filter(Boolean)
@@ -1193,7 +1197,7 @@ export async function handleIncomingMessage(input: {
       : crusts.find((item) => normalize(item.name) === normalized);
 
     if (!crust) {
-      await sendText(input.from, "Escolha uma borda da lista. Esta etapa é obrigatória.");
+      await sendText(input.from, "Escolha uma borda da lista.");
       await persist("awaiting_crust", context);
       await askCrusts(input.from, product, crusts);
       return;
@@ -1314,7 +1318,7 @@ export async function handleIncomingMessage(input: {
       : null;
 
     if (!product || quantity == null) {
-      await sendText(input.from, "Envie um número de 1 a 20, ou toque em 1, 2 ou 3.");
+      await sendText(input.from, "Envie um número, ou toque em 1, 2 ou 3.");
       return;
     }
 
@@ -1323,7 +1327,6 @@ export async function handleIncomingMessage(input: {
       productId: product.id,
       name: assembledName(product, extras),
       catalogName: product.name,
-      catalogDescription: product.description,
       quantity,
       unitPriceCents: unitPriceCents(product, extras),
       extras,

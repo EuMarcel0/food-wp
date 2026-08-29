@@ -1510,9 +1510,19 @@ export async function listNotifications(readerKey: string) {
     }
   }
 
-  return data.map((row) =>
-    mapNotification(row as Record<string, unknown>, readIds.has(String(row.id))),
-  );
+  return data
+    .map((row) =>
+      mapNotification(
+        row as Record<string, unknown>,
+        readIds.has(String(row.id)),
+      ),
+    )
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt) || 0;
+      const rightTime = Date.parse(right.createdAt) || 0;
+      if (rightTime !== leftTime) return rightTime - leftTime;
+      return right.id.localeCompare(left.id);
+    });
 }
 
 export async function markNotificationRead(id: string, readerKey: string) {

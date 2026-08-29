@@ -353,8 +353,8 @@ export function groupPrompt(
       : `Escolha: *${group.name}*`,
     catalogFlavors
       ? group.maxSelect > 1
-        ? `Pode marcar até ${group.maxSelect} sabores (pizzas do cardápio).`
-        : "Pode marcar 1 sabor (pizza do cardápio)."
+        ? `Pode marcar até ${group.maxSelect} sabores.`
+        : "Pode marcar 1 sabor."
       : group.maxSelect > 1
         ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
         : group.required

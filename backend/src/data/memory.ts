@@ -743,10 +743,18 @@ export const memoryStore = {
   },
 
   listNotifications(readerKey: string) {
-    return notifications.slice(0, 50).map((item) => ({
-      ...item,
-      read: notificationReads.has(readKey(item.id, readerKey)),
-    }));
+    return [...notifications]
+      .sort((left, right) => {
+        const leftTime = Date.parse(left.createdAt) || 0;
+        const rightTime = Date.parse(right.createdAt) || 0;
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        return right.id.localeCompare(left.id);
+      })
+      .slice(0, 50)
+      .map((item) => ({
+        ...item,
+        read: notificationReads.has(readKey(item.id, readerKey)),
+      }));
   },
 
   markNotificationRead(id: string, readerKey: string) {

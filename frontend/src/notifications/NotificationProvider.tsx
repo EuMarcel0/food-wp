@@ -27,6 +27,15 @@ export function readerFromUser(email?: string | null) {
   return email?.trim() || "demo";
 }
 
+function sortByNewest(items: AppNotification[]) {
+  return [...items].sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt) || 0;
+    const rightTime = Date.parse(right.createdAt) || 0;
+    if (rightTime !== leftTime) return rightTime - leftTime;
+    return right.id.localeCompare(left.id);
+  });
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const reader = readerFromUser(user?.email);
@@ -35,18 +44,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const primed = useRef(false);
 
   const ingest = useCallback((next: AppNotification[]) => {
+    const ordered = sortByNewest(next);
     if (!primed.current) {
-      seen.current = new Set(next.map((item) => item.id));
+      seen.current = new Set(ordered.map((item) => item.id));
       primed.current = true;
-      setItems(next);
+      setItems(ordered);
       return;
     }
-    for (const item of next) {
+    for (const item of ordered) {
       if (seen.current.has(item.id)) continue;
       seen.current.add(item.id);
       if (item.type === "order_created") playNewOrderSound();
     }
-    setItems(next);
+    setItems(ordered);
   }, []);
 
   const load = useCallback(
