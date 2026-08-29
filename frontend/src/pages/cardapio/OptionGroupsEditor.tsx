@@ -7,6 +7,7 @@ import type { Size } from "../../types";
 import { cn } from "../../lib/cn";
 import { formEmpty } from "../../ui";
 import { formatReais } from "../../lib/format";
+import { PizzaSizeIcon, pizzaVisualScale } from "./PizzaSizeIcon";
 
 function sizeToGroup(size: Size): ProductValues["optionGroups"][number] {
   return {
@@ -113,11 +114,12 @@ export function OptionGroupsEditor({
         <div className="grid min-h-0 flex-1 grid-cols-2 gap-2.5 overflow-auto overscroll-contain pr-1 pb-1 max-sm:grid-cols-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
           {activeSizes.map((size) => {
             const checked = selected.has(size.id);
+            const scale = pizzaVisualScale(size, activeSizes);
             return (
               <label
                 key={size.id}
                 className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-[14px] border px-3.5 py-3 transition-colors",
+                  "relative flex cursor-pointer flex-col rounded-[14px] border px-3.5 pb-3 pt-3 transition-colors",
                   checked
                     ? "border-food-accent bg-food-accent/10"
                     : "border-food-border bg-food-chip hover:border-food-accent/50",
@@ -128,9 +130,14 @@ export function OptionGroupsEditor({
                   onChange={(event) =>
                     toggleSize(size, event.target.checked)
                   }
-                  className="mt-0.5"
+                  className="absolute top-3 left-3 z-10"
                 />
-                <span className="min-w-0 flex-1">
+                <PizzaSizeIcon
+                  scale={scale}
+                  active={checked}
+                  className="mx-auto"
+                />
+                <span className="mt-2 min-w-0 text-center">
                   <strong className="block text-sm font-bold tracking-tight text-food-text">
                     {size.name}
                   </strong>
@@ -140,7 +147,8 @@ export function OptionGroupsEditor({
                     {size.maxSelect === 1
                       ? "até 1 sabor"
                       : `até ${size.maxSelect} sabores`}
-                    {" · "}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-food-muted/90">
                     {size.priceMode === "replace"
                       ? "substitui o preço"
                       : "soma no preço"}
@@ -159,18 +167,21 @@ export function OptionGroupsEditor({
       ) : null}
 
       {!pickerOpen && selected.size > 0 ? (
-        <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
           {activeSizes
             .filter((size) => selected.has(size.id))
-            .map((size, index) => (
+            .map((size) => (
               <article
                 key={size.id}
-                className="rounded-[14px] border border-food-border bg-food-chip px-3.5 py-3"
+                className="rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
               >
-                <div className="flex items-center gap-2.5">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-food-accent/16 text-[11px] font-extrabold tracking-wide text-food-accent">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
+                <div className="flex items-center gap-3">
+                  <PizzaSizeIcon
+                    scale={pizzaVisualScale(size, activeSizes)}
+                    active
+                    frame={56}
+                    className="shrink-0 rounded-xl"
+                  />
                   <div className="min-w-0 flex-1">
                     <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
                       {size.name}
