@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Formik, Form as FormikForm } from "formik";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CameraOutlined } from "@ant-design/icons";
 import { Alert, Avatar, Button, Card, Input, Switch, TimePicker, Upload } from "antd";
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import { FormControl, FormField } from "../../components/FormField";
 import { api } from "../../lib/api";
@@ -22,6 +22,76 @@ dayjs.extend(customParseFormat);
 function parseClock(value: string) {
   const parsed = dayjs(value, "HH:mm", true);
   return parsed.isValid() ? parsed : null;
+}
+
+function toClock(value: Dayjs | null | undefined) {
+  return value?.isValid() ? value.format("HH:mm") : "";
+}
+
+/** TimePicker que mantém rascunho no painel e grava no Formik ao escolher ou fechar. */
+function HoursTimePicker({
+  value,
+  onCommit,
+  onBlur,
+  disabled,
+  placeholder,
+}: {
+  value: unknown;
+  onCommit: (hhmm: string) => void;
+  onBlur?: () => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const committed = typeof value === "string" ? parseClock(value) : null;
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Dayjs | null>(null);
+  const draftRef = useRef<Dayjs | null>(null);
+
+  const display = open ? (draft ?? committed) : committed;
+
+  const apply = (next: Dayjs | null | undefined) => {
+    if (!next?.isValid()) return;
+    draftRef.current = next;
+    setDraft(next);
+    onCommit(toClock(next));
+  };
+
+  return (
+    <TimePicker
+      format="HH:mm"
+      minuteStep={5}
+      // Sem botão OK: confirma ao escolher e ao fechar o painel.
+      // Evita onBlur do Formik no meio da seleção (isso descartava o valor).
+      needConfirm={false}
+      allowClear={false}
+      showNow={false}
+      changeOnScroll
+      inputReadOnly
+      disabled={disabled}
+      placeholder={placeholder}
+      value={display}
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) {
+          draftRef.current = committed;
+          setDraft(committed);
+          return;
+        }
+        const finalValue = draftRef.current ?? draft ?? committed;
+        if (finalValue?.isValid()) onCommit(toClock(finalValue));
+        draftRef.current = null;
+        setDraft(null);
+        onBlur?.();
+      }}
+      onChange={(next) => apply(next)}
+      onCalendarChange={(next) => {
+        const picked = Array.isArray(next) ? next[0] : next;
+        apply(picked);
+      }}
+      className="w-[108px]"
+    />
+  );
 }
 
 export function BrandingCard({
@@ -195,46 +265,24 @@ export function BrandingCard({
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <FormControl name={`hours.${index}.open`} compact>
                           {({ value, setValue, setTouched }) => (
-                            <TimePicker
-                              format="HH:mm"
-                              minuteStep={5}
-                              needConfirm={false}
-                              allowClear={false}
+                            <HoursTimePicker
+                              value={value}
                               disabled={day.closed}
                               placeholder="Abre"
-                              value={
-                                typeof value === "string"
-                                  ? parseClock(value)
-                                  : null
-                              }
-                              onChange={(next) =>
-                                setValue(next ? next.format("HH:mm") : "")
-                              }
+                              onCommit={(hhmm) => setValue(hhmm)}
                               onBlur={setTouched}
-                              className="w-[108px]"
                             />
                           )}
                         </FormControl>
                         <span className="text-xs text-food-muted">às</span>
                         <FormControl name={`hours.${index}.close`} compact>
                           {({ value, setValue, setTouched }) => (
-                            <TimePicker
-                              format="HH:mm"
-                              minuteStep={5}
-                              needConfirm={false}
-                              allowClear={false}
+                            <HoursTimePicker
+                              value={value}
                               disabled={day.closed}
                               placeholder="Fecha"
-                              value={
-                                typeof value === "string"
-                                  ? parseClock(value)
-                                  : null
-                              }
-                              onChange={(next) =>
-                                setValue(next ? next.format("HH:mm") : "")
-                              }
+                              onCommit={(hhmm) => setValue(hhmm)}
                               onBlur={setTouched}
-                              className="w-[108px]"
                             />
                           )}
                         </FormControl>

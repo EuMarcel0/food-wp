@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, InputNumber, Tag } from "antd";
 import { FormControl } from "../../components/FormField";
 import { PageHeader } from "../../components/PageHeader";
+import { SettingsSkeleton } from "../../components/PageSkeletons";
 import { api } from "../../lib/api";
 import { toast } from "../../lib/toast";
 import { queryKeys } from "../../lib/queryKeys";
@@ -34,6 +35,10 @@ export function SettingsPage() {
     queryKey: queryKeys.health,
     queryFn: api.health,
   });
+  const printersQuery = useQuery({
+    queryKey: queryKeys.printers,
+    queryFn: api.printers,
+  });
 
   const saveMutation = useMutation({
     mutationFn: (values: BotSettingsValues) =>
@@ -43,6 +48,13 @@ export function SettingsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.store });
     },
   });
+
+  const loading =
+    storeQuery.isPending || healthQuery.isPending || printersQuery.isPending;
+
+  if (loading) {
+    return <SettingsSkeleton />;
+  }
 
   const store = storeQuery.data;
   const health = healthQuery.data;
