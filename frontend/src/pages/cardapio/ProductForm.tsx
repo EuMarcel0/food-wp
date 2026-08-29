@@ -373,6 +373,7 @@ export function ProductForm({
                     <OptionGroupsEditor
                       groups={values.optionGroups ?? []}
                       sizes={sizes}
+                      loading={sizesQuery.isPending || !sizesQuery.data}
                       onChange={(next) => setFieldValue("optionGroups", next)}
                     />
                   </>

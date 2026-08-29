@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button, Checkbox } from "antd";
+import { Button, Checkbox, Skeleton } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { maskBRL } from "../../lib/validation";
 import type { ProductValues } from "../../lib/validation";
@@ -8,6 +8,36 @@ import { cn } from "../../lib/cn";
 import { formEmpty } from "../../ui";
 import { formatReais } from "../../lib/format";
 import { PizzaSizeIcon, pizzaVisualScale } from "./PizzaSizeIcon";
+
+function SizeCardsSkeleton({ count = 3 }: { count?: number }) {
+  const cards = Math.min(6, Math.max(2, count));
+  return (
+    <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
+      {Array.from({ length: cards }, (_, index) => (
+        <article
+          key={index}
+          className="rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
+        >
+          <div className="flex items-center gap-3">
+            <Skeleton.Avatar active size={56} shape="square" className="!rounded-xl" />
+            <div className="min-w-0 flex-1">
+              <Skeleton
+                active
+                title={{ width: "55%", style: { margin: 0, height: 14 } }}
+                paragraph={{
+                  rows: 1,
+                  width: ["70%"],
+                  style: { marginTop: 8, marginBottom: 0 },
+                }}
+              />
+            </div>
+            <Skeleton.Button active size="small" className="!w-14" />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
 
 function sizeToGroup(size: Size): ProductValues["optionGroups"][number] {
   return {
@@ -46,10 +76,12 @@ function selectedSizeIds(
 export function OptionGroupsEditor({
   groups,
   sizes,
+  loading = false,
   onChange,
 }: {
   groups: ProductValues["optionGroups"];
   sizes: Size[];
+  loading?: boolean;
   defaultSizePrice?: string;
   onChange: (groups: ProductValues["optionGroups"]) => void;
 }) {
@@ -58,6 +90,7 @@ export function OptionGroupsEditor({
     () => selectedSizeIds(groups, sizes),
     [groups, sizes],
   );
+  const pendingCount = Math.max(groups.length, 2);
 
   function toggleSize(size: Size, checked: boolean) {
     if (checked) {
@@ -81,6 +114,18 @@ export function OptionGroupsEditor({
   }
 
   const activeSizes = sizes.filter((size) => size.active);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col max-lg:min-h-auto max-lg:flex-none">
+        <div className="mb-3.5 flex shrink-0 flex-wrap items-center gap-2">
+          <Skeleton.Button active size="small" className="!h-8 !w-24 !rounded-full" />
+          <Skeleton.Input active size="small" className="!h-4 !w-36 !min-w-0" />
+        </div>
+        <SizeCardsSkeleton count={pendingCount} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col max-lg:min-h-auto max-lg:flex-none">
