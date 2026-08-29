@@ -41,35 +41,47 @@ export const catalogRouter = Router();
 
 function parseOptionGroups(raw: unknown): ProductOptionGroup[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  return raw.map((item, index) => {
-    const group = item as Record<string, unknown>;
-    const options = Array.isArray(group.options) ? group.options : [];
-    const minSelect = Math.max(0, Number(group.minSelect ?? 1));
-    const maxSelect = Math.max(1, Number(group.maxSelect ?? 1));
-    const priceMode: ProductOptionGroup["priceMode"] =
-      group.priceMode === "replace" ? "replace" : "addon";
-    return {
-      id: String(group.id ?? `group-${index}`),
-      name: String(group.name ?? "").trim() || `Opção ${index + 1}`,
-      required: group.required !== false,
-      minSelect: Math.min(minSelect, maxSelect),
-      maxSelect,
-      priceMode,
-      exclusiveSet: String(group.exclusiveSet ?? "").trim() || null,
-      price: Math.max(0, Number(group.price ?? 0)),
-      sortOrder: Number(group.sortOrder ?? index),
-      options: options.map((optionRaw, optionIndex) => {
-        const option = optionRaw as Record<string, unknown>;
-        return {
-          id: String(option.id ?? `opt-${index}-${optionIndex}`),
-          name: String(option.name ?? "").trim(),
-          extraPrice: Math.max(0, Number(option.extraPrice ?? 0)),
-          sortOrder: Number(option.sortOrder ?? optionIndex),
-          active: option.active !== false,
-        };
-      }).filter((option) => option.name),
-    };
-  }).filter((group) => group.options.length > 0);
+  return raw
+    .map((item, index) => {
+      const group = item as Record<string, unknown>;
+      const options = Array.isArray(group.options) ? group.options : [];
+      const minSelect = Math.max(0, Number(group.minSelect ?? 1));
+      const maxSelect = Math.max(1, Number(group.maxSelect ?? 1));
+      const priceMode: ProductOptionGroup["priceMode"] =
+        group.priceMode === "replace" ? "replace" : "addon";
+      const exclusiveSet = String(group.exclusiveSet ?? "").trim() || null;
+      const name = String(group.name ?? "").trim() || `Tamanho ${index + 1}`;
+      return {
+        id: String(group.id ?? `group-${index}`),
+        name,
+        required: group.required !== false,
+        minSelect: Math.min(minSelect, maxSelect),
+        maxSelect,
+        priceMode,
+        exclusiveSet,
+        price: Math.max(0, Number(group.price ?? 0)),
+        sortOrder: Number(group.sortOrder ?? index),
+        options: options
+          .map((optionRaw, optionIndex) => {
+            const option = optionRaw as Record<string, unknown>;
+            return {
+              id: String(option.id ?? `opt-${index}-${optionIndex}`),
+              name: String(option.name ?? "").trim(),
+              extraPrice: Math.max(0, Number(option.extraPrice ?? 0)),
+              sortOrder: Number(option.sortOrder ?? optionIndex),
+              active: option.active !== false,
+            };
+          })
+          .filter((option) => option.name),
+      };
+    })
+    .filter(
+      (group) =>
+        Boolean(group.exclusiveSet) ||
+        group.options.length > 0 ||
+        group.price > 0 ||
+        Boolean(group.name.trim()),
+    );
 }
 
 function categoryPayload(body: Record<string, unknown>) {
@@ -485,13 +497,8 @@ catalogRouter.post("/products", async (req, res) => {
   }
   if (customizable && optionGroups.length === 0) {
     res.status(400).json({
-      error: "Item montável precisa de pelo menos um grupo de opções.",
+      error: "Pizza precisa de pelo menos um tamanho.",
     });
-    return;
-  }
-
-  if (addonsEnabled && addonIds.length === 0) {
-    res.status(400).json({ error: "Escolha pelo menos um adicional para este item." });
     return;
   }
 
@@ -584,12 +591,8 @@ catalogRouter.patch("/products/:id", async (req, res) => {
   }
   if (patch.customizable && patch.optionGroups && patch.optionGroups.length === 0) {
     res.status(400).json({
-      error: "Item montável precisa de pelo menos um grupo de opções.",
+      error: "Pizza precisa de pelo menos um tamanho.",
     });
-    return;
-  }
-  if (patch.addonsEnabled && patch.addonIds && patch.addonIds.length === 0) {
-    res.status(400).json({ error: "Escolha pelo menos um adicional para este item." });
     return;
   }
   try {

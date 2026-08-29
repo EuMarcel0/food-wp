@@ -7,6 +7,7 @@ import {
   getConversation,
   getProduct,
   getStore,
+  listAddons,
   listCrusts,
   listProducts,
   saveConversation,
@@ -158,9 +159,17 @@ function clipNote(raw: string) {
   return raw.replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
-function productAddons(product: Product) {
+async function productAddons(product: Product) {
   if (!product.addonsEnabled) return [];
-  return (product.addons ?? [])
+  const linked = (product.addons ?? [])
+    .filter((addon) => addon.active)
+    .sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.name.localeCompare(right.name, "pt-BR"),
+    );
+  if (linked.length) return linked;
+  return (await listAddons())
     .filter((addon) => addon.active)
     .sort(
       (left, right) =>
@@ -169,8 +178,8 @@ function productAddons(product: Product) {
     );
 }
 
-function productHasAddons(product: Product) {
-  return productAddons(product).length > 0;
+async function productHasAddons(product: Product) {
+  return (await productAddons(product)).length > 0;
 }
 
 function addonStepDone(drafts?: CartSelection[]) {
@@ -185,9 +194,9 @@ function pickedAddonIds(drafts?: CartSelection[]) {
   return new Set(draftAddon(drafts)?.options.map((option) => option.id) ?? []);
 }
 
-function remainingAddons(product: Product, drafts?: CartSelection[]) {
+async function remainingAddons(product: Product, drafts?: CartSelection[]) {
   const picked = pickedAddonIds(drafts);
-  return productAddons(product).filter((addon) => !picked.has(addon.id));
+  return (await productAddons(product)).filter((addon) => !picked.has(addon.id));
 }
 
 function addDraftAddon(
@@ -687,7 +696,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
 }
 
 async function askAddons(to: string, product: Product, drafts?: CartSelection[]) {
-  const remaining = remainingAddons(product, drafts);
+  const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
   const picked = draftAddon(drafts)?.options.map(addonOptionLabel) ?? [];
@@ -753,7 +762,10 @@ async function askQuantityStage(
       return;
     }
   }
-  if (productHasAddons(product) && !addonStepDone(context.draftSelections)) {
+  if (
+    (await productHasAddons(product)) &&
+    !addonStepDone(context.draftSelections)
+  ) {
     await persist("awaiting_addon", context);
     await askAddons(to, product, context.draftSelections);
     return;
@@ -1236,14 +1248,16 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
+    const available = await productAddons(product);
+    const remaining = await remainingAddons(product, drafts);
     const addon = incoming.startsWith("addon:")
-      ? remainingAddons(product, drafts).find(
+      ? remaining.find(
           (item) => item.id === incoming.slice("addon:".length),
         ) ??
-        productAddons(product).find(
+        available.find(
           (item) => item.id === incoming.slice("addon:".length),
         )
-      : productAddons(product).find((item) => normalize(item.name) === normalized);
+      : available.find((item) => normalize(item.name) === normalized);
 
     if (!addon) {
       await sendText(
@@ -1263,7 +1277,7 @@ export async function handleIncomingMessage(input: {
     const names = (draftAddon(context.draftSelections)?.options ?? []).map(
       addonOptionLabel,
     );
-    if (!remainingAddons(product, context.draftSelections).length) {
+    if (!(await remainingAddons(product, context.draftSelections)).length) {
       await askQuantityStage(input.from, product, context, persist);
       return;
     }

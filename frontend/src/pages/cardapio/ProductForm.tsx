@@ -266,38 +266,44 @@ export function ProductForm({
                     </FormControl>
                   </label>
                   {values.addonsEnabled ? (
-                    <FormControl name="addonIds" label="Adicionais deste item">
-                      {({ value, setValue, setTouched }) => {
-                        const selected = new Set(
-                          Array.isArray(value) ? value.map(String) : [],
-                        );
-                        const options = addonChoices(addons, product).filter(
-                          (addon) => addon.active || selected.has(addon.id),
-                        );
-                        return (
-                          <Select
-                            mode="multiple"
-                            style={{ width: "100%" }}
-                            placeholder={
-                              options.length
-                                ? "Escolha os adicionais"
-                                : "Cadastre adicionais na tela Adicionais"
-                            }
-                            value={Array.isArray(value) ? value : []}
-                            onChange={setValue}
-                            onBlur={setTouched}
-                            optionFilterProp="label"
-                            showSearch
-                            options={options.map((addon) => ({
-                              value: addon.id,
-                              label: addon.active
-                                ? addon.name
-                                : `${addon.name} (inativo)`,
-                            }))}
-                          />
-                        );
-                      }}
-                    </FormControl>
+                    <>
+                      <FormControl name="addonIds" label="Adicionais deste item (opcional)">
+                        {({ value, setValue, setTouched }) => {
+                          const selected = new Set(
+                            Array.isArray(value) ? value.map(String) : [],
+                          );
+                          const options = addonChoices(addons, product).filter(
+                            (addon) => addon.active || selected.has(addon.id),
+                          );
+                          return (
+                            <Select
+                              mode="multiple"
+                              allowClear
+                              style={{ width: "100%" }}
+                              placeholder={
+                                options.length
+                                  ? "Vazio = todos os adicionais"
+                                  : "Cadastre adicionais na tela Adicionais"
+                              }
+                              value={Array.isArray(value) ? value : []}
+                              onChange={setValue}
+                              onBlur={setTouched}
+                              optionFilterProp="label"
+                              showSearch
+                              options={options.map((addon) => ({
+                                value: addon.id,
+                                label: addon.active
+                                  ? addon.name
+                                  : `${addon.name} (inativo)`,
+                              }))}
+                            />
+                          );
+                        }}
+                      </FormControl>
+                      <p className={cn(formHint, "-mt-1")}>
+                        Se não escolher nenhum, o bot oferece todos os adicionais ativos.
+                      </p>
+                    </>
                   ) : null}
                 </div>
               </section>

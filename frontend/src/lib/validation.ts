@@ -119,15 +119,6 @@ export const productSchema = Yup.object({
     });
   }
   return true;
-}).test("adicionais", "", function (values) {
-  if (!values.addonsEnabled) return true;
-  if (!values.addonIds?.length) {
-    return this.createError({
-      path: "addonIds",
-      message: "Escolha pelo menos um adicional para este item.",
-    });
-  }
-  return true;
 });
 
 export const categorySchema = Yup.object({
