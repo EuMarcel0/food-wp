@@ -1,6 +1,8 @@
 import { Formik, Form as FormikForm } from "formik";
-import { Alert, Button, Input, InputNumber, Modal, Select } from "antd";
+import { Alert, Button, Input, InputNumber, Select } from "antd";
+import { ExpandOutlined } from "@ant-design/icons";
 import { FormControl, FormField } from "../../components/FormField";
+import { FormModal } from "../../components/FormModal";
 import {
   maskBRL,
   parseReais,
@@ -32,36 +34,49 @@ export function SizeForm({
   };
 
   return (
-    <Modal
-      title={size ? "Editar tamanho" : "Incluir tamanho"}
-      open={open}
-      onCancel={onCancel}
-      footer={null}
-      destroyOnClose
+    <Formik
+      enableReinitialize
+      initialValues={initialValues}
+      validationSchema={sizeSchema}
+      onSubmit={async (values, helpers) => {
+        helpers.setStatus(undefined);
+        try {
+          await onSubmit(values);
+          helpers.resetForm();
+        } catch (error) {
+          helpers.setStatus(
+            error instanceof Error ? error.message : "Não foi possível salvar.",
+          );
+        }
+      }}
     >
-      <Formik
-        enableReinitialize
-        initialValues={initialValues}
-        validationSchema={sizeSchema}
-        onSubmit={async (values, helpers) => {
-          helpers.setStatus(undefined);
-          try {
-            await onSubmit(values);
-            helpers.resetForm();
-          } catch (error) {
-            helpers.setStatus(
-              error instanceof Error ? error.message : "Não foi possível salvar.",
-            );
+      {({ isSubmitting, status, submitForm }) => (
+        <FormModal
+          open={open}
+          onCancel={onCancel}
+          kicker="Tamanhos"
+          title={size ? "Editar tamanho" : "Incluir tamanho"}
+          hint="Cadastre P, M, G… Depois, na pizza, marque quais tamanhos ela oferece."
+          icon={<ExpandOutlined />}
+          footer={
+            <>
+              <Button onClick={onCancel}>Cancelar</Button>
+              <Button
+                type="primary"
+                loading={isSubmitting || submitting}
+                onClick={() => void submitForm()}
+              >
+                {size ? "Salvar" : "Incluir"}
+              </Button>
+            </>
           }
-        }}
-      >
-        {({ isSubmitting, status }) => (
+        >
           <FormikForm>
             {status ? (
               <Alert
                 type="error"
                 showIcon
-                style={{ marginBottom: 12 }}
+                className="mb-3"
                 message={status}
               />
             ) : null}
@@ -104,20 +119,10 @@ export function SizeForm({
                 />
               )}
             </FormControl>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Button onClick={onCancel}>Cancelar</Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={isSubmitting || submitting}
-              >
-                {size ? "Salvar" : "Incluir"}
-              </Button>
-            </div>
           </FormikForm>
-        )}
-      </Formik>
-    </Modal>
+        </FormModal>
+      )}
+    </Formik>
   );
 }
 

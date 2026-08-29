@@ -1,8 +1,12 @@
 import { Formik, Form as FormikForm } from "formik";
-import { Alert, Button, Input, Modal, Switch } from "antd";
+import { Alert, Button, Input, Switch } from "antd";
+import { AppstoreOutlined } from "@ant-design/icons";
 import { FormControl, FormField } from "../../components/FormField";
+import { FormModal } from "../../components/FormModal";
 import { categorySchema, type CategoryValues } from "../../lib/validation";
 import type { Category } from "../../types";
+import { formToggle } from "../../ui";
+import { cn } from "../../lib/cn";
 
 export function CategoryForm({
   open,
@@ -24,67 +28,76 @@ export function CategoryForm({
   };
 
   return (
-    <Modal
-      title={category ? "Editar categoria" : "Incluir categoria"}
-      open={open}
-      onCancel={onCancel}
-      footer={null}
-      destroyOnClose
+    <Formik
+      enableReinitialize
+      initialValues={initialValues}
+      validationSchema={categorySchema}
+      onSubmit={async (values, helpers) => {
+        helpers.setStatus(undefined);
+        try {
+          await onSubmit(values);
+          helpers.resetForm();
+        } catch (error) {
+          helpers.setStatus(
+            error instanceof Error ? error.message : "Não foi possível salvar.",
+          );
+        }
+      }}
     >
-      <Formik
-        enableReinitialize
-        initialValues={initialValues}
-        validationSchema={categorySchema}
-        onSubmit={async (values, helpers) => {
-          helpers.setStatus(undefined);
-          try {
-            await onSubmit(values);
-            helpers.resetForm();
-          } catch (error) {
-            helpers.setStatus(
-              error instanceof Error ? error.message : "Não foi possível salvar.",
-            );
+      {({ isSubmitting, status, submitForm }) => (
+        <FormModal
+          open={open}
+          onCancel={onCancel}
+          kicker="Organização"
+          title={category ? "Editar categoria" : "Incluir categoria"}
+          hint="Organize o cardápio. Só as categorias ativas aparecem no WhatsApp e no cadastro de itens."
+          icon={<AppstoreOutlined />}
+          footer={
+            <>
+              <Button onClick={onCancel}>Cancelar</Button>
+              <Button
+                type="primary"
+                loading={isSubmitting || submitting}
+                onClick={() => void submitForm()}
+              >
+                {category ? "Salvar" : "Incluir"}
+              </Button>
+            </>
           }
-        }}
-      >
-        {({ isSubmitting, status }) => (
+        >
           <FormikForm>
             {status ? (
               <Alert
                 type="error"
                 showIcon
-                style={{ marginBottom: 12 }}
+                className="mb-3"
                 message={status}
               />
             ) : null}
             <FormField name="name" label="Nome">
-              <Input placeholder="Ex.: Lanches…" />
+              <Input placeholder="Ex.: Lanches, Pizzas…" />
             </FormField>
             <FormField name="sortOrder" label="Ordem">
               <Input inputMode="numeric" placeholder="0" />
             </FormField>
-            <FormControl name="active" label="Ativa no cardápio">
-              {({ value, setValue }) => (
-                <Switch
-                  checked={Boolean(value)}
-                  onChange={(checked) => setValue(checked)}
-                />
-              )}
-            </FormControl>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Button onClick={onCancel}>Cancelar</Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={isSubmitting || submitting}
-              >
-                {category ? "Salvar" : "Incluir"}
-              </Button>
-            </div>
+            <label className={cn(formToggle, "mb-0")}>
+              <div>
+                <strong>Ativa no cardápio</strong>
+                <p>Aparece no WhatsApp e no cadastro de itens</p>
+              </div>
+              <FormControl name="active" compact>
+                {({ value, setValue }) => (
+                  <Switch
+                    checked={Boolean(value)}
+                    onChange={(checked) => setValue(checked)}
+                  />
+                )}
+              </FormControl>
+            </label>
           </FormikForm>
-        )}
-      </Formik>
-    </Modal>
+        </FormModal>
+      )}
+    </Formik>
   );
 }
 

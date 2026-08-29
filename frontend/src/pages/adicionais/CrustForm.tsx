@@ -1,6 +1,8 @@
 import { Formik, Form as FormikForm } from "formik";
-import { Alert, Button, Checkbox, Input, Modal } from "antd";
+import { Alert, Button, Checkbox, Input } from "antd";
+import { BorderOuterOutlined } from "@ant-design/icons";
 import { FormControl, FormField } from "../../components/FormField";
+import { FormModal } from "../../components/FormModal";
 import {
   crustSchema,
   maskBRL,
@@ -31,36 +33,49 @@ export function CrustForm({
   };
 
   return (
-    <Modal
-      title={crust ? "Editar borda" : "Incluir borda"}
-      open={open}
-      onCancel={onCancel}
-      footer={null}
-      destroyOnClose
+    <Formik
+      enableReinitialize
+      initialValues={initialValues}
+      validationSchema={crustSchema}
+      onSubmit={async (values, helpers) => {
+        helpers.setStatus(undefined);
+        try {
+          await onSubmit(values);
+          helpers.resetForm();
+        } catch (error) {
+          helpers.setStatus(
+            error instanceof Error ? error.message : "Não foi possível salvar.",
+          );
+        }
+      }}
     >
-      <Formik
-        enableReinitialize
-        initialValues={initialValues}
-        validationSchema={crustSchema}
-        onSubmit={async (values, helpers) => {
-          helpers.setStatus(undefined);
-          try {
-            await onSubmit(values);
-            helpers.resetForm();
-          } catch (error) {
-            helpers.setStatus(
-              error instanceof Error ? error.message : "Não foi possível salvar.",
-            );
+      {({ isSubmitting, status, values, submitForm }) => (
+        <FormModal
+          open={open}
+          onCancel={onCancel}
+          kicker="Bordas"
+          title={crust ? "Editar borda" : "Incluir borda"}
+          hint="Nas pizzas com “Perguntar borda”, o cliente escolhe uma destas opções no WhatsApp."
+          icon={<BorderOuterOutlined />}
+          footer={
+            <>
+              <Button onClick={onCancel}>Cancelar</Button>
+              <Button
+                type="primary"
+                loading={isSubmitting || submitting}
+                onClick={() => void submitForm()}
+              >
+                {crust ? "Salvar" : "Incluir"}
+              </Button>
+            </>
           }
-        }}
-      >
-        {({ isSubmitting, status, values }) => (
+        >
           <FormikForm>
             {status ? (
               <Alert
                 type="error"
                 showIcon
-                style={{ marginBottom: 12 }}
+                className="mb-3"
                 message={status}
               />
             ) : null}
@@ -69,7 +84,7 @@ export function CrustForm({
             </FormField>
             <FormControl name="addsPrice">
               {({ value, setValue }) => (
-                <div className="mb-3">
+                <div className="mb-1">
                   <Checkbox
                     checked={Boolean(value)}
                     onChange={(event) => setValue(event.target.checked)}
@@ -93,20 +108,10 @@ export function CrustForm({
                 )}
               </FormControl>
             ) : null}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Button onClick={onCancel}>Cancelar</Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={isSubmitting || submitting}
-              >
-                {crust ? "Salvar" : "Incluir"}
-              </Button>
-            </div>
           </FormikForm>
-        )}
-      </Formik>
-    </Modal>
+        </FormModal>
+      )}
+    </Formik>
   );
 }
 
