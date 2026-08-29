@@ -90,39 +90,32 @@ export const productSchema = Yup.object({
         priceMode: Yup.mixed<"addon" | "replace">()
           .oneOf(["addon", "replace"])
           .default("addon"),
-        exclusiveSet: Yup.string().nullable().default(null),
-        price: Yup.string().default("0,00").when("exclusiveSet", {
-          is: (value: string | null | undefined) => Boolean(value),
-          then: (schema) =>
-            schema.test(
-              "size-price",
-              "Informe o preço do tamanho",
-              (value) => {
-                const amount = parseReais(value ?? "");
-                return amount !== null && amount > 0;
-              },
-            ),
-        }),
+        exclusiveSet: Yup.string().nullable().default("tamanho"),
+        price: Yup.string()
+          .default("0,00")
+          .test("size-price", "Informe o preço do tamanho", (value) => {
+            const amount = parseReais(value ?? "");
+            return amount !== null && amount > 0;
+          }),
         options: Yup.array()
           .of(
             Yup.object({
               id: Yup.string().required(),
-              name: Yup.string().trim().required("Informe a opção"),
-              extraPrice: Yup.string().required(),
+              name: Yup.string().trim().default(""),
+              extraPrice: Yup.string().default("0,00"),
               active: Yup.boolean().default(true),
             }),
           )
-          .min(1, "Inclua pelo menos uma opção")
-          .required(),
+          .default([]),
       }),
     )
     .default([]),
-}).test("montavel", "", function (values) {
+}).test("pizza", "", function (values) {
   if (!values.customizable) return true;
   if (!values.optionGroups?.length) {
     return this.createError({
       path: "optionGroups",
-      message: "Inclua grupos como tamanho ou sabores.",
+      message: "Inclua pelo menos um tamanho.",
     });
   }
   return true;

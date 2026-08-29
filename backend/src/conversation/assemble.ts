@@ -14,9 +14,16 @@ function normalizeName(value: string) {
     .toLowerCase();
 }
 
+export function isSizeGroup(group: ProductOptionGroup | undefined) {
+  return Boolean(group?.exclusiveSet?.trim());
+}
+
 export function activeGroups(product: Product): ProductOptionGroup[] {
   return (product.optionGroups ?? [])
-    .filter((group) => group.options.some((option) => option.active))
+    .filter(
+      (group) =>
+        isSizeGroup(group) || group.options.some((option) => option.active),
+    )
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((group) => ({
       ...group,
@@ -28,6 +35,11 @@ export function activeGroups(product: Product): ProductOptionGroup[] {
 
 export function isCustomizable(product: Product) {
   return Boolean(product.customizable && activeGroups(product).length);
+}
+
+/** Tamanhos de pizza pedem sabores do cardápio (outras pizzas). */
+export function usesCatalogFlavors(group: ProductOptionGroup | undefined) {
+  return Boolean(group && isSizeGroup(group) && group.maxSelect >= 1);
 }
 
 function optionNames(group: ProductOptionGroup) {
@@ -83,6 +95,20 @@ export type AssemblyNext =
   | { type: "options"; group: ProductOptionGroup }
   | { type: "done" };
 
+function sizeFlavorsPending(
+  group: ProductOptionGroup,
+  draft: CartSelection | undefined,
+): boolean {
+  if (!usesCatalogFlavors(group)) return false;
+  if (draft?.skipped) return false;
+  const count = draft?.options.length ?? 0;
+  if (count >= group.maxSelect) return false;
+  // Ainda não escolheu sabor e não pulou → pedir lista de pizzas.
+  if (!draft || count === 0) return true;
+  // Já tem sabor(es) mas pode marcar mais — a UI trata com Mais um / Pronto.
+  return false;
+}
+
 export function nextAssembly(
   product: Product,
   drafts: CartSelection[],
@@ -98,9 +124,13 @@ export function nextAssembly(
       if (!chosen) return { type: "variant", groups: cluster };
       const group = chosen;
       const draft = drafts.find((item) => item.groupId === group.id);
+      if (sizeFlavorsPending(group, draft)) {
+        return { type: "options", group };
+      }
       if (draft?.skipped && !group.required) continue;
       const count = draft?.options.length ?? 0;
       const need = Math.max(group.required ? 1 : 0, group.minSelect);
+      if (usesCatalogFlavors(group)) continue;
       if (count < need) {
         if (!group.options.length) continue;
         return { type: "options", group };
@@ -113,7 +143,14 @@ export function nextAssembly(
 
     const group = cluster[0];
     const draft = drafts.find((item) => item.groupId === group.id);
+    if (cluster.length === 1 && isSizeGroup(group) && !draft) {
+      return { type: "variant", groups: [group] };
+    }
+    if (sizeFlavorsPending(group, draft)) {
+      return { type: "options", group };
+    }
     const count = draft?.options.length ?? 0;
+    if (usesCatalogFlavors(group)) continue;
     if (draft?.skipped && !group.required) continue;
     if (draft && count === 0 && !group.required) continue;
     if (count >= Math.max(group.required ? 1 : 0, group.minSelect) && count > 0) {
@@ -135,10 +172,6 @@ function cheapestSum(group: ProductOptionGroup, count: number) {
     .sort((a, b) => a - b)
     .slice(0, take)
     .reduce((sum, value) => sum + value, 0);
-}
-
-function isSizeGroup(group: ProductOptionGroup | undefined) {
-  return Boolean(group?.exclusiveSet?.trim());
 }
 
 export const ADDON_GROUP_ID = "__addon__";
@@ -256,7 +289,12 @@ export function assembledName(product: Product, selections: CartSelection[]) {
     return [sizeName, shares, ...otherParts].filter(Boolean).join(" · ");
   }
   const parts = [...flavorNames, ...otherParts];
-  return parts.length ? `${product.name} · ${parts.join(" · ")}` : product.name;
+  if (parts.length) {
+    return [sizeName, `${product.name} · ${parts.join(" · ")}`]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return [sizeName, product.name].filter(Boolean).join(" · ");
 }
 
 export function addonOptionLabel(option: { name: string; extraPrice: number }) {
@@ -294,19 +332,34 @@ export function variantPrompt(product: Product) {
   return `*${product.name}*\nEscolha o tamanho.`;
 }
 
-export function groupPrompt(product: Product, group: ProductOptionGroup, picked: string[]) {
-  const chosen = group.options
-    .filter((option) => picked.includes(option.id))
-    .map((option) => option.name);
+export function groupPrompt(
+  product: Product,
+  group: ProductOptionGroup,
+  picked: string[],
+  pickedNames: string[] = [],
+) {
+  const chosen =
+    pickedNames.length > 0
+      ? pickedNames
+      : group.options
+          .filter((option) => picked.includes(option.id))
+          .map((option) => option.name);
   const shares = flavorShareLine(product.name, chosen);
+  const catalogFlavors = usesCatalogFlavors(group);
   const lines = [
     `*${product.name}*`,
-    `Escolha: *${group.name}*`,
-    group.maxSelect > 1
-      ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
-      : group.required
-        ? "Escolha 1 opção."
-        : "Opcional — pode pular.",
+    catalogFlavors
+      ? `Tamanho *${group.name}* — escolha o sabor`
+      : `Escolha: *${group.name}*`,
+    catalogFlavors
+      ? group.maxSelect > 1
+        ? `Pode marcar até ${group.maxSelect} sabores (pizzas do cardápio).`
+        : "Pode marcar 1 sabor (pizza do cardápio)."
+      : group.maxSelect > 1
+        ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
+        : group.required
+          ? "Escolha 1 opção."
+          : "Opcional — pode pular.",
     chosen.length ? `Já escolheu: ${shares || chosen.join(" + ")}.` : "",
   ];
   return lines.filter(Boolean).join("\n");

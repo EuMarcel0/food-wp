@@ -29,6 +29,7 @@ import {
   selectionKey,
   soleGroupPick,
   unitPriceCents,
+  usesCatalogFlavors,
   variantPriceLabel,
   variantPrompt,
   activeGroups,
@@ -569,6 +570,13 @@ async function askAssembly(
   return askGroupOptions(to, product, group, context.draftSelections ?? []);
 }
 
+async function pizzaFlavorChoices(excludeIds: string[] = []) {
+  const blocked = new Set(excludeIds);
+  return (await listProducts()).filter(
+    (item) => item.customizable && item.active && !blocked.has(item.id),
+  );
+}
+
 async function askGroupOptions(
   to: string,
   product: Product,
@@ -577,21 +585,54 @@ async function askGroupOptions(
 ) {
   const current = drafts.find((item) => item.groupId === group.id);
   const picked = current?.options.map((option) => option.id) ?? [];
+  const pickedNames = current?.options.map((option) => option.name) ?? [];
+
+  if (usesCatalogFlavors(group)) {
+    const remaining = await pizzaFlavorChoices(picked);
+    if (!remaining.length) return true;
+
+    await sendList(
+      to,
+      groupPrompt(product, group, picked, pickedNames),
+      "Sabores",
+      [
+        {
+          title: "Sabores",
+          rows: remaining.slice(0, 10).map((pizza) => ({
+            id: `flavor:${pizza.id}`,
+            title: pizza.name.slice(0, 24),
+          })),
+        },
+      ],
+    );
+    if (picked.length === 0) {
+      await sendButtons(to, "Pode seguir só com este sabor ou escolher outro.", [
+        { id: "skip_group", title: "Só este sabor" },
+      ]);
+    }
+    return false;
+  }
+
   const remaining = group.options.filter((option) => !picked.includes(option.id));
   if (!remaining.length) return true;
 
-  await sendList(to, groupPrompt(product, group, picked), "Escolher", [
-    {
-      title: group.name.slice(0, 24),
-      rows: remaining.slice(0, 10).map((option) => ({
-        id: `opt:${option.id}`,
-        title: option.name.slice(0, 24),
-        ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
-          ? {}
-          : { description: optionDescription(option.extraPrice) }),
-      })),
-    },
-  ]);
+  await sendList(
+    to,
+    groupPrompt(product, group, picked, pickedNames),
+    "Escolher",
+    [
+      {
+        title: group.name.slice(0, 24),
+        rows: remaining.slice(0, 10).map((option) => ({
+          id: `opt:${option.id}`,
+          title: option.name.slice(0, 24),
+          ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
+            ? {}
+            : { description: optionDescription(option.extraPrice) }),
+        })),
+      },
+    ],
+  );
   if (!group.required && picked.length === 0) {
     await sendButtons(to, "Esta etapa é opcional.", [
       { id: "skip_group", title: "Pular" },
@@ -600,12 +641,21 @@ async function askGroupOptions(
   return false;
 }
 
-function groupWantingMore(product: Product, drafts: CartSelection[]) {
+async function groupWantingMore(product: Product, drafts: CartSelection[]) {
   const groups = activeGroups(product);
   for (let index = drafts.length - 1; index >= 0; index -= 1) {
     const draft = drafts[index];
     const group = groups.find((item) => item.id === draft.groupId);
-    if (!group || draft.skipped || draft.options.length >= group.maxSelect) continue;
+    if (!group || draft.skipped || draft.options.length >= group.maxSelect) {
+      continue;
+    }
+    if (usesCatalogFlavors(group)) {
+      const remaining = await pizzaFlavorChoices(
+        draft.options.map((option) => option.id),
+      );
+      if (remaining.length) return group;
+      continue;
+    }
     const picked = new Set(draft.options.map((option) => option.id));
     if (group.options.some((option) => !picked.has(option.id))) return group;
   }
@@ -944,7 +994,7 @@ export async function handleIncomingMessage(input: {
     };
 
     if (incoming === "more_options" || normalized === "mais um") {
-      const group = groupWantingMore(product, drafts);
+      const group = await groupWantingMore(product, drafts);
       if (!group) {
         await goNext();
         return;
@@ -955,16 +1005,23 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    if (incoming.startsWith("opt:")) {
-      const optionId = incoming.slice(4);
-      const openGroup = groupWantingMore(product, drafts);
+    if (incoming.startsWith("flavor:") || incoming.startsWith("opt:")) {
+      const optionId = incoming.includes(":")
+        ? incoming.slice(incoming.indexOf(":") + 1)
+        : "";
+      const openGroup = await groupWantingMore(product, drafts);
+      const pendingGroup =
+        pending.type === "options" ? pending.group : null;
       const group =
+        (openGroup && usesCatalogFlavors(openGroup) ? openGroup : null) ??
+        (pendingGroup && usesCatalogFlavors(pendingGroup)
+          ? pendingGroup
+          : null) ??
         (openGroup?.options.some((item) => item.id === optionId)
           ? openGroup
           : null) ??
-        (pending.type === "options" &&
-        pending.group.options.some((item) => item.id === optionId)
-          ? pending.group
+        (pendingGroup?.options.some((item) => item.id === optionId)
+          ? pendingGroup
           : null) ??
         activeGroups(product).find(
           (item) =>
@@ -974,7 +1031,18 @@ export async function handleIncomingMessage(input: {
         activeGroups(product).find((item) =>
           item.options.some((option) => option.id === optionId),
         );
-      const option = group?.options.find((item) => item.id === optionId);
+
+      let option =
+        group?.options.find((item) => item.id === optionId) ?? null;
+      if (group && usesCatalogFlavors(group) && !option) {
+        const pizza = (await pizzaFlavorChoices()).find(
+          (item) => item.id === optionId,
+        );
+        if (pizza) {
+          option = { id: pizza.id, name: pizza.name, extraPrice: 0, sortOrder: 0, active: true };
+        }
+      }
+
       if (!group || !option) {
         await sendText(input.from, "Não encontrei essa opção.");
         await askAssembly(input.from, product, context);
@@ -1002,19 +1070,30 @@ export async function handleIncomingMessage(input: {
         await goNext();
         return;
       }
-      if (current.options.length >= Math.max(group.required ? 1 : 0, group.minSelect)) {
+
+      const minReached = usesCatalogFlavors(group)
+        ? current.options.length >= 1
+        : current.options.length >=
+          Math.max(group.required ? 1 : 0, group.minSelect);
+
+      if (minReached) {
         const shares =
           flavorShareLine(
             product.name,
             current.options.map((item) => item.name),
           ) || current.options.map((item) => item.name).join(" + ");
+        const canAddMore = Boolean(await groupWantingMore(product, drafts));
         await sendButtons(
           input.from,
-          `*${group.name}:*\n${shares}`,
-          [
-            { id: "more_options", title: "Mais um" },
-            { id: "done_options", title: "Pronto" },
-          ],
+          usesCatalogFlavors(group)
+            ? `*Sabores:*\n${shares}`
+            : `*${group.name}:*\n${shares}`,
+          canAddMore
+            ? [
+                { id: "more_options", title: "Mais um" },
+                { id: "done_options", title: "Pronto" },
+              ]
+            : [{ id: "done_options", title: "Pronto" }],
         );
         return;
       }
@@ -1054,7 +1133,12 @@ export async function handleIncomingMessage(input: {
       if (!drafts.some((item) => item.groupId === group.id)) drafts.push(current);
 
       if (isSkipStep(incoming, normalized)) {
-        if (group.required && current.options.length < Math.max(1, group.minSelect)) {
+        const catalogFlavors = usesCatalogFlavors(group);
+        if (
+          !catalogFlavors &&
+          group.required &&
+          current.options.length < Math.max(1, group.minSelect)
+        ) {
           await sendText(
             input.from,
             `Escolha pelo menos ${Math.max(1, group.minSelect)} em *${group.name}*.`,

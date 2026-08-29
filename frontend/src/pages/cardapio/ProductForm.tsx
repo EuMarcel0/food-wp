@@ -26,22 +26,15 @@ function groupsFromProduct(product: Product | null): ProductValues["optionGroups
     minSelect: group.minSelect,
     maxSelect: group.maxSelect,
     priceMode: group.priceMode,
-    exclusiveSet: group.exclusiveSet ?? null,
+    exclusiveSet: "tamanho",
     price: maskBRL(
       String(
         Math.round(
-          (group.exclusiveSet && !(group.price > 0)
-            ? product?.price ?? 0
-            : group.price ?? 0) * 100,
+          (!(group.price > 0) ? product?.price ?? 0 : group.price ?? 0) * 100,
         ),
       ),
     ),
-    options: group.options.map((option) => ({
-      id: option.id,
-      name: option.name,
-      extraPrice: maskBRL(String(Math.round(option.extraPrice * 100))),
-      active: option.active,
-    })),
+    options: [],
   }));
 }
 
@@ -229,8 +222,8 @@ export function ProductForm({
                   </label>
                   <label className={formToggle}>
                     <div>
-                      <strong>Montável</strong>
-                      <p>Tamanho, sabores, extras e outros grupos</p>
+                      <strong>É pizza?</strong>
+                      <p>Abre a montagem de tamanhos; os sabores vêm das outras pizzas</p>
                     </div>
                     <FormControl name="customizable" compact>
                       {({ value, setValue }) => (
@@ -316,11 +309,11 @@ export function ProductForm({
                 )}
               >
                 <p className={formKicker}>Montagem</p>
-                <h3 className={formHeading}>O cliente escolhe nesta ordem</h3>
+                <h3 className={formHeading}>Tamanhos da pizza</h3>
                 {values.customizable ? (
                   <>
                     <p className={formHint}>
-                      Use + Tamanho uma vez por tamanho se cada um tiver os próprios sabores. O cliente escolhe o tamanho e, na sequência, marca os sabores de uma vez.
+                      Cadastre só os tamanhos (P, M, G…) e o máximo de sabores de cada um. Depois do tamanho, o bot lista as pizzas do cardápio para o cliente montar.
                     </p>
                     {typeof errors.optionGroups === "string" && touched.optionGroups ? (
                       <Alert
@@ -339,13 +332,13 @@ export function ProductForm({
                 ) : (
                   <div className={formEmpty}>
                     <p>
-                      Ligue Montável para o cliente escolher tamanho, sabores ou extras no WhatsApp.
+                      Marque <strong>É pizza?</strong> para cadastrar tamanhos. Os sabores serão as outras pizzas do cardápio.
                     </p>
                     <Button
                       type="primary"
                       onClick={() => setFieldValue("customizable", true)}
                     >
-                      Ativar montagem
+                      É pizza — montar tamanhos
                     </Button>
                   </div>
                 )}
@@ -382,16 +375,10 @@ export function toProductPayload(values: ProductValues) {
         minSelect: group.required ? Math.max(1, group.minSelect) : 0,
         maxSelect: Math.max(1, group.maxSelect),
         priceMode: group.priceMode,
-        exclusiveSet: group.exclusiveSet || null,
-        price: group.exclusiveSet ? parseReais(group.price) ?? 0 : 0,
+        exclusiveSet: "tamanho",
+        price: parseReais(group.price) ?? 0,
         sortOrder: index,
-        options: group.options.map((option, optionIndex) => ({
-          id: option.id,
-          name: option.name.trim(),
-          extraPrice: parseReais(option.extraPrice) ?? 0,
-          sortOrder: optionIndex,
-          active: option.active !== false,
-        })),
+        options: [],
       }))
     : [];
   return {
