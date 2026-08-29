@@ -111,7 +111,7 @@ export function OptionGroupsEditor({
       ) : null}
 
       {pickerOpen && activeSizes.length ? (
-        <div className="grid min-h-0 flex-1 grid-cols-2 gap-2.5 overflow-auto overscroll-contain pr-1 pb-1 max-sm:grid-cols-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
+        <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 items-stretch gap-2.5 overflow-auto overscroll-contain pr-1 pb-1 max-sm:grid-cols-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
           {activeSizes.map((size) => {
             const checked = selected.has(size.id);
             const scale = pizzaVisualScale(size, activeSizes);
@@ -119,7 +119,7 @@ export function OptionGroupsEditor({
               <label
                 key={size.id}
                 className={cn(
-                  "relative flex cursor-pointer flex-col rounded-[14px] border px-3.5 pb-3 pt-3 transition-colors",
+                  "relative flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-[14px] border px-3.5 py-4 transition-colors",
                   checked
                     ? "border-food-accent bg-food-accent/10"
                     : "border-food-border bg-food-chip hover:border-food-accent/50",
