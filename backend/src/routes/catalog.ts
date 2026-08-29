@@ -38,12 +38,21 @@ import {
   parseOptionalText,
   parseSearch,
 } from "../lib/filters.js";
+import { parseBusinessHours } from "../lib/businessHours.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
 import { listInstalledPrinters } from "../lib/printers.js";
-import type { ProductOptionGroup, StorePatch } from "../types.js";
+import type { PizzaKind, ProductOptionGroup, StorePatch } from "../types.js";
 
 export const catalogRouter = Router();
+
+function parsePizzaKind(raw: unknown): PizzaKind | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw == null || raw === "") return null;
+  const value = String(raw).trim().toLowerCase();
+  if (value === "salgada" || value === "doce") return value;
+  throw new Error("Informe se a pizza é doce ou salgada.");
+}
 
 function parseOptionGroups(raw: unknown): ProductOptionGroup[] | undefined {
   if (!Array.isArray(raw)) return undefined;
@@ -162,6 +171,20 @@ catalogRouter.patch("/store", async (req, res) => {
   if (body.receiptFooter !== undefined) {
     const receiptFooter = String(body.receiptFooter ?? "").trim().slice(0, 240);
     patch.receiptFooter = receiptFooter || null;
+  }
+
+  if (body.businessHours !== undefined) {
+    try {
+      patch.businessHours = parseBusinessHours(body.businessHours);
+    } catch (error) {
+      res.status(400).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Informe os horários de funcionamento.",
+      });
+      return;
+    }
   }
 
   const photo = body.photo as { mime?: string; data?: string } | undefined;
@@ -568,6 +591,15 @@ catalogRouter.post("/products", async (req, res) => {
       : Number(rawPrice);
   const active = req.body?.active !== false;
   const customizable = Boolean(req.body?.customizable);
+  let pizzaKind: PizzaKind | null = null;
+  try {
+    pizzaKind = parsePizzaKind(req.body?.pizzaKind) ?? null;
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Informe se a pizza é doce ou salgada.",
+    });
+    return;
+  }
   const notesEnabled = Boolean(req.body?.notesEnabled);
   const addonsEnabled = Boolean(req.body?.addonsEnabled);
   const crustsEnabled = Boolean(req.body?.crustsEnabled);
@@ -579,6 +611,12 @@ catalogRouter.post("/products", async (req, res) => {
       error: customizable
         ? "Preencha nome e categoria."
         : "Preencha nome, categoria e preço.",
+    });
+    return;
+  }
+  if (customizable && !pizzaKind) {
+    res.status(400).json({
+      error: "Informe se a pizza é doce ou salgada.",
     });
     return;
   }
@@ -598,6 +636,7 @@ catalogRouter.post("/products", async (req, res) => {
         price: Math.round(price * 100) / 100,
         active,
         customizable,
+        pizzaKind: customizable ? pizzaKind : null,
         notesEnabled,
         addonsEnabled,
         crustsEnabled,
@@ -620,6 +659,7 @@ function productPatch(body: Record<string, unknown>) {
     price?: number;
     active?: boolean;
     customizable?: boolean;
+    pizzaKind?: PizzaKind | null;
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
     crustsEnabled?: boolean;
@@ -651,6 +691,9 @@ function productPatch(body: Record<string, unknown>) {
   if (body.customizable !== undefined) {
     patch.customizable = Boolean(body.customizable);
   }
+  if (body.pizzaKind !== undefined) {
+    patch.pizzaKind = parsePizzaKind(body.pizzaKind) ?? null;
+  }
   if (body.notesEnabled !== undefined) {
     patch.notesEnabled = Boolean(body.notesEnabled);
   }
@@ -671,9 +714,26 @@ function productPatch(body: Record<string, unknown>) {
 }
 
 catalogRouter.patch("/products/:id", async (req, res) => {
-  const patch = productPatch(req.body ?? {});
+  let patch: ReturnType<typeof productPatch>;
+  try {
+    patch = productPatch(req.body ?? {});
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Informe se a pizza é doce ou salgada.",
+    });
+    return;
+  }
   if (!patch || Object.keys(patch).length === 0) {
     res.status(400).json({ error: "Nada para atualizar." });
+    return;
+  }
+  if (patch.customizable === true && !patch.pizzaKind) {
+    res.status(400).json({
+      error: "Informe se a pizza é doce ou salgada.",
+    });
     return;
   }
   if (patch.customizable && patch.optionGroups && patch.optionGroups.length === 0) {

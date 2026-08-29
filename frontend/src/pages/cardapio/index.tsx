@@ -282,7 +282,13 @@ export function CatalogPage() {
               render: (_, product) => (
                 <>
                   {product.customizable ? (
-                    <Tag color="orange">Pizza</Tag>
+                    <Tag color="orange">
+                      {product.pizzaKind === "doce"
+                        ? "Pizza doce"
+                        : product.pizzaKind === "salgada"
+                          ? "Pizza salgada"
+                          : "Pizza"}
+                    </Tag>
                   ) : (
                     <Tag>Simples</Tag>
                   )}

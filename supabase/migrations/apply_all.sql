@@ -665,4 +665,13 @@ where not exists (
   select 1 from public.sizes z where z.store_id = s.id
 );
 
+-- ========== 027_store_hours ==========
+alter table public.stores
+  add column if not exists business_hours jsonb;
+
+-- ========== 028_pizza_kind ==========
+alter table public.products
+  add column if not exists pizza_kind text
+    check (pizza_kind is null or pizza_kind in ('salgada', 'doce'));
+
 

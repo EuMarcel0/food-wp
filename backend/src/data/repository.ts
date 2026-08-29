@@ -1,4 +1,5 @@
 import { flags } from "../config/env.js";
+import { DEFAULT_TIMEZONE, parseBusinessHours } from "../lib/businessHours.js";
 import { createOrderCode } from "../lib/money.js";
 import type {
   CategoryFilter,
@@ -24,6 +25,7 @@ import type {
   OrderItem,
   OrderStatus,
   PaymentMethod,
+  PizzaKind,
   Product,
   ProductOptionGroup,
   Size,
@@ -87,6 +89,7 @@ function mapStore(row: Record<string, unknown>): Store {
     name: String(row.name),
     segment: String(row.segment ?? "generic"),
     phone: (row.phone as string | null) ?? null,
+    timezone: String(row.timezone ?? DEFAULT_TIMEZONE) || DEFAULT_TIMEZONE,
     deliveryEnabled: Boolean(row.delivery_enabled ?? true),
     pickupEnabled: Boolean(row.pickup_enabled ?? true),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
@@ -95,6 +98,13 @@ function mapStore(row: Record<string, unknown>): Store {
     legalName: (row.legal_name as string | null) ?? null,
     cnpj: (row.cnpj as string | null) ?? null,
     receiptFooter: (row.receipt_footer as string | null) ?? null,
+    businessHours: (() => {
+      try {
+        return parseBusinessHours(row.business_hours);
+      } catch {
+        return null;
+      }
+    })(),
     neighborhoods: [],
   };
 }
@@ -147,12 +157,21 @@ function mapProduct(row: Record<string, unknown>): Product {
         : Number(row.price_cents ?? 0) / 100,
     active: Boolean(row.active ?? true),
     customizable: Boolean(row.customizable ?? false),
+    pizzaKind: parsePizzaKind(row.pizza_kind),
     notesEnabled: Boolean(row.notes_enabled ?? false),
     addonsEnabled: Boolean(row.addons_enabled ?? false),
     crustsEnabled: Boolean(row.crusts_enabled ?? false),
     addons: mapProductAddons(row),
     optionGroups: mapOptionGroups(row),
   };
+}
+
+function parsePizzaKind(raw: unknown): PizzaKind | null {
+  return raw === "salgada" || raw === "doce" ? raw : null;
+}
+
+function missingPizzaKindColumn(message?: string) {
+  return Boolean(message?.includes("pizza_kind"));
 }
 
 function mapOrder(row: Record<string, unknown>): Order {
@@ -276,6 +295,9 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
   if (patch.receiptFooter !== undefined) {
     payload.receipt_footer = patch.receiptFooter;
   }
+  if (patch.businessHours !== undefined) {
+    payload.business_hours = patch.businessHours;
+  }
   const supabase = getSupabase();
   if (!supabase) return memoryStore.updateStore(patch);
 
@@ -296,6 +318,8 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
             error?.message?.includes("receipt_footer") ||
             /\bcnpj\b/i.test(error?.message ?? "")
           ? "Rode a migration 023_store_receipt.sql no Supabase."
+        : error?.message?.includes("business_hours")
+          ? "Rode a migration 027_store_hours.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }
@@ -1119,6 +1143,7 @@ export async function createProduct(input: {
   price: number;
   active: boolean;
   customizable?: boolean;
+  pizzaKind?: PizzaKind | null;
   notesEnabled?: boolean;
   addonsEnabled?: boolean;
   crustsEnabled?: boolean;
@@ -1129,6 +1154,7 @@ export async function createProduct(input: {
   if (!supabase) return memoryStore.createProduct(input);
 
   const store = await getStore();
+  const customizable = Boolean(input.customizable);
   const { data, error } = await supabase
     .from("products")
     .insert({
@@ -1138,7 +1164,8 @@ export async function createProduct(input: {
       description: input.description,
       price: input.price,
       active: input.active,
-      customizable: Boolean(input.customizable),
+      customizable,
+      pizza_kind: customizable ? (input.pizzaKind ?? null) : null,
       notes_enabled: Boolean(input.notesEnabled),
       addons_enabled: Boolean(input.addonsEnabled),
       crusts_enabled: Boolean(input.crustsEnabled),
@@ -1147,7 +1174,9 @@ export async function createProduct(input: {
     .single();
   if (error || !data) {
     throw new Error(
-      missingCrustsTable(error?.message)
+      missingPizzaKindColumn(error?.message)
+        ? "Rode a migration 028_pizza_kind.sql no Supabase."
+        : missingCrustsTable(error?.message)
         ? "Rode a migration 025_crusts.sql no Supabase."
         : missingAddonsTable(error?.message)
           ? "Rode a migration 021_addons.sql no Supabase."
@@ -1171,6 +1200,7 @@ export async function updateProduct(
     price: number;
     active: boolean;
     customizable: boolean;
+    pizzaKind: PizzaKind | null;
     notesEnabled: boolean;
     addonsEnabled: boolean;
     crustsEnabled: boolean;
@@ -1188,6 +1218,8 @@ export async function updateProduct(
   if (input.price !== undefined) payload.price = input.price;
   if (input.active !== undefined) payload.active = input.active;
   if (input.customizable !== undefined) payload.customizable = input.customizable;
+  if (input.pizzaKind !== undefined) payload.pizza_kind = input.pizzaKind;
+  if (input.customizable === false) payload.pizza_kind = null;
   if (input.notesEnabled !== undefined) payload.notes_enabled = input.notesEnabled;
   if (input.addonsEnabled !== undefined) payload.addons_enabled = input.addonsEnabled;
   if (input.crustsEnabled !== undefined) payload.crusts_enabled = input.crustsEnabled;
@@ -1195,6 +1227,9 @@ export async function updateProduct(
   if (Object.keys(payload).length) {
     const { error } = await supabase.from("products").update(payload).eq("id", id);
     if (error) {
+      if (missingPizzaKindColumn(error.message)) {
+        throw new Error("Rode a migration 028_pizza_kind.sql no Supabase.");
+      }
       if (missingCrustsTable(error.message)) {
         throw new Error("Rode a migration 025_crusts.sql no Supabase.");
       }

@@ -1,3 +1,7 @@
+import {
+  closedStoreMessage,
+  isStoreOpen,
+} from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
 import {
@@ -45,12 +49,12 @@ import type {
   DeliveryNeighborhood,
   Fulfillment,
   PaymentMethod,
+  PizzaKind,
   Product,
   ProductOptionGroup,
   Store,
 } from "../types.js";
 
-const GREETING_KEYS = ["oi", "olá", "ola", "menu", "inicio", "início", "hi", "hello"];
 const CANCEL_KEYS = ["cancelar", "sair"];
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
 
@@ -305,15 +309,209 @@ function commitDraftToCart(context: ConversationContext) {
   return added;
 }
 
-async function showCartAfterAdd(to: string, context: ConversationContext) {
+const CART_ACTIONS = [
+  { id: "order", title: "Adicionar mais" },
+  { id: "checkout", title: "Fechar pedido" },
+  { id: "clear_cart", title: "Limpar carrinho" },
+] as const;
+
+async function showCartPrompt(
+  to: string,
+  context: ConversationContext,
+  intro = "Adicionado.",
+) {
   await sendButtons(
     to,
-    `Adicionado.\n\n${renderCart(context)}`,
-    [
-      { id: "order", title: "Adicionar mais" },
-      { id: "checkout", title: "Fechar pedido" },
-      { id: "clear_cart", title: "Limpar carrinho" },
-    ],
+    `${intro}\n\n${renderCart(context)}`,
+    [...CART_ACTIONS],
+  );
+}
+
+async function showCartAfterAdd(to: string, context: ConversationContext) {
+  await showCartPrompt(to, context, "Adicionado.");
+}
+
+const ORDER_FLOW_STATES = new Set<ConversationState>([
+  "awaiting_product",
+  "awaiting_addon",
+  "awaiting_crust",
+  "awaiting_option",
+  "awaiting_quantity",
+  "awaiting_item_note",
+  "cart",
+  "awaiting_order_note",
+  "awaiting_fulfillment",
+  "awaiting_neighborhood",
+  "awaiting_address",
+  "awaiting_payment",
+  "awaiting_change",
+]);
+
+const RESUME_HINT = "Para continuar, use as opções desta mensagem.";
+
+function isOrderInProgress(state: ConversationState) {
+  return ORDER_FLOW_STATES.has(state);
+}
+
+/** Reenvia a última etapa do pedido (botões/lista), sem avançar o fluxo. */
+async function resumeCurrentStep(
+  to: string,
+  store: Store,
+  state: ConversationState,
+  context: ConversationContext,
+) {
+  switch (state) {
+    case "awaiting_product":
+      await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+      return;
+    case "awaiting_option": {
+      const product = context.selectedProductId
+        ? await getProduct(context.selectedProductId)
+        : null;
+      if (!product || !isCustomizable(product)) {
+        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        return;
+      }
+      const drafts = context.draftSelections ?? [];
+      const openGroup = await groupWantingMore(product, drafts);
+      if (openGroup) {
+        const current = drafts.find((item) => item.groupId === openGroup.id);
+        if (current?.options.length) {
+          const shares =
+            flavorShareLine(
+              product.name,
+              current.options.map((item) => item.name),
+            ) || current.options.map((item) => item.name).join(" + ");
+          await sendButtons(
+            to,
+            `${RESUME_HINT}\n*${usesCatalogFlavors(openGroup) ? "Sabores" : openGroup.name}:*\n${shares}`,
+            [
+              { id: "more_options", title: "Mais um" },
+              { id: "done_options", title: "Pronto" },
+            ],
+          );
+          return;
+        }
+      }
+      await sendText(to, RESUME_HINT);
+      await askAssembly(to, product, context);
+      return;
+    }
+    case "awaiting_crust": {
+      const product = context.selectedProductId
+        ? await getProduct(context.selectedProductId)
+        : null;
+      const crusts = await listCrusts();
+      if (!product) {
+        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        return;
+      }
+      if (!crusts.length) {
+        await askQuantity(to, product, context.draftSelections ?? []);
+        return;
+      }
+      await sendText(to, RESUME_HINT);
+      await askCrusts(to, product, crusts);
+      return;
+    }
+    case "awaiting_addon": {
+      const product = context.selectedProductId
+        ? await getProduct(context.selectedProductId)
+        : null;
+      if (!product) {
+        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        return;
+      }
+      await sendText(to, RESUME_HINT);
+      await askAddons(to, product, context.draftSelections);
+      return;
+    }
+    case "awaiting_quantity": {
+      const product = context.selectedProductId
+        ? await getProduct(context.selectedProductId)
+        : null;
+      if (!product) {
+        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        return;
+      }
+      await askQuantity(to, product, context.draftSelections ?? []);
+      return;
+    }
+    case "awaiting_item_note":
+      if (context.draftItem) {
+        await askItemNote(to, context.draftItem);
+        return;
+      }
+      await showCartPrompt(to, context, RESUME_HINT);
+      return;
+    case "cart":
+      await showCartPrompt(to, context, RESUME_HINT);
+      return;
+    case "awaiting_order_note":
+      await sendText(to, RESUME_HINT);
+      await askOrderNote(to);
+      return;
+    case "awaiting_fulfillment":
+      await askFulfillment(
+        to,
+        store,
+        `${RESUME_HINT}\n\n${renderCart(context)}`,
+      );
+      return;
+    case "awaiting_neighborhood":
+      await sendText(to, RESUME_HINT);
+      await askNeighborhoods(to, store);
+      return;
+    case "awaiting_address": {
+      const zone =
+        (store.neighborhoods ?? []).find(
+          (item) => item.id === context.neighborhoodId,
+        ) ?? null;
+      await sendText(to, RESUME_HINT);
+      await goToAddress(to, zone);
+      return;
+    }
+    case "awaiting_payment":
+      await askPayment(to, `${RESUME_HINT}\nComo deseja pagar?`);
+      return;
+    case "awaiting_change":
+      await askChange(to, orderTotalCents(store, context));
+      return;
+    case "awaiting_order_code":
+      await sendText(to, "Me envie o código do pedido (ex.: A7K2).");
+      return;
+    default:
+      await showWelcome(to, store.name);
+  }
+}
+
+/**
+ * Foto, áudio, documento etc.: se há pedido em andamento, mantém a etapa;
+ * senão, avisa que só texto/botões são aceitos.
+ */
+export async function handleUnsupportedInbound(input: {
+  from: string;
+  name?: string;
+}) {
+  const store = await getStore();
+  if (!isStoreOpen(store.businessHours, store.timezone)) {
+    await sendText(
+      input.from,
+      closedStoreMessage(store.name, store.businessHours),
+    );
+    return;
+  }
+  const customer = await upsertCustomer(input.from, input.name);
+  const existing = await getConversation(customer.id);
+  const state: ConversationState = existing?.state ?? "welcome";
+  const context = existing?.context ?? emptyContext();
+  if (isOrderInProgress(state) || state === "awaiting_order_code") {
+    await resumeCurrentStep(input.from, store, state, context);
+    return;
+  }
+  await sendText(
+    input.from,
+    "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\n\nPara continuar, responda *por texto* ou toque nas opções da última mensagem.",
   );
 }
 
@@ -577,11 +775,16 @@ async function askAssembly(
   return askGroupOptions(to, product, group, context.draftSelections ?? []);
 }
 
-async function pizzaFlavorChoices(excludeIds: string[] = []) {
+async function pizzaFlavorChoices(
+  kind: PizzaKind | null | undefined,
+  excludeIds: string[] = [],
+) {
   const blocked = new Set(excludeIds);
-  return (await listProducts()).filter(
-    (item) => item.customizable && item.active && !blocked.has(item.id),
-  );
+  return (await listProducts()).filter((item) => {
+    if (!item.customizable || !item.active || blocked.has(item.id)) return false;
+    if (!kind) return true;
+    return item.pizzaKind === kind;
+  });
 }
 
 async function askGroupOptions(
@@ -595,16 +798,22 @@ async function askGroupOptions(
   const pickedNames = current?.options.map((option) => option.name) ?? [];
 
   if (usesCatalogFlavors(group)) {
-    const remaining = await pizzaFlavorChoices(picked);
+    const remaining = await pizzaFlavorChoices(product.pizzaKind, picked);
     if (!remaining.length) return true;
 
+    const listTitle =
+      product.pizzaKind === "doce"
+        ? "Doces"
+        : product.pizzaKind === "salgada"
+          ? "Salgadas"
+          : "Sabores";
     await sendList(
       to,
       groupPrompt(product, group, picked, pickedNames),
-      "Sabores",
+      listTitle,
       [
         {
-          title: "Sabores",
+          title: listTitle,
           rows: remaining.slice(0, 10).map((pizza) => ({
             id: `flavor:${pizza.id}`,
             title: pizza.name.slice(0, 24),
@@ -658,6 +867,7 @@ async function groupWantingMore(product: Product, drafts: CartSelection[]) {
     }
     if (usesCatalogFlavors(group)) {
       const remaining = await pizzaFlavorChoices(
+        product.pizzaKind,
         draft.options.map((option) => option.id),
       );
       if (remaining.length) return group;
@@ -894,12 +1104,55 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  const statusIntent =
+    ["status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
+    state === "awaiting_order_code";
+  if (
+    !statusIntent &&
+    !isStoreOpen(store.businessHours, store.timezone)
+  ) {
+    await sendText(
+      input.from,
+      closedStoreMessage(store.name, store.businessHours),
+    );
+    return;
+  }
+
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
     await persist("welcome", emptyContext());
     await showWelcome(input.from, store.name);
     return;
   }
+
+  const orderActive = isOrderInProgress(state);
+  const hasReply = Boolean(input.replyId);
+
+  // Localização só vale na etapa de endereço.
+  if (orderActive && input.location && state !== "awaiting_address") {
+    await resumeCurrentStep(input.from, store, state, context);
+    return;
+  }
+
+  // Atalhos globais (menu/status/pedido) não interrompem pedido em andamento.
+  // No carrinho, o botão "Adicionar mais" usa id "order" — esse continua válido.
+  const cartAddMore = state === "cart" && incoming === "order";
+  const globalShortcut =
+    ["menu", "status"].includes(incoming) ||
+    ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(
+      normalized,
+    ) ||
+    (!cartAddMore &&
+      (incoming === "order" ||
+        ["fazer pedido", "pedir"].includes(normalized)));
+
+  if (orderActive && globalShortcut) {
+    await resumeCurrentStep(input.from, store, state, context);
+    return;
+  }
+
+  // Fora das etapas de texto livre, texto aberto sem ação reconhecida
+  // é tratado pelos handlers (que reenviam a etapa) ou pelo fallback final.
 
   if (state === "awaiting_item_note" && context.draftItem) {
     const notes = isSkipNote(incoming, normalized) ? null : clipNote(input.text);
@@ -968,18 +1221,11 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  if (GREETING_KEYS.includes(normalized) || state === "welcome") {
-    if (state === "welcome" && !GREETING_KEYS.includes(normalized) && input.replyId) {
-      // fall through to other handlers
-    } else if (state === "welcome" && !input.replyId) {
-      await persist("welcome", context);
-      await showWelcome(input.from, store.name);
-      return;
-    } else if (GREETING_KEYS.includes(normalized)) {
-      await persist("welcome", context);
-      await showWelcome(input.from, store.name);
-      return;
-    }
+  // Fora do pedido, texto livre volta ao menu inicial.
+  if (state === "welcome" && !hasReply) {
+    await persist("welcome", context);
+    await showWelcome(input.from, store.name);
+    return;
   }
 
   if (state === "awaiting_option" && context.selectedProductId) {
@@ -1051,7 +1297,7 @@ export async function handleIncomingMessage(input: {
       let option =
         group?.options.find((item) => item.id === optionId) ?? null;
       if (group && usesCatalogFlavors(group) && !option) {
-        const pizza = (await pizzaFlavorChoices()).find(
+        const pizza = (await pizzaFlavorChoices(product.pizzaKind)).find(
           (item) => item.id === optionId,
         );
         if (pizza) {
@@ -1060,8 +1306,7 @@ export async function handleIncomingMessage(input: {
       }
 
       if (!group || !option) {
-        await sendText(input.from, "Não encontrei essa opção.");
-        await askAssembly(input.from, product, context);
+        await resumeCurrentStep(input.from, store, state, context);
         return;
       }
       const current =
@@ -1120,8 +1365,7 @@ export async function handleIncomingMessage(input: {
     if (pending.type === "variant") {
       const group = findVariant(incoming, normalized, pending.groups);
       if (!group) {
-        await sendText(input.from, "Escolha um tamanho da lista.");
-        await askAssembly(input.from, product, context);
+        await resumeCurrentStep(input.from, store, state, context);
         return;
       }
       if (!drafts.some((item) => item.groupId === group.id)) {
@@ -1155,15 +1399,22 @@ export async function handleIncomingMessage(input: {
           group.required &&
           current.options.length < Math.max(1, group.minSelect)
         ) {
-          await sendText(
-            input.from,
-            `Escolha pelo menos ${Math.max(1, group.minSelect)} em *${group.name}*.`,
-          );
-          await askAssembly(input.from, product, context);
+          await resumeCurrentStep(input.from, store, state, context);
           return;
         }
         current.skipped = current.options.length === 0;
         await goNext();
+        return;
+      }
+
+      // Texto aberto / ação inválida nesta etapa de opções → reenvia a etapa.
+      if (
+        !hasReply &&
+        !incoming.startsWith("flavor:") &&
+        !incoming.startsWith("opt:") &&
+        !incoming.startsWith("var:")
+      ) {
+        await resumeCurrentStep(input.from, store, state, context);
         return;
       }
 
@@ -1172,7 +1423,12 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    await goNext();
+    // Montagem concluída (pending = done) → avança; senão reenvia a etapa.
+    if (pending.type === "done") {
+      await goNext();
+      return;
+    }
+    await resumeCurrentStep(input.from, store, state, context);
     return;
   }
 
@@ -1197,9 +1453,8 @@ export async function handleIncomingMessage(input: {
       : crusts.find((item) => normalize(item.name) === normalized);
 
     if (!crust) {
-      await sendText(input.from, "Escolha uma borda da lista.");
       await persist("awaiting_crust", context);
-      await askCrusts(input.from, product, crusts);
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
 
@@ -1264,14 +1519,8 @@ export async function handleIncomingMessage(input: {
       : available.find((item) => normalize(item.name) === normalized);
 
     if (!addon) {
-      await sendText(
-        input.from,
-        picked.length
-          ? "Escolha outro adicional da lista ou toque em Pronto."
-          : "Escolha um adicional da lista ou toque em Sem adicional.",
-      );
       await persist("awaiting_addon", context);
-      await askAddons(input.from, product, drafts);
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
 
@@ -1289,17 +1538,18 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  if (incoming.startsWith("product:") || state === "awaiting_product") {
+  if (state === "awaiting_product") {
     const productId = incoming.startsWith("product:")
       ? incoming.slice("product:".length)
       : null;
+    // Lista (product:) ou nome exato do item — texto aleatório não avança.
     const product = productId
       ? await getProduct(productId)
       : (await listProducts()).find((item) => normalize(item.name) === normalized);
 
     if (!product) {
       await persist("awaiting_product", context);
-      await showMenu(input.from, "Não encontrei esse item. Escolha na lista:");
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
 
@@ -1318,7 +1568,7 @@ export async function handleIncomingMessage(input: {
       : null;
 
     if (!product || quantity == null) {
-      await sendText(input.from, "Envie um número, ou toque em 1, 2 ou 3.");
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
 
@@ -1347,27 +1597,46 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  if (normalized === "clear_cart" || normalized === "limpar carrinho") {
+  if (
+    state === "cart" &&
+    (incoming === "clear_cart" ||
+      normalized === "clear_cart" ||
+      normalized === "limpar carrinho" ||
+      command === "limpar carrinho")
+  ) {
     context.cart = [];
-    await persist("welcome", context);
+    await persist("welcome", emptyContext());
     await sendText(input.from, "Carrinho limpo. É só chamar quando quiser pedir de novo.");
     return;
   }
 
-  if (normalized === "checkout" || normalized === "fechar pedido" || state === "cart") {
+  if (state === "cart") {
     if (!context.cart.length) {
       await persist("awaiting_product", context);
       await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:");
       return;
     }
-    if (normalized === "checkout" || normalized === "fechar pedido") {
+    if (
+      incoming === "checkout" ||
+      normalized === "checkout" ||
+      normalized === "fechar pedido" ||
+      command === "fechar pedido"
+    ) {
       await persist("awaiting_order_note", context);
       await askOrderNote(input.from);
       return;
     }
+    if (incoming === "order" || normalized === "adicionar mais") {
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "Escolha o próximo item:");
+      return;
+    }
+    await persist("cart", context);
+    await resumeCurrentStep(input.from, store, state, context);
+    return;
   }
 
-  if (state === "awaiting_fulfillment" || incoming.startsWith("fulfillment:")) {
+  if (state === "awaiting_fulfillment") {
     const fulfillment = (
       incoming.startsWith("fulfillment:") ? incoming.slice("fulfillment:".length) : normalized
     ) as Fulfillment | string;
@@ -1379,7 +1648,7 @@ export async function handleIncomingMessage(input: {
           : null;
 
     if (!resolved) {
-      await sendText(input.from, "Escolha *Entrega* ou *Retirada*.");
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
 
@@ -1406,8 +1675,7 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_neighborhood") {
     const zone = findNeighborhood(incoming, normalized, store.neighborhoods ?? []);
     if (!zone) {
-      await sendText(input.from, "Escolha um bairro da lista.");
-      await askNeighborhoods(input.from, store);
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
     context.neighborhoodId = zone.id;
@@ -1420,10 +1688,7 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_address") {
     const address = resolveAddress(input);
     if (!address) {
-      await sendText(
-        input.from,
-        "Envie o endereço em texto ou compartilhe sua localização.",
-      );
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
     context.addressText = address;
@@ -1436,7 +1701,7 @@ export async function handleIncomingMessage(input: {
     const totalCents = orderTotalCents(store, context);
     const change = parseChangeCents(input.text);
     if (change == null) {
-      await sendText(input.from, "Envie o valor do troco, por exemplo *100*, ou *sem troco*.");
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
     if (change > 0 && change < totalCents) {
@@ -1453,7 +1718,7 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  if (state === "awaiting_payment" || incoming.startsWith("pay:")) {
+  if (state === "awaiting_payment") {
     const payment = parsePayment(incoming, normalized);
     if (payment === "card_ambiguous") {
       await persist("awaiting_payment", context);
@@ -1465,8 +1730,7 @@ export async function handleIncomingMessage(input: {
     }
 
     if (!payment || !context.fulfillment) {
-      await sendText(input.from, "Escolha Pix, dinheiro, cartão crédito ou débito.");
-      await askPayment(input.from);
+      await resumeCurrentStep(input.from, store, state, context);
       return;
     }
 
@@ -1500,6 +1764,17 @@ export async function handleIncomingMessage(input: {
     }
     lines.push(`Total: ${formatBRL(order.totalCents)}.`);
     await sendText(input.from, lines.join("\n"));
+    return;
+  }
+
+  if (orderActive) {
+    await resumeCurrentStep(input.from, store, state, context);
+    return;
+  }
+
+  if (context.cart.length) {
+    await persist("cart", context);
+    await showCartPrompt(input.from, context, RESUME_HINT);
     return;
   }
 

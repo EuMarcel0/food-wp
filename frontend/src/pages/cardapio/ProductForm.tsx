@@ -1,6 +1,6 @@
 import { Formik, Form as FormikForm } from "formik";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Checkbox, Input, Modal, Select, Switch } from "antd";
+import { Alert, Button, Checkbox, Input, Modal, Radio, Select, Switch } from "antd";
 import { FormControl, FormField } from "../../components/FormField";
 import {
   maskBRL,
@@ -10,7 +10,7 @@ import {
 } from "../../lib/validation";
 import { api } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
-import type { Addon, Category, Product } from "../../types";
+import type { Addon, Category, PizzaKind, Product } from "../../types";
 import { OptionGroupsEditor } from "./OptionGroupsEditor";
 import { cn } from "../../lib/cn";
 import {
@@ -114,6 +114,7 @@ export function ProductForm({
     price: product ? maskBRL(String(Math.round(product.price * 100))) : "",
     active: product?.active ?? true,
     customizable: product?.customizable ?? false,
+    pizzaKind: product?.customizable ? (product.pizzaKind ?? null) : null,
     notesEnabled: product?.notesEnabled ?? false,
     addonsEnabled: product?.addonsEnabled ?? false,
     crustsEnabled: product?.crustsEnabled ?? false,
@@ -264,17 +265,38 @@ export function ProductForm({
                   <label className={formToggle}>
                     <div>
                       <strong>É pizza?</strong>
-                      <p>Abre a montagem de tamanhos; os sabores vêm das outras pizzas</p>
+                      <p>Abre a montagem de tamanhos; os sabores vêm das outras pizzas do mesmo tipo</p>
                     </div>
                     <FormControl name="customizable" compact>
                       {({ value, setValue }) => (
                         <Switch
                           checked={Boolean(value)}
-                          onChange={(checked) => setValue(checked)}
+                          onChange={(checked) => {
+                            setValue(checked);
+                            if (!checked) setFieldValue("pizzaKind", null);
+                          }}
                         />
                       )}
                     </FormControl>
                   </label>
+                  {values.customizable ? (
+                    <FormControl name="pizzaKind" label="Tipo da pizza">
+                      {({ value, setValue, setTouched, invalid }) => (
+                        <Radio.Group
+                          value={value ?? undefined}
+                          onChange={(event) => setValue(event.target.value)}
+                          onBlur={setTouched}
+                          optionType="button"
+                          buttonStyle="solid"
+                          className={invalid ? "ring-2 ring-red-400 rounded-md" : undefined}
+                          options={[
+                            { label: "Salgada", value: "salgada" },
+                            { label: "Doce", value: "doce" },
+                          ]}
+                        />
+                      )}
+                    </FormControl>
+                  ) : null}
                   <label className={formToggle}>
                     <div>
                       <strong>Habilitar observação</strong>
@@ -360,7 +382,13 @@ export function ProductForm({
                 {values.customizable ? (
                   <>
                     <p className={formHint}>
-                      Clique em <strong>+ Tamanho</strong> e marque os tamanhos cadastrados em Adicionais. Os sabores no WhatsApp vêm das outras pizzas.
+                      Clique em <strong>+ Tamanho</strong> e marque os tamanhos cadastrados em Adicionais. No WhatsApp, os sabores vêm só das outras pizzas{" "}
+                      {values.pizzaKind === "doce"
+                        ? "doces"
+                        : values.pizzaKind === "salgada"
+                          ? "salgadas"
+                          : "do mesmo tipo (doce ou salgada)"}
+                      .
                     </p>
                     {typeof errors.optionGroups === "string" && touched.optionGroups ? (
                       <Alert
@@ -380,7 +408,7 @@ export function ProductForm({
                 ) : (
                   <div className={formEmpty}>
                     <p>
-                      Marque <strong>É pizza?</strong> e escolha os tamanhos cadastrados. Os sabores serão as outras pizzas do cardápio.
+                      Marque <strong>É pizza?</strong>, informe se é doce ou salgada e escolha os tamanhos. Os sabores no WhatsApp ficam só entre pizzas do mesmo tipo.
                     </p>
                     <Button
                       type="primary"
@@ -436,6 +464,12 @@ export function toProductPayload(values: ProductValues) {
     price,
     active: values.active,
     customizable: Boolean(values.customizable),
+    pizzaKind: ((): PizzaKind | null => {
+      if (!values.customizable) return null;
+      return values.pizzaKind === "doce" || values.pizzaKind === "salgada"
+        ? values.pizzaKind
+        : null;
+    })(),
     notesEnabled: Boolean(values.notesEnabled),
     addonsEnabled: Boolean(values.addonsEnabled),
     crustsEnabled: Boolean(values.crustsEnabled),

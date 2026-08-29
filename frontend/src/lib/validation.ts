@@ -75,6 +75,17 @@ export const productSchema = Yup.object({
   }),
   active: Yup.boolean().default(true),
   customizable: Yup.boolean().default(false),
+  pizzaKind: Yup.string()
+    .nullable()
+    .default(null)
+    .when("customizable", {
+      is: true,
+      then: (schema) =>
+        schema
+          .oneOf(["salgada", "doce"], "Informe se é doce ou salgada")
+          .required("Informe se é doce ou salgada"),
+      otherwise: (schema) => schema.nullable().notRequired(),
+    }),
   notesEnabled: Yup.boolean().default(false),
   addonsEnabled: Yup.boolean().default(false),
   crustsEnabled: Yup.boolean().default(false),
@@ -179,12 +190,36 @@ export const sizeSchema = Yup.object({
     .default("replace"),
 });
 
+const timeSchema = Yup.string().matches(
+  /^([01]\d|2[0-3]):[0-5]\d$/,
+  "Informe um horário válido",
+);
+
 export const storeBrandingSchema = Yup.object({
   name: Yup.string()
     .trim()
     .required("Informe o nome do estabelecimento")
     .min(2, "Use pelo menos 2 caracteres")
     .max(80, "Use no máximo 80 caracteres"),
+  hours: Yup.array()
+    .of(
+      Yup.object({
+        day: Yup.number().min(0).max(6).required(),
+        closed: Yup.boolean().required(),
+        open: Yup.string().when("closed", {
+          is: false,
+          then: () => timeSchema.required("Informe a abertura"),
+          otherwise: (schema) => schema.default("18:00"),
+        }),
+        close: Yup.string().when("closed", {
+          is: false,
+          then: () => timeSchema.required("Informe o fechamento"),
+          otherwise: (schema) => schema.default("23:00"),
+        }),
+      }),
+    )
+    .length(7)
+    .required(),
 });
 
 export const storeReceiptSchema = Yup.object({

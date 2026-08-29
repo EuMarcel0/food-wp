@@ -87,11 +87,21 @@ export type DeliveryNeighborhood = {
   feeCents: number;
 };
 
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type BusinessHoursDay = {
+  day: Weekday;
+  closed: boolean;
+  open: string;
+  close: string;
+};
+
 export type Store = {
   id: string;
   name: string;
   segment: string;
   phone: string | null;
+  timezone: string;
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   deliveryFeeCents: number;
@@ -100,6 +110,7 @@ export type Store = {
   legalName: string | null;
   cnpj: string | null;
   receiptFooter: string | null;
+  businessHours: BusinessHoursDay[] | null;
   neighborhoods: DeliveryNeighborhood[];
 };
 
@@ -111,6 +122,7 @@ export type StorePatch = {
   legalName?: string | null;
   cnpj?: string | null;
   receiptFooter?: string | null;
+  businessHours?: BusinessHoursDay[] | null;
 };
 
 export type Addon = {
@@ -140,6 +152,8 @@ export type Size = {
   active: boolean;
 };
 
+export type PizzaKind = "salgada" | "doce";
+
 export type Product = {
   id: string;
   categoryId: string;
@@ -149,6 +163,7 @@ export type Product = {
   price: number;
   active: boolean;
   customizable: boolean;
+  pizzaKind: PizzaKind | null;
   notesEnabled: boolean;
   addonsEnabled: boolean;
   crustsEnabled: boolean;

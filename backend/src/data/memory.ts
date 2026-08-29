@@ -22,6 +22,7 @@ import type {
   Order,
   OrderStatus,
   PaymentMethod,
+  PizzaKind,
   Product,
   ProductOptionGroup,
   CartSelection,
@@ -35,6 +36,7 @@ const store: Store = {
   name: "Estabelecimento Demo",
   segment: "lanches",
   phone: null,
+  timezone: "America/Sao_Paulo",
   deliveryEnabled: true,
   pickupEnabled: true,
   deliveryFeeCents: 700,
@@ -43,6 +45,7 @@ const store: Store = {
   legalName: null,
   cnpj: null,
   receiptFooter: null,
+  businessHours: null,
   neighborhoods: [],
 };
 
@@ -62,6 +65,7 @@ const products: Product[] = [
     price: 22,
     active: true,
     customizable: false,
+    pizzaKind: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -77,6 +81,7 @@ const products: Product[] = [
     price: 25,
     active: true,
     customizable: false,
+    pizzaKind: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -92,6 +97,7 @@ const products: Product[] = [
     price: 14,
     active: true,
     customizable: false,
+    pizzaKind: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -107,6 +113,7 @@ const products: Product[] = [
     price: 7,
     active: true,
     customizable: false,
+    pizzaKind: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -217,6 +224,7 @@ export const memoryStore = {
     if (patch.legalName !== undefined) store.legalName = patch.legalName;
     if (patch.cnpj !== undefined) store.cnpj = patch.cnpj;
     if (patch.receiptFooter !== undefined) store.receiptFooter = patch.receiptFooter;
+    if (patch.businessHours !== undefined) store.businessHours = patch.businessHours;
     return store;
   },
 
@@ -593,6 +601,7 @@ export const memoryStore = {
     price: number;
     active: boolean;
     customizable?: boolean;
+    pizzaKind?: PizzaKind | null;
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
     crustsEnabled?: boolean;
@@ -600,6 +609,7 @@ export const memoryStore = {
     optionGroups?: ProductOptionGroup[];
   }) {
     const category = categories.find((item) => item.id === input.categoryId);
+    const customizable = Boolean(input.customizable);
     const product: Product = {
       id: `prod-${Date.now()}`,
       categoryId: input.categoryId,
@@ -608,7 +618,8 @@ export const memoryStore = {
       description: input.description,
       price: input.price,
       active: input.active,
-      customizable: Boolean(input.customizable),
+      customizable,
+      pizzaKind: customizable ? (input.pizzaKind ?? null) : null,
       notesEnabled: Boolean(input.notesEnabled),
       addonsEnabled: Boolean(input.addonsEnabled),
       crustsEnabled: Boolean(input.crustsEnabled),
@@ -629,6 +640,7 @@ export const memoryStore = {
       price: number;
       active: boolean;
       customizable: boolean;
+      pizzaKind: PizzaKind | null;
       notesEnabled: boolean;
       addonsEnabled: boolean;
       crustsEnabled: boolean;
@@ -649,6 +661,8 @@ export const memoryStore = {
     if (input.price !== undefined) product.price = input.price;
     if (input.active !== undefined) product.active = input.active;
     if (input.customizable !== undefined) product.customizable = input.customizable;
+    if (input.pizzaKind !== undefined) product.pizzaKind = input.pizzaKind;
+    if (input.customizable === false) product.pizzaKind = null;
     if (input.notesEnabled !== undefined) product.notesEnabled = input.notesEnabled;
     if (input.addonsEnabled !== undefined) product.addonsEnabled = input.addonsEnabled;
     if (input.crustsEnabled !== undefined) product.crustsEnabled = input.crustsEnabled;

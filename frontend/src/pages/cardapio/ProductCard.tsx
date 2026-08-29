@@ -36,7 +36,15 @@ export function ProductCard({
           <Tag color={product.active ? "green" : "default"}>
             {product.active ? "Ativo no WhatsApp" : "Inativo"}
           </Tag>
-          {product.customizable ? <Tag color="orange">Pizza</Tag> : null}
+          {product.customizable ? (
+            <Tag color="orange">
+              {product.pizzaKind === "doce"
+                ? "Pizza doce"
+                : product.pizzaKind === "salgada"
+                  ? "Pizza salgada"
+                  : "Pizza"}
+            </Tag>
+          ) : null}
           {product.addonsEnabled ? <Tag color="purple">Adicional</Tag> : null}
           {product.crustsEnabled ? <Tag color="gold">Borda</Tag> : null}
           {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}

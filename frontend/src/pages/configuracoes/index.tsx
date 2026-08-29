@@ -55,7 +55,7 @@ export function SettingsPage() {
       <PageHeader
         kicker="Retaguarda"
         title="Configurações"
-        subtitle="Perfil no WhatsApp, cupom, impressora, tempo sem resposta e taxas de entrega."
+        subtitle="Perfil no WhatsApp, horário de funcionamento, cupom, impressora, tempo sem resposta e taxas de entrega."
       />
 
       <div className="flex flex-col gap-6">

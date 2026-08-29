@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Formik, Form as FormikForm } from "formik";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CameraOutlined } from "@ant-design/icons";
-import { Alert, Avatar, Button, Card, Input, Upload } from "antd";
-import { FormField } from "../../components/FormField";
+import { Alert, Avatar, Button, Card, Input, Switch, TimePicker, Upload } from "antd";
+import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
+import { FormControl, FormField } from "../../components/FormField";
 import { api } from "../../lib/api";
+import { hoursFromStore, WEEKDAY_ROWS } from "../../lib/hours";
 import { fileToBase64, prepareStorePhoto } from "../../lib/image";
 import { toast } from "../../lib/toast";
 import { queryKeys } from "../../lib/queryKeys";
@@ -12,7 +15,14 @@ import {
   storeBrandingSchema,
   type StoreBrandingValues,
 } from "../../lib/validation";
-import type { Store } from "../../types";
+import type { BusinessHoursDay, Store } from "../../types";
+
+dayjs.extend(customParseFormat);
+
+function parseClock(value: string) {
+  const parsed = dayjs(value, "HH:mm", true);
+  return parsed.isValid() ? parsed : null;
+}
 
 export function BrandingCard({
   store,
@@ -46,6 +56,14 @@ export function BrandingCard({
       return api.updateStore({
         name: values.name.trim(),
         photo: photoPayload,
+        businessHours: values.hours.map(
+          (day): BusinessHoursDay => ({
+            day: Number(day.day) as BusinessHoursDay["day"],
+            closed: Boolean(day.closed),
+            open: day.open || "18:00",
+            close: day.close || "23:00",
+          }),
+        ),
       });
     },
     onSuccess: async (result) => {
@@ -68,15 +86,18 @@ export function BrandingCard({
       className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft"
       title="Perfil do estabelecimento"
     >
-      <p className="mb-5 max-w-xl text-sm leading-normal text-food-muted">
+      <p className="mb-5 max-w-2xl text-sm leading-normal text-food-muted">
         Nome e foto que o cliente vê. A foto atualiza o avatar da conversa no
-        WhatsApp. O nome entra nas mensagens do bot. O título do chat no
-        WhatsApp continua sendo o nome verificado na Meta.
+        WhatsApp. O nome entra nas mensagens do bot. Fora do horário abaixo, o
+        bot avisa que a loja está fechada.
       </p>
 
       <Formik
         enableReinitialize
-        initialValues={{ name: store?.name ?? "" }}
+        initialValues={{
+          name: store?.name ?? "",
+          hours: hoursFromStore(store?.businessHours),
+        }}
         validationSchema={storeBrandingSchema}
         onSubmit={async (values, helpers) => {
           helpers.setStatus(undefined);
@@ -91,7 +112,7 @@ export function BrandingCard({
           }
         }}
       >
-        {({ isSubmitting, status, values }) => (
+        {({ isSubmitting, status, values, setFieldValue }) => (
           <FormikForm>
             {status ? (
               <Alert
@@ -134,15 +155,110 @@ export function BrandingCard({
               <FormField name="name" label="Nome do estabelecimento">
                 <Input placeholder="Ex.: Pizzaria do Bairro…" maxLength={80} />
               </FormField>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={isSubmitting || saveMutation.isPending}
-                disabled={!store}
-              >
-                Salvar perfil
-              </Button>
             </div>
+
+            <div className="mt-2 max-w-2xl">
+              <h3 className="m-0 mb-1 text-base font-bold tracking-tight text-food-text">
+                Horário de funcionamento
+              </h3>
+              <p className="mb-3 text-[13px] leading-snug text-food-muted">
+                Dias e horários no fuso de Brasília. Se fechar depois da
+                meia-noite, use o horário do dia seguinte — por exemplo 18:00
+                às 02:00.
+              </p>
+              <div className="overflow-hidden rounded-2xl border border-food-border">
+                {values.hours.map((day, index) => {
+                  const label =
+                    WEEKDAY_ROWS.find((row) => row.day === day.day)?.label ??
+                    "Dia";
+                  const overnight =
+                    !day.closed &&
+                    Boolean(day.open) &&
+                    Boolean(day.close) &&
+                    day.close < day.open;
+                  return (
+                    <div
+                      key={day.day}
+                      className="grid items-center gap-3 border-b border-food-border px-3.5 py-3 last:border-b-0 max-sm:grid-cols-1 sm:grid-cols-[7.5rem_5.5rem_minmax(0,1fr)]"
+                    >
+                      <span className="text-sm font-semibold text-food-text">
+                        {label}
+                      </span>
+                      <Switch
+                        checked={!day.closed}
+                        checkedChildren="Aberto"
+                        unCheckedChildren="Fechado"
+                        onChange={(open) =>
+                          setFieldValue(`hours.${index}.closed`, !open)
+                        }
+                      />
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <FormControl name={`hours.${index}.open`} compact>
+                          {({ value, setValue, setTouched }) => (
+                            <TimePicker
+                              format="HH:mm"
+                              minuteStep={5}
+                              needConfirm={false}
+                              allowClear={false}
+                              disabled={day.closed}
+                              placeholder="Abre"
+                              value={
+                                typeof value === "string"
+                                  ? parseClock(value)
+                                  : null
+                              }
+                              onChange={(next) =>
+                                setValue(next ? next.format("HH:mm") : "")
+                              }
+                              onBlur={setTouched}
+                              className="w-[108px]"
+                            />
+                          )}
+                        </FormControl>
+                        <span className="text-xs text-food-muted">às</span>
+                        <FormControl name={`hours.${index}.close`} compact>
+                          {({ value, setValue, setTouched }) => (
+                            <TimePicker
+                              format="HH:mm"
+                              minuteStep={5}
+                              needConfirm={false}
+                              allowClear={false}
+                              disabled={day.closed}
+                              placeholder="Fecha"
+                              value={
+                                typeof value === "string"
+                                  ? parseClock(value)
+                                  : null
+                              }
+                              onChange={(next) =>
+                                setValue(next ? next.format("HH:mm") : "")
+                              }
+                              onBlur={setTouched}
+                              className="w-[108px]"
+                            />
+                          )}
+                        </FormControl>
+                        {overnight ? (
+                          <span className="text-[11px] text-food-muted">
+                            fecha no dia seguinte
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <Button
+              type="primary"
+              htmlType="submit"
+              className="mt-4"
+              loading={isSubmitting || saveMutation.isPending}
+              disabled={!store}
+            >
+              Salvar perfil
+            </Button>
           </FormikForm>
         )}
       </Formik>

@@ -63,6 +63,7 @@ export const api = {
     legalName?: string | null;
     cnpj?: string | null;
     receiptFooter?: string | null;
+    businessHours?: Store["businessHours"];
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",
@@ -237,6 +238,7 @@ export const api = {
     price: number;
     active: boolean;
     customizable: boolean;
+    pizzaKind: Product["pizzaKind"];
     notesEnabled: boolean;
     addonsEnabled: boolean;
     crustsEnabled: boolean;
@@ -256,6 +258,7 @@ export const api = {
       price: number;
       active: boolean;
       customizable: boolean;
+      pizzaKind: Product["pizzaKind"];
       notesEnabled: boolean;
       addonsEnabled: boolean;
       crustsEnabled: boolean;
