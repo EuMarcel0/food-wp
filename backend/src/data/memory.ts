@@ -25,6 +25,7 @@ import type {
   Product,
   ProductOptionGroup,
   CartSelection,
+  Size,
   Store,
   StorePatch,
 } from "../types.js";
@@ -139,6 +140,45 @@ const crusts: Crust[] = [
     addsPrice: false,
     price: 0,
     sortOrder: 2,
+    active: true,
+  },
+];
+
+const sizes: Size[] = [
+  {
+    id: "size-p",
+    name: "P - Pequena",
+    price: 35,
+    maxSelect: 1,
+    priceMode: "replace",
+    sortOrder: 0,
+    active: true,
+  },
+  {
+    id: "size-m",
+    name: "M - Média",
+    price: 45,
+    maxSelect: 1,
+    priceMode: "replace",
+    sortOrder: 1,
+    active: true,
+  },
+  {
+    id: "size-g",
+    name: "G - Grande",
+    price: 55,
+    maxSelect: 2,
+    priceMode: "replace",
+    sortOrder: 2,
+    active: true,
+  },
+  {
+    id: "size-f",
+    name: "F - Família",
+    price: 75,
+    maxSelect: 2,
+    priceMode: "replace",
+    sortOrder: 3,
     active: true,
   },
 ];
@@ -436,6 +476,91 @@ export const memoryStore = {
     const index = crusts.findIndex((item) => item.id === id);
     if (index < 0) return false;
     crusts.splice(index, 1);
+    return true;
+  },
+
+  listSizes() {
+    return sizes.filter((item) => item.active);
+  },
+
+  listAllSizes() {
+    return [...sizes].sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.name.localeCompare(right.name, "pt-BR"),
+    );
+  },
+
+  listSizesPage(
+    page: number,
+    limit: number,
+    all: boolean,
+    filter: { q?: string; active?: boolean } = {},
+  ) {
+    const items = (all ? [...sizes] : this.listSizes())
+      .filter((item) => {
+        if (filter.active !== undefined && item.active !== filter.active) {
+          return false;
+        }
+        if (
+          filter.q &&
+          !item.name.toLowerCase().includes(filter.q.toLowerCase())
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.name.localeCompare(right.name, "pt-BR"),
+      );
+    return paginateItems(items, page, limit);
+  },
+
+  createSize(input: {
+    name: string;
+    price: number;
+    maxSelect: number;
+    priceMode: "addon" | "replace";
+  }) {
+    const sortOrder =
+      sizes.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
+    const size: Size = {
+      id: `size-${Date.now()}`,
+      name: input.name,
+      price: input.price,
+      maxSelect: Math.max(1, Math.min(10, input.maxSelect)),
+      priceMode: input.priceMode,
+      sortOrder,
+      active: true,
+    };
+    sizes.push(size);
+    return size;
+  },
+
+  updateSize(
+    id: string,
+    input: {
+      name: string;
+      price: number;
+      maxSelect: number;
+      priceMode: "addon" | "replace";
+    },
+  ) {
+    const size = sizes.find((item) => item.id === id);
+    if (!size) return null;
+    size.name = input.name;
+    size.price = input.price;
+    size.maxSelect = Math.max(1, Math.min(10, input.maxSelect));
+    size.priceMode = input.priceMode;
+    return size;
+  },
+
+  deleteSize(id: string) {
+    const index = sizes.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    sizes.splice(index, 1);
     return true;
   },
 

@@ -5,26 +5,32 @@ import {
   createCrust,
   createNeighborhood,
   createProduct,
+  createSize,
   deleteAddon,
   deleteCategory,
   deleteCrust,
   deleteNeighborhood,
+  deleteSize,
   getStore,
   listAddons,
   listAddonsPage,
   listAllAddons,
   listAllCategories,
   listAllCrusts,
+  listAllSizes,
   listCategories,
   listCategoriesPage,
   listCrusts,
   listCrustsPage,
   listProductsPage,
+  listSizes,
+  listSizesPage,
   saveStoreProfilePhoto,
   updateAddon,
   updateCategory,
   updateCrust,
   updateProduct,
+  updateSize,
   updateStore,
 } from "../data/repository.js";
 import {
@@ -455,6 +461,87 @@ catalogRouter.delete("/crusts/:id", async (req, res) => {
   } catch (error) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "Falha ao excluir borda.",
+    });
+  }
+});
+
+function sizePayload(body: Record<string, unknown>) {
+  const name = String(body.name ?? "").trim();
+  const price = Number(body.price ?? 0);
+  const maxSelect = Math.max(1, Math.min(10, Number(body.maxSelect ?? 1)));
+  const priceMode: "addon" | "replace" =
+    body.priceMode === "addon" ? "addon" : "replace";
+  if (!name || !Number.isFinite(price) || price < 0) {
+    return null;
+  }
+  return {
+    name,
+    price: Math.round(price * 100) / 100,
+    maxSelect,
+    priceMode,
+  };
+}
+
+catalogRouter.get("/sizes", async (req, res) => {
+  const all = String(req.query.all ?? "") === "1";
+  const paged =
+    req.query.page !== undefined || req.query.limit !== undefined;
+  if (paged) {
+    const { page, limit } = parsePageQuery(req.query);
+    res.json(
+      await listSizesPage(page, limit, all, {
+        q: parseSearch(req.query.q),
+        active: parseOptionalBoolean(req.query.active),
+      }),
+    );
+    return;
+  }
+  res.json(all ? await listAllSizes() : await listSizes());
+});
+
+catalogRouter.post("/sizes", async (req, res) => {
+  const payload = sizePayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({ error: "Preencha o nome e o preço do tamanho." });
+    return;
+  }
+  try {
+    res.status(201).json(await createSize(payload));
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao incluir tamanho.",
+    });
+  }
+});
+
+catalogRouter.patch("/sizes/:id", async (req, res) => {
+  const payload = sizePayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({ error: "Preencha o nome e o preço do tamanho." });
+    return;
+  }
+  try {
+    const size = await updateSize(String(req.params.id), payload);
+    if (!size) {
+      res.status(404).json({ error: "Tamanho não encontrado." });
+      return;
+    }
+    res.json(size);
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error ? error.message : "Falha ao atualizar tamanho.",
+    });
+  }
+});
+
+catalogRouter.delete("/sizes/:id", async (req, res) => {
+  try {
+    await deleteSize(String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao excluir tamanho.",
     });
   }
 });

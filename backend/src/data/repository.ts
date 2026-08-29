@@ -26,6 +26,7 @@ import type {
   PaymentMethod,
   Product,
   ProductOptionGroup,
+  Size,
   Store,
   StorePatch,
 } from "../types.js";
@@ -907,6 +908,206 @@ export async function deleteCrust(id: string) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.deleteCrust(id);
   const { error } = await supabase.from("crusts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+function missingSizesTable(message?: string) {
+  return Boolean(
+    message?.includes("sizes") &&
+      (message.includes("does not exist") ||
+        message.includes("schema cache") ||
+        message.includes("Could not find the table")),
+  );
+}
+
+function mapSize(row: Record<string, unknown>): Size {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    price: Number(row.price ?? 0),
+    maxSelect: Math.max(1, Number(row.max_select ?? 1)),
+    priceMode: row.price_mode === "addon" ? "addon" : "replace",
+    sortOrder: Number(row.sort_order ?? 0),
+    active: Boolean(row.active ?? true),
+  };
+}
+
+const DEFAULT_SIZES = [
+  { name: "P - Pequena", price: 35, maxSelect: 1, sortOrder: 0 },
+  { name: "M - Média", price: 45, maxSelect: 1, sortOrder: 1 },
+  { name: "G - Grande", price: 55, maxSelect: 2, sortOrder: 2 },
+  { name: "F - Família", price: 75, maxSelect: 2, sortOrder: 3 },
+] as const;
+
+async function ensureDefaultSizes() {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const store = await getStore();
+  const { count, error } = await supabase
+    .from("sizes")
+    .select("id", { count: "exact", head: true })
+    .eq("store_id", store.id);
+  if (error) {
+    if (missingSizesTable(error.message)) return;
+    throw new Error(error.message);
+  }
+  if (count) return;
+  const { error: insertError } = await supabase.from("sizes").insert(
+    DEFAULT_SIZES.map((item) => ({
+      store_id: store.id,
+      name: item.name,
+      price: item.price,
+      max_select: item.maxSelect,
+      price_mode: "replace",
+      sort_order: item.sortOrder,
+      active: true,
+    })),
+  );
+  if (insertError && !missingSizesTable(insertError.message)) {
+    throw new Error(insertError.message);
+  }
+}
+
+export async function listSizes(): Promise<Size[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listSizes();
+  await ensureDefaultSizes();
+  const { data, error } = await supabase
+    .from("sizes")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingSizesTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapSize(row as Record<string, unknown>));
+}
+
+export async function listAllSizes(): Promise<Size[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAllSizes();
+  await ensureDefaultSizes();
+  const { data, error } = await supabase
+    .from("sizes")
+    .select("*")
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingSizesTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapSize(row as Record<string, unknown>));
+}
+
+export async function listSizesPage(
+  page: number,
+  limit: number,
+  all: boolean,
+  filter: { q?: string; active?: boolean } = {},
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listSizesPage(page, limit, all, filter);
+  await ensureDefaultSizes();
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  let query = supabase
+    .from("sizes")
+    .select("*", { count: "exact" })
+    .order("sort_order")
+    .order("name");
+  if (!all) query = query.eq("active", true);
+  if (filter.active !== undefined) query = query.eq("active", filter.active);
+  if (filter.q) query = query.ilike("name", `%${filter.q}%`);
+
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    if (missingSizesTable(error.message)) {
+      return { items: [] as Size[], total: 0, page, limit };
+    }
+    return memoryStore.listSizesPage(page, limit, all, filter);
+  }
+  return {
+    items: (data ?? []).map((row) => mapSize(row as Record<string, unknown>)),
+    total: count ?? 0,
+    page,
+    limit,
+  };
+}
+
+export async function createSize(input: {
+  name: string;
+  price: number;
+  maxSelect: number;
+  priceMode: "addon" | "replace";
+}) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.createSize(input);
+  const store = await getStore();
+  const { data: last } = await supabase
+    .from("sizes")
+    .select("sort_order")
+    .eq("store_id", store.id)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sortOrder = Number(last?.sort_order ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("sizes")
+    .insert({
+      store_id: store.id,
+      name: input.name,
+      price: input.price,
+      max_select: Math.max(1, Math.min(10, input.maxSelect)),
+      price_mode: input.priceMode,
+      sort_order: sortOrder,
+      active: true,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(
+      missingSizesTable(error?.message)
+        ? "Rode a migration 026_sizes.sql no Supabase."
+        : error?.message ?? "Não foi possível salvar o tamanho.",
+    );
+  }
+  return mapSize(data as Record<string, unknown>);
+}
+
+export async function updateSize(
+  id: string,
+  input: {
+    name: string;
+    price: number;
+    maxSelect: number;
+    priceMode: "addon" | "replace";
+  },
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updateSize(id, input);
+  const { data, error } = await supabase
+    .from("sizes")
+    .update({
+      name: input.name,
+      price: input.price,
+      max_select: Math.max(1, Math.min(10, input.maxSelect)),
+      price_mode: input.priceMode,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !data) return null;
+  return mapSize(data as Record<string, unknown>);
+}
+
+export async function deleteSize(id: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.deleteSize(id);
+  const { error } = await supabase.from("sizes").delete().eq("id", id);
   if (error) throw new Error(error.message);
   return true;
 }

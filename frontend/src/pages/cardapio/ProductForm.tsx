@@ -1,4 +1,5 @@
 import { Formik, Form as FormikForm } from "formik";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Checkbox, Input, Modal, Select, Switch } from "antd";
 import { FormControl, FormField } from "../../components/FormField";
 import {
@@ -7,6 +8,8 @@ import {
   productSchema,
   type ProductValues,
 } from "../../lib/validation";
+import { api } from "../../lib/api";
+import { queryKeys } from "../../lib/queryKeys";
 import type { Addon, Category, Product } from "../../types";
 import { OptionGroupsEditor } from "./OptionGroupsEditor";
 import { cn } from "../../lib/cn";
@@ -18,24 +21,55 @@ import {
   formToggle,
 } from "../../ui";
 
-function groupsFromProduct(product: Product | null): ProductValues["optionGroups"] {
-  return (product?.optionGroups ?? []).map((group) => ({
-    id: group.id,
-    name: group.name,
-    required: group.required,
-    minSelect: group.minSelect,
-    maxSelect: group.maxSelect,
-    priceMode: group.priceMode,
-    exclusiveSet: "tamanho",
-    price: maskBRL(
-      String(
-        Math.round(
-          (!(group.price > 0) ? product?.price ?? 0 : group.price ?? 0) * 100,
+function groupsFromProduct(
+  product: Product | null,
+  sizes: { id: string; name: string; price: number; maxSelect: number; priceMode: "addon" | "replace"; sortOrder: number }[],
+): ProductValues["optionGroups"] {
+  const existing = product?.optionGroups ?? [];
+  if (!existing.length) return [];
+  if (!sizes.length) {
+    return existing.map((group) => ({
+      id: group.id,
+      name: group.name,
+      required: group.required,
+      minSelect: group.minSelect,
+      maxSelect: group.maxSelect,
+      priceMode: group.priceMode,
+      exclusiveSet: "tamanho" as const,
+      price: maskBRL(
+        String(
+          Math.round(
+            (!(group.price > 0) ? product?.price ?? 0 : group.price ?? 0) * 100,
+          ),
         ),
       ),
-    ),
-    options: [],
-  }));
+      options: [],
+    }));
+  }
+
+  const byId = new Map(sizes.map((size) => [size.id, size]));
+  const byName = new Map(
+    sizes.map((size) => [size.name.trim().toLowerCase(), size]),
+  );
+  const picked = new Map<string, (typeof sizes)[number]>();
+  for (const group of existing) {
+    const match =
+      byId.get(group.id) ?? byName.get(group.name.trim().toLowerCase());
+    if (match) picked.set(match.id, match);
+  }
+  return [...picked.values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((size) => ({
+      id: size.id,
+      name: size.name,
+      required: true,
+      minSelect: 1,
+      maxSelect: Math.max(1, size.maxSelect),
+      priceMode: size.priceMode,
+      exclusiveSet: "tamanho" as const,
+      price: maskBRL(String(Math.round(size.price * 100))),
+      options: [],
+    }));
 }
 
 function addonChoices(addons: Addon[], product: Product | null) {
@@ -66,6 +100,13 @@ export function ProductForm({
   onCancel: () => void;
   onSubmit: (values: ProductValues) => Promise<void>;
 }) {
+  const sizesQuery = useQuery({
+    queryKey: queryKeys.sizes.options,
+    queryFn: () => api.sizes(true),
+    enabled: open,
+  });
+  const sizes = sizesQuery.data ?? [];
+
   const initialValues: ProductValues = {
     name: product?.name ?? "",
     categoryId: product?.categoryId ?? "",
@@ -77,7 +118,7 @@ export function ProductForm({
     addonsEnabled: product?.addonsEnabled ?? false,
     crustsEnabled: product?.crustsEnabled ?? false,
     addonIds: (product?.addons ?? []).map((addon) => addon.id),
-    optionGroups: groupsFromProduct(product),
+    optionGroups: groupsFromProduct(product, sizes),
   };
 
   return (
@@ -319,7 +360,7 @@ export function ProductForm({
                 {values.customizable ? (
                   <>
                     <p className={formHint}>
-                      Cadastre só os tamanhos (P, M, G…) e o máximo de sabores de cada um. Depois do tamanho, o bot lista as pizzas do cardápio para o cliente montar.
+                      Clique em <strong>+ Tamanho</strong> e marque os tamanhos cadastrados em Adicionais. Os sabores no WhatsApp vêm das outras pizzas.
                     </p>
                     {typeof errors.optionGroups === "string" && touched.optionGroups ? (
                       <Alert
@@ -331,14 +372,14 @@ export function ProductForm({
                     ) : null}
                     <OptionGroupsEditor
                       groups={values.optionGroups ?? []}
-                      defaultSizePrice={String(values.price || "0,00")}
+                      sizes={sizes}
                       onChange={(next) => setFieldValue("optionGroups", next)}
                     />
                   </>
                 ) : (
                   <div className={formEmpty}>
                     <p>
-                      Marque <strong>É pizza?</strong> para cadastrar tamanhos. Os sabores serão as outras pizzas do cardápio.
+                      Marque <strong>É pizza?</strong> e escolha os tamanhos cadastrados. Os sabores serão as outras pizzas do cardápio.
                     </p>
                     <Button
                       type="primary"

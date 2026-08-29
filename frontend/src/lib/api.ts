@@ -12,6 +12,7 @@ import type {
   OrderStatus,
   PrinterList,
   Product,
+  Size,
   Store,
 } from "../types";
 
@@ -173,6 +174,48 @@ export const api = {
     }),
   deleteCrust: (id: string) =>
     request<void>(`/api/crusts/${id}`, { method: "DELETE" }),
+  sizes: (activeOnly = true) =>
+    request<Size[]>(
+      activeOnly ? "/api/sizes" : withQuery("/api/sizes", { all: 1 }),
+    ),
+  listSizes: (
+    page = 1,
+    limit = PAGE_SIZE,
+    filters?: { q?: string },
+  ) =>
+    request<PageResult<Size>>(
+      withQuery("/api/sizes", {
+        all: 1,
+        page,
+        limit,
+        q: filters?.q,
+      }),
+    ),
+  createSize: (payload: {
+    name: string;
+    price: number;
+    maxSelect: number;
+    priceMode: "addon" | "replace";
+  }) =>
+    request<Size>("/api/sizes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateSize: (
+    id: string,
+    payload: {
+      name: string;
+      price: number;
+      maxSelect: number;
+      priceMode: "addon" | "replace";
+    },
+  ) =>
+    request<Size>(`/api/sizes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteSize: (id: string) =>
+    request<void>(`/api/sizes/${id}`, { method: "DELETE" }),
   products: (
     page = 1,
     limit = PAGE_SIZE,

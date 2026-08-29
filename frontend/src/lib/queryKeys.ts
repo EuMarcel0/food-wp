@@ -31,6 +31,15 @@ export const queryKeys = {
       filters: { q?: string },
     ) => ["crusts", "list", page, limit, filters] as const,
   },
+  sizes: {
+    all: ["sizes"] as const,
+    options: ["sizes", "options"] as const,
+    list: (
+      page: number,
+      limit: number,
+      filters: { q?: string },
+    ) => ["sizes", "list", page, limit, filters] as const,
+  },
   products: {
     all: ["products"] as const,
     list: (

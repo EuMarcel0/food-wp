@@ -1,222 +1,200 @@
-import { Button, Input, InputNumber, Select, Switch } from "antd";
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { FormControl, FormField } from "../../components/FormField";
+import { useMemo, useState } from "react";
+import { Button, Checkbox } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { maskBRL } from "../../lib/validation";
 import type { ProductValues } from "../../lib/validation";
+import type { Size } from "../../types";
 import { cn } from "../../lib/cn";
-import { formEmpty, formToggle } from "../../ui";
+import { formEmpty } from "../../ui";
+import { formatReais } from "../../lib/format";
 
-function newId() {
-  return crypto.randomUUID();
-}
-
-function emptySizeGroup(
-  defaultPrice = "0,00",
-): ProductValues["optionGroups"][number] {
+function sizeToGroup(size: Size): ProductValues["optionGroups"][number] {
   return {
-    id: newId(),
-    name: "Tamanho",
+    id: size.id,
+    name: size.name,
     required: true,
     minSelect: 1,
-    maxSelect: 1,
-    priceMode: "replace",
+    maxSelect: Math.max(1, size.maxSelect),
+    priceMode: size.priceMode,
     exclusiveSet: "tamanho",
-    price: defaultPrice,
+    price: maskBRL(String(Math.round(size.price * 100))),
     options: [],
   };
 }
 
-function groupMeta(group: ProductValues["optionGroups"][number]) {
-  const sizePrice =
-    group.price && group.price !== "0,00" ? `R$ ${group.price}` : null;
-  const max =
-    Number(group.maxSelect) === 1
-      ? "Até 1 sabor"
-      : `Até ${group.maxSelect} sabores`;
-  return [sizePrice, max].filter(Boolean).join(" · ");
+function selectedSizeIds(
+  groups: ProductValues["optionGroups"],
+  catalog: Size[],
+) {
+  const byId = new Set(catalog.map((size) => size.id));
+  const byName = new Map(
+    catalog.map((size) => [size.name.trim().toLowerCase(), size.id]),
+  );
+  const ids = new Set<string>();
+  for (const group of groups) {
+    if (byId.has(group.id)) {
+      ids.add(group.id);
+      continue;
+    }
+    const matched = byName.get(group.name.trim().toLowerCase());
+    if (matched) ids.add(matched);
+  }
+  return ids;
 }
 
 export function OptionGroupsEditor({
   groups,
-  defaultSizePrice = "0,00",
+  sizes,
   onChange,
 }: {
   groups: ProductValues["optionGroups"];
+  sizes: Size[];
   defaultSizePrice?: string;
   onChange: (groups: ProductValues["optionGroups"]) => void;
 }) {
-  function update(
-    index: number,
-    patch: Partial<ProductValues["optionGroups"][number]>,
-  ) {
+  const [pickerOpen, setPickerOpen] = useState(groups.length === 0);
+  const selected = useMemo(
+    () => selectedSizeIds(groups, sizes),
+    [groups, sizes],
+  );
+
+  function toggleSize(size: Size, checked: boolean) {
+    if (checked) {
+      if (selected.has(size.id)) return;
+      const next = [...groups, sizeToGroup(size)].sort((left, right) => {
+        const leftOrder =
+          sizes.find((item) => item.id === left.id)?.sortOrder ?? 999;
+        const rightOrder =
+          sizes.find((item) => item.id === right.id)?.sortOrder ?? 999;
+        return leftOrder - rightOrder;
+      });
+      onChange(next);
+      return;
+    }
     onChange(
-      groups.map((group, current) =>
-        current === index ? { ...group, ...patch } : group,
-      ),
+      groups.filter((group) => {
+        if (group.id === size.id) return false;
+        return group.name.trim().toLowerCase() !== size.name.trim().toLowerCase();
+      }),
     );
   }
 
-  const sizePriceSeed = defaultSizePrice.replace(/\D/g, "")
-    ? defaultSizePrice
-    : "0,00";
+  const activeSizes = sizes.filter((size) => size.active);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col max-lg:min-h-auto max-lg:flex-none">
       <div className="mb-3.5 flex shrink-0 flex-wrap gap-2 [&_.ant-btn]:h-8 [&_.ant-btn]:rounded-full [&_.ant-btn]:border-food-border [&_.ant-btn]:bg-food-chip [&_.ant-btn]:px-3 [&_.ant-btn]:text-food-text">
         <Button
           size="small"
+          type={pickerOpen ? "primary" : "default"}
           icon={<PlusOutlined />}
-          onClick={() =>
-            onChange([...groups, emptySizeGroup(sizePriceSeed)])
-          }
+          onClick={() => setPickerOpen((open) => !open)}
         >
           Tamanho
         </Button>
-      </div>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-auto overscroll-contain pr-1 pb-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
-        {groups.length === 0 ? (
-          <div className={formEmpty}>
-            <p>
-              Nenhum tamanho ainda. Cadastre P, M, G… Os sabores vêm das outras
-              pizzas do cardápio.
-            </p>
-          </div>
+        {selected.size > 0 ? (
+          <span className="self-center text-xs text-food-muted">
+            {selected.size}{" "}
+            {selected.size === 1 ? "tamanho selecionado" : "tamanhos selecionados"}
+          </span>
         ) : null}
-        {groups.map((group, groupIndex) => (
-          <article
-            key={group.id}
-            className="rounded-[14px] border border-food-border bg-food-chip p-3.5"
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-food-accent/16 text-[11px] font-extrabold tracking-wide text-food-accent">
-                  {String(groupIndex + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
-                    {group.name || `Tamanho ${groupIndex + 1}`}
-                  </strong>
-                  <div className="text-xs text-food-muted">
-                    {groupMeta(group)}
-                  </div>
-                </div>
-              </div>
-              <Button
-                type="text"
-                danger
-                size="small"
-                icon={<DeleteOutlined />}
-                onClick={() =>
-                  onChange(groups.filter((_, index) => index !== groupIndex))
-                }
-              >
-                Remover
-              </Button>
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2 max-sm:grid-cols-1">
-              <FormField
-                name={`optionGroups.${groupIndex}.name`}
-                label="Nome do tamanho"
-              >
-                <Input placeholder="Pequena, Média, Grande…" />
-              </FormField>
-              <FormControl
-                name={`optionGroups.${groupIndex}.price`}
-                label="Preço"
-              >
-                {({ value, setValue, setTouched }) => (
-                  <Input
-                    prefix="R$"
-                    inputMode="numeric"
-                    placeholder="0,00"
-                    value={String(value ?? "")}
-                    onChange={(event) => setValue(maskBRL(event.target.value))}
-                    onBlur={setTouched}
-                  />
-                )}
-              </FormControl>
-            </div>
-            <div className="grid grid-cols-2 gap-2 max-lg:grid-cols-1">
-              <FormControl
-                name={`optionGroups.${groupIndex}.priceMode`}
-                label="Como entra no preço"
-              >
-                {({ value, setValue }) => (
-                  <Select
-                    style={{ width: "100%" }}
-                    value={String(value ?? "replace")}
-                    onChange={(next) => setValue(next)}
-                    options={[
-                      {
-                        value: "replace",
-                        label: "Substitui o preço do item",
-                      },
-                      {
-                        value: "addon",
-                        label: "Soma no preço base",
-                      },
-                    ]}
-                  />
-                )}
-              </FormControl>
-              <FormControl
-                name={`optionGroups.${groupIndex}.maxSelect`}
-                label="Máximo de sabores"
-              >
-                {({ value, setValue }) => (
-                  <InputNumber
-                    min={1}
-                    max={10}
-                    style={{ width: "100%" }}
-                    value={Number(value ?? 1)}
-                    onChange={(next) => {
-                      const maxSelect = Number(next ?? 1);
-                      update(groupIndex, {
-                        maxSelect,
-                        minSelect: Math.min(
-                          Number(group.minSelect ?? 1),
-                          maxSelect,
-                        ),
-                        exclusiveSet: "tamanho",
-                      });
-                      setValue(maxSelect);
-                    }}
-                  />
-                )}
-              </FormControl>
-            </div>
-            <label className={cn(formToggle, "mb-0")}>
-              <div>
-                <strong>Obrigatório</strong>
-                <p>O cliente precisa escolher este tamanho</p>
-              </div>
-              <FormControl name={`optionGroups.${groupIndex}.required`} compact>
-                {({ value, setValue }) => (
-                  <Switch
-                    checked={Boolean(value)}
-                    onChange={(checked) => {
-                      setValue(checked);
-                      update(groupIndex, {
-                        required: checked,
-                        exclusiveSet: "tamanho",
-                        minSelect: checked
-                          ? Math.max(1, group.minSelect)
-                          : 0,
-                      });
-                    }}
-                  />
-                )}
-              </FormControl>
-            </label>
-            <p className="mt-3 mb-0 text-xs text-food-muted">
-              No WhatsApp, depois do tamanho o cliente escolhe até{" "}
-              {Number(group.maxSelect) || 1} sabor
-              {Number(group.maxSelect) === 1 ? "" : "es"} entre as pizzas do
-              cardápio.
-            </p>
-          </article>
-        ))}
       </div>
+
+      {!activeSizes.length ? (
+        <div className={formEmpty}>
+          <p>
+            Nenhum tamanho cadastrado. Vá em <strong>Adicionais → Tamanhos</strong>{" "}
+            e cadastre P, M, G…
+          </p>
+        </div>
+      ) : null}
+
+      {pickerOpen && activeSizes.length ? (
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-2.5 overflow-auto overscroll-contain pr-1 pb-1 max-sm:grid-cols-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
+          {activeSizes.map((size) => {
+            const checked = selected.has(size.id);
+            return (
+              <label
+                key={size.id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-[14px] border px-3.5 py-3 transition-colors",
+                  checked
+                    ? "border-food-accent bg-food-accent/10"
+                    : "border-food-border bg-food-chip hover:border-food-accent/50",
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  onChange={(event) =>
+                    toggleSize(size, event.target.checked)
+                  }
+                  className="mt-0.5"
+                />
+                <span className="min-w-0 flex-1">
+                  <strong className="block text-sm font-bold tracking-tight text-food-text">
+                    {size.name}
+                  </strong>
+                  <span className="mt-0.5 block text-xs text-food-muted">
+                    {formatReais(size.price)}
+                    {" · "}
+                    {size.maxSelect === 1
+                      ? "até 1 sabor"
+                      : `até ${size.maxSelect} sabores`}
+                    {" · "}
+                    {size.priceMode === "replace"
+                      ? "substitui o preço"
+                      : "soma no preço"}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!pickerOpen && selected.size === 0 && activeSizes.length ? (
+        <div className={formEmpty}>
+          <p>Clique em <strong>+ Tamanho</strong> e marque os tamanhos desta pizza.</p>
+        </div>
+      ) : null}
+
+      {!pickerOpen && selected.size > 0 ? (
+        <div className="grid gap-2">
+          {activeSizes
+            .filter((size) => selected.has(size.id))
+            .map((size, index) => (
+              <article
+                key={size.id}
+                className="rounded-[14px] border border-food-border bg-food-chip px-3.5 py-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-food-accent/16 text-[11px] font-extrabold tracking-wide text-food-accent">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
+                      {size.name}
+                    </strong>
+                    <div className="text-xs text-food-muted">
+                      {formatReais(size.price)}
+                      {" · "}
+                      {size.maxSelect === 1
+                        ? "até 1 sabor"
+                        : `até ${size.maxSelect} sabores`}
+                    </div>
+                  </div>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setPickerOpen(true)}
+                  >
+                    Alterar
+                  </Button>
+                </div>
+              </article>
+            ))}
+        </div>
+      ) : null}
     </div>
   );
 }

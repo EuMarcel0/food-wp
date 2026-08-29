@@ -130,6 +130,16 @@ export type Crust = {
   active: boolean;
 };
 
+export type Size = {
+  id: string;
+  name: string;
+  price: number;
+  maxSelect: number;
+  priceMode: "addon" | "replace";
+  sortOrder: number;
+  active: boolean;
+};
+
 export type Product = {
   id: string;
   categoryId: string;

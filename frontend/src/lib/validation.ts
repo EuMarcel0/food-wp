@@ -165,6 +165,20 @@ export const crustSchema = Yup.object({
   }),
 });
 
+export const sizeSchema = Yup.object({
+  name: Yup.string().trim().required("Informe o nome do tamanho"),
+  price: Yup.string()
+    .required("Informe o preço")
+    .test("price", "Informe um valor válido", (value) => {
+      const amount = parseReais(value ?? "");
+      return amount !== null && amount > 0;
+    }),
+  maxSelect: Yup.number().min(1).max(10).default(1),
+  priceMode: Yup.mixed<"addon" | "replace">()
+    .oneOf(["addon", "replace"])
+    .default("replace"),
+});
+
 export const storeBrandingSchema = Yup.object({
   name: Yup.string()
     .trim()
@@ -229,6 +243,7 @@ export type ProductValues = Yup.InferType<typeof productSchema>;
 export type CategoryValues = Yup.InferType<typeof categorySchema>;
 export type AddonValues = Yup.InferType<typeof addonSchema>;
 export type CrustValues = Yup.InferType<typeof crustSchema>;
+export type SizeValues = Yup.InferType<typeof sizeSchema>;
 export type StoreBrandingValues = Yup.InferType<typeof storeBrandingSchema>;
 export type StoreReceiptValues = Yup.InferType<typeof storeReceiptSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
