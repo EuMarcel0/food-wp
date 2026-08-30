@@ -1588,6 +1588,19 @@ export async function listOrdersPage(
   };
 }
 
+export async function getOrder(id: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.getOrder(id);
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return memoryStore.getOrder(id);
+  return mapOrder(data as Record<string, unknown>);
+}
+
 export async function getOrderStats() {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.getOrderStats();

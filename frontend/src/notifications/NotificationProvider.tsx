@@ -10,6 +10,10 @@ import {
 } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { api } from "../lib/api";
+import {
+  isAutoAcceptNotification,
+  printAfterAutoAccept,
+} from "../lib/autoPrint";
 import { playNewOrderSound, unlockNotifySound } from "../lib/notifySound";
 import { supabase } from "../lib/supabase";
 import type { AppNotification } from "../types";
@@ -55,6 +59,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (seen.current.has(item.id)) continue;
       seen.current.add(item.id);
       if (item.type === "order_created") playNewOrderSound();
+      if (isAutoAcceptNotification(item)) {
+        void printAfterAutoAccept(item.orderId, item.orderCode);
+      }
     }
     setItems(ordered);
   }, []);

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getOrder,
   getOrderStats,
   listOrdersPage,
   updateOrderStatus,
@@ -46,6 +47,15 @@ ordersRouter.get("/", async (req, res) => {
       createdTo: parseDateDay(toDay, true),
     }),
   );
+});
+
+ordersRouter.get("/:id", async (req, res) => {
+  const order = await getOrder(String(req.params.id));
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado." });
+    return;
+  }
+  res.json(order);
 });
 
 ordersRouter.patch("/:id/status", async (req, res) => {

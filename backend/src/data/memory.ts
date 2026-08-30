@@ -830,6 +830,10 @@ export const memoryStore = {
     };
   },
 
+  getOrder(id: string) {
+    return orders.get(id) ?? null;
+  },
+
   findOrderByCode(code: string, customerId?: string) {
     return (
       [...orders.values()].find(

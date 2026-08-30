@@ -295,6 +295,8 @@ export const api = {
       { silent },
     ),
   orderStats: () => request<OrderStats>("/api/orders/stats"),
+  order: (id: string, silent = false) =>
+    request<Order>(`/api/orders/${id}`, { silent }),
   updateOrderStatus: (
     id: string,
     status: OrderStatus,
