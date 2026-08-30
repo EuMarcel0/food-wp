@@ -186,8 +186,70 @@ function isFlavorOrSizeGroup(group: ProductOptionGroup | undefined) {
   return group.maxSelect > 1 || isSizeGroup(group);
 }
 
-function sizePrice(product: Product, group: ProductOptionGroup) {
+export function sizePrice(product: Product, group: ProductOptionGroup) {
   return group.price > 0 ? group.price : product.price;
+}
+
+function resolveSizeSelection(
+  product: Product,
+  selections: CartSelection[],
+): {
+  group?: ProductOptionGroup;
+  selection?: CartSelection;
+  baseReais: number;
+} {
+  const groups = activeGroups(product);
+
+  for (const selection of selections) {
+    if (isCatalogExtraGroup(selection.groupId)) continue;
+    const group = groups.find((item) => item.id === selection.groupId);
+    if (isSizeGroup(group)) {
+      const fromGroup = sizePrice(product, group!);
+      const fromDraft =
+        typeof selection.basePrice === "number" && selection.basePrice > 0
+          ? selection.basePrice
+          : 0;
+      return {
+        group,
+        selection,
+        baseReais: fromGroup > 0 ? fromGroup : fromDraft > 0 ? fromDraft : product.price,
+      };
+    }
+  }
+
+  // Fallback: id do grupo mudou (re-save) — casa pelo nome do tamanho.
+  for (const selection of selections) {
+    if (isCatalogExtraGroup(selection.groupId)) continue;
+    const draftBase =
+      typeof selection.basePrice === "number" && selection.basePrice > 0
+        ? selection.basePrice
+        : 0;
+    if (selection.priceMode !== "replace" && draftBase <= 0) continue;
+    const group = groups.find(
+      (item) =>
+        isSizeGroup(item) &&
+        normalizeName(item.name) === normalizeName(selection.groupName),
+    );
+    if (!group) continue;
+    const fromGroup = sizePrice(product, group);
+    return {
+      group,
+      selection,
+      baseReais: fromGroup > 0 ? fromGroup : draftBase > 0 ? draftBase : product.price,
+    };
+  }
+
+  const withBase = selections.find(
+    (selection) =>
+      !isCatalogExtraGroup(selection.groupId) &&
+      typeof selection.basePrice === "number" &&
+      selection.basePrice > 0,
+  );
+  if (withBase) {
+    return { selection: withBase, baseReais: withBase.basePrice! };
+  }
+
+  return { baseReais: product.price };
 }
 
 export function variantStartingPrice(product: Product, group: ProductOptionGroup) {
@@ -213,25 +275,39 @@ export function soleGroupPick(group: ProductOptionGroup) {
 
 export function unitPriceCents(product: Product, selections: CartSelection[]) {
   const groups = activeGroups(product);
-  const selectedSize = selections
-    .map((selection) => groups.find((item) => item.id === selection.groupId))
-    .find((group) => isSizeGroup(group));
+  const size = resolveSizeSelection(product, selections);
+  // Com tamanho escolhido, o preço-base já veio do tamanho — replace não pode zerar.
+  const sizeLocked = Boolean(size.selection || size.group);
 
-  let cents = Math.round(
-    (selectedSize ? sizePrice(product, selectedSize) : product.price) * 100,
-  );
+  let cents = Math.round(size.baseReais * 100);
 
   for (const selection of selections) {
+    if (size.selection && selection.groupId === size.selection.groupId) continue;
+    if (
+      size.group &&
+      normalizeName(selection.groupName) === normalizeName(size.group.name) &&
+      selection.priceMode === "replace"
+    ) {
+      continue;
+    }
+
     const group = groups.find((item) => item.id === selection.groupId);
-    if (isFlavorOrSizeGroup(group)) continue;
+    if (isFlavorOrSizeGroup(group) || isSizeGroup(group)) continue;
     if (!group && !isCatalogExtraGroup(selection.groupId)) continue;
 
     const extra = selection.options.reduce((total, option) => {
-      const cents = Math.round(option.extraPrice * 100);
-      return isCatalogExtraGroup(selection.groupId) ? total + cents : Math.max(total, cents);
+      const optionCents = Math.round(option.extraPrice * 100);
+      return isCatalogExtraGroup(selection.groupId)
+        ? total + optionCents
+        : Math.max(total, optionCents);
     }, 0);
-    if (selection.priceMode === "replace") cents = extra;
-    else cents += extra;
+
+    // replace só substitui o preço-base do produto quando NÃO há tamanho.
+    if (selection.priceMode === "replace" && !sizeLocked) {
+      cents = extra;
+    } else {
+      cents += extra;
+    }
   }
   return Math.max(0, cents);
 }
@@ -267,18 +343,30 @@ function isShareGroup(group: ProductOptionGroup | undefined) {
 
 export function assembledName(product: Product, selections: CartSelection[]) {
   const groups = activeGroups(product);
+  const size = resolveSizeSelection(product, selections);
   const flavorNames: string[] = [];
   const otherParts: string[] = [];
-  let sizeName = "";
+  let sizeName = size.selection?.groupName || size.group?.name || "";
 
   for (const selection of selections) {
-    if (!selection.options.length) continue;
     if (isCatalogExtraGroup(selection.groupId)) continue;
     const group = groups.find((item) => item.id === selection.groupId);
+    const isSize =
+      isSizeGroup(group) ||
+      (size.selection != null && selection.groupId === size.selection.groupId) ||
+      (typeof selection.basePrice === "number" &&
+        selection.basePrice > 0 &&
+        selection.priceMode === "replace");
+
+    if (!selection.options.length) {
+      if (isSize && !sizeName) sizeName = selection.groupName;
+      continue;
+    }
+
     const names = selection.options.map((option) => option.name);
-    if (isShareGroup(group)) {
+    if (isShareGroup(group) || isSize) {
       flavorNames.push(...names);
-      if (group?.exclusiveSet?.trim()) sizeName = selection.groupName;
+      if (isSize || group?.exclusiveSet?.trim()) sizeName = selection.groupName;
       continue;
     }
     otherParts.push(names.join(" + "));

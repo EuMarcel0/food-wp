@@ -33,6 +33,8 @@ import {
   nextAssembly,
   optionDescription,
   selectionKey,
+  isSizeGroup,
+  sizePrice,
   soleGroupPick,
   unitPriceCents,
   usesCatalogFlavors,
@@ -101,6 +103,34 @@ function parseQuantity(raw: string) {
 
 function emptyContext(): ConversationContext {
   return { cart: [] };
+}
+
+function ensureDraftSelection(
+  product: Product,
+  group: ProductOptionGroup,
+  drafts: CartSelection[],
+  options: CartSelection["options"] = [],
+): CartSelection {
+  const existing = drafts.find((item) => item.groupId === group.id);
+  if (existing) {
+    if (
+      isSizeGroup(group) &&
+      !(typeof existing.basePrice === "number" && existing.basePrice > 0)
+    ) {
+      existing.basePrice = sizePrice(product, group);
+    }
+    if (!existing.groupName) existing.groupName = group.name;
+    return existing;
+  }
+  const created: CartSelection = {
+    groupId: group.id,
+    groupName: group.name,
+    priceMode: group.priceMode,
+    options,
+    ...(isSizeGroup(group) ? { basePrice: sizePrice(product, group) } : {}),
+  };
+  drafts.push(created);
+  return created;
 }
 
 function cartTotal(context: ConversationContext) {
@@ -282,16 +312,6 @@ async function askCrusts(to: string, product: Product, crusts: Crust[]) {
         })),
       },
     ],
-  );
-}
-
-function isSkipAddon(incoming: string, normalized: string) {
-  return (
-    incoming === "skip_addon" ||
-    isSkipStep(incoming, normalized) ||
-    normalized === "sem adicional" ||
-    normalized === "nenhum" ||
-    normalized === "nao"
   );
 }
 
@@ -916,7 +936,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
     `*${product.name}*`,
     picked.length
       ? `Adicionais: ${picked.join(", ")}`
-      : "Quer um adicional? (opcional)",
+      : "Escolha um adicional",
     picked.length ? "Quer outro adicional?" : "",
   ]
     .filter(Boolean)
@@ -1312,15 +1332,7 @@ export async function handleIncomingMessage(input: {
         await resumeCurrentStep(input.from, store, state, context);
         return;
       }
-      const current =
-        drafts.find((item) => item.groupId === group.id) ??
-        {
-          groupId: group.id,
-          groupName: group.name,
-          priceMode: group.priceMode,
-          options: [] as CartSelection["options"],
-        };
-      if (!drafts.some((item) => item.groupId === group.id)) drafts.push(current);
+      const current = ensureDraftSelection(product, group, drafts);
       if (!current.options.some((item) => item.id === option.id)) {
         current.options.push({
           id: option.id,
@@ -1371,29 +1383,14 @@ export async function handleIncomingMessage(input: {
         await resumeCurrentStep(input.from, store, state, context);
         return;
       }
-      if (!drafts.some((item) => item.groupId === group.id)) {
-        drafts.push({
-          groupId: group.id,
-          groupName: group.name,
-          priceMode: group.priceMode,
-          options: soleGroupPick(group),
-        });
-      }
+      ensureDraftSelection(product, group, drafts, soleGroupPick(group));
       await goNext();
       return;
     }
 
     if (pending.type === "options") {
       const group = pending.group;
-      const current =
-        drafts.find((item) => item.groupId === group.id) ??
-        {
-          groupId: group.id,
-          groupName: group.name,
-          priceMode: group.priceMode,
-          options: [] as CartSelection["options"],
-        };
-      if (!drafts.some((item) => item.groupId === group.id)) drafts.push(current);
+      const current = ensureDraftSelection(product, group, drafts);
 
       if (isSkipStep(incoming, normalized)) {
         const catalogFlavors = usesCatalogFlavors(group);
@@ -1485,26 +1482,33 @@ export async function handleIncomingMessage(input: {
       await askQuantityStage(input.from, product, context, persist);
     };
 
-    if (
+    // Só lista/botões — texto digitado (ex.: "ovo") não escolhe adicional.
+    const addonAction =
+      incoming.startsWith("addon:") ||
+      incoming === "skip_addon" ||
       incoming === "more_addons" ||
+      incoming === "done_addons" ||
       incoming === "more_options" ||
-      normalized === "mais um"
-    ) {
+      incoming === "done_options";
+
+    if (!addonAction) {
+      await persist("awaiting_addon", context);
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+
+    if (incoming === "more_addons" || incoming === "more_options") {
       const finished = await askAddons(input.from, product, drafts);
       if (finished) await finishAddons();
       return;
     }
 
-    if (
-      incoming === "done_addons" ||
-      incoming === "done_options" ||
-      (isSkipAddon(incoming, normalized) && picked.length > 0)
-    ) {
+    if (incoming === "done_addons" || incoming === "done_options") {
       await finishAddons();
       return;
     }
 
-    if (isSkipAddon(incoming, normalized)) {
+    if (incoming === "skip_addon") {
       context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
       return;
@@ -1512,14 +1516,10 @@ export async function handleIncomingMessage(input: {
 
     const available = await productAddons(product);
     const remaining = await remainingAddons(product, drafts);
-    const addon = incoming.startsWith("addon:")
-      ? remaining.find(
-          (item) => item.id === incoming.slice("addon:".length),
-        ) ??
-        available.find(
-          (item) => item.id === incoming.slice("addon:".length),
-        )
-      : available.find((item) => normalize(item.name) === normalized);
+    const addonId = incoming.slice("addon:".length);
+    const addon =
+      remaining.find((item) => item.id === addonId) ??
+      available.find((item) => item.id === addonId);
 
     if (!addon) {
       await persist("awaiting_addon", context);

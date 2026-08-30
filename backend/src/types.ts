@@ -51,6 +51,8 @@ export type CartSelection = {
   groupId: string;
   groupName: string;
   priceMode: "addon" | "replace";
+  /** Preço-base do tamanho (R$), gravado na escolha para não depender do reload do produto. */
+  basePrice?: number;
   options: { id: string; name: string; extraPrice: number }[];
   skipped?: boolean;
 };
