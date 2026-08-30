@@ -166,13 +166,14 @@ export function ReceiptTicket({
             const crust = crustLabel(item.extras);
             const addons = addonLabel(item.extras);
             const lineTotal = item.quantity * item.unitPriceCents;
+            const unit = formatBRL(item.unitPriceCents);
             return (
               <div
                 key={item.id ?? `${item.name}-${index}`}
                 style={{ marginBottom: 8 }}
               >
                 <Line
-                  left={`${item.quantity}x ${item.name}`}
+                  left={`${item.quantity}x ${item.name} (un ${unit})`}
                   right={formatBRL(lineTotal)}
                 />
                 {item.notes ? (
