@@ -1095,25 +1095,20 @@ export async function handleIncomingMessage(input: {
   const persist = (nextState: ConversationState, nextContext = context) =>
     saveConversation(customer, nextState, nextContext);
 
+  // Loja fechada: só informa horário — sem cardápio, status, botões ou qualquer fluxo.
+  if (!isStoreOpen(store.businessHours, store.timezone)) {
+    await sendText(
+      input.from,
+      closedStoreMessage(store.name, store.businessHours),
+    );
+    return;
+  }
+
   if (CANCEL_KEYS.includes(command)) {
     await persist("welcome", emptyContext());
     await sendText(
       input.from,
       "Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem.",
-    );
-    return;
-  }
-
-  const statusIntent =
-    ["status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
-    state === "awaiting_order_code";
-  if (
-    !statusIntent &&
-    !isStoreOpen(store.businessHours, store.timezone)
-  ) {
-    await sendText(
-      input.from,
-      closedStoreMessage(store.name, store.businessHours),
     );
     return;
   }

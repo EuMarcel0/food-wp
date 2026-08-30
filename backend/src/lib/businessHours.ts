@@ -217,7 +217,7 @@ export function closedStoreMessage(
       : schedule.length
         ? ["Horário de funcionamento:", ...schedule].join("\n")
         : null,
-    "Quando reabrirmos, é só mandar uma mensagem. Já tem um pedido? Digite *Status*.",
+    "Quando reabrirmos, é só mandar uma mensagem.",
   ].filter(Boolean);
   return lines.join("\n\n");
 }
