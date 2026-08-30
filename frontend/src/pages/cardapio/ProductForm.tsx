@@ -372,9 +372,9 @@ export function ProductForm({
               </section>
               <section
                 className={cn(
-                  "relative flex min-h-0 flex-col overflow-hidden px-6 pt-5 pb-6 max-lg:min-h-auto max-lg:overflow-visible",
+                  "relative flex min-h-0 min-w-0 flex-col overflow-hidden px-6 pt-5 pb-6 max-lg:min-h-[50vh]",
                   values.customizable &&
-                    "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-food-accent before:content-['']",
+                    "before:absolute before:inset-y-0 before:left-0 before:z-0 before:w-[3px] before:bg-food-accent before:content-['']",
                 )}
               >
                 <p className={formKicker}>Montagem</p>

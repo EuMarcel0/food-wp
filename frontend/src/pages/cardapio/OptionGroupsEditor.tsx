@@ -12,11 +12,11 @@ import { PizzaSizeIcon, pizzaVisualScale } from "./PizzaSizeIcon";
 function SizeCardsSkeleton({ count = 3 }: { count?: number }) {
   const cards = Math.min(6, Math.max(2, count));
   return (
-    <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
+    <div className="grid grid-cols-2 gap-2">
       {Array.from({ length: cards }, (_, index) => (
         <article
           key={index}
-          className="rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
+          className="min-w-0 overflow-hidden rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
         >
           <div className="flex items-center gap-3">
             <Skeleton.Avatar active size={56} shape="square" className="!rounded-xl" />
@@ -156,7 +156,7 @@ export function OptionGroupsEditor({
       ) : null}
 
       {pickerOpen && activeSizes.length ? (
-        <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 items-stretch gap-2.5 overflow-auto overscroll-contain pr-1 pb-1 max-sm:grid-cols-1 max-lg:min-h-auto max-lg:flex-none max-lg:overflow-visible max-lg:pr-0">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-2 content-start items-stretch gap-2.5 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 pb-1">
           {activeSizes.map((size) => {
             const checked = selected.has(size.id);
             const scale = pizzaVisualScale(size, activeSizes);
@@ -164,7 +164,7 @@ export function OptionGroupsEditor({
               <label
                 key={size.id}
                 className={cn(
-                  "relative flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-[14px] border px-3.5 py-4 transition-colors",
+                  "relative isolate flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[14px] border px-2.5 py-3 transition-colors sm:px-3.5 sm:py-4",
                   checked
                     ? "border-food-accent bg-food-accent/10"
                     : "border-food-border bg-food-chip hover:border-food-accent/50",
@@ -175,18 +175,19 @@ export function OptionGroupsEditor({
                   onChange={(event) =>
                     toggleSize(size, event.target.checked)
                   }
-                  className="absolute top-3 left-3 z-10"
+                  className="absolute top-2.5 left-2.5 z-10"
                 />
                 <PizzaSizeIcon
                   scale={scale}
                   active={checked}
-                  className="mx-auto"
+                  frame={72}
+                  className="mx-auto shrink-0"
                 />
-                <span className="mt-2 min-w-0 text-center">
-                  <strong className="block text-sm font-bold tracking-tight text-food-text">
+                <span className="mt-1.5 min-w-0 w-full px-0.5 text-center">
+                  <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
                     {size.name}
                   </strong>
-                  <span className="mt-0.5 block text-xs text-food-muted">
+                  <span className="mt-0.5 block text-xs leading-snug text-food-muted">
                     {formatReais(size.price)}
                     {" · "}
                     {size.maxSelect === 1
@@ -212,13 +213,13 @@ export function OptionGroupsEditor({
       ) : null}
 
       {!pickerOpen && selected.size > 0 ? (
-        <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
+        <div className="grid min-w-0 grid-cols-2 content-start gap-2 overflow-x-hidden">
           {activeSizes
             .filter((size) => selected.has(size.id))
             .map((size) => (
               <article
                 key={size.id}
-                className="rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
+                className="min-w-0 overflow-hidden rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
               >
                 <div className="flex items-center gap-3">
                   <PizzaSizeIcon

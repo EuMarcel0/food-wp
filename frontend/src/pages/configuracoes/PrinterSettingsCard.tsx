@@ -147,7 +147,7 @@ export function PrinterSettingsCard() {
           : "Ainda não conectado neste navegador."}
       </p>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Select
           showSearch
           allowClear
@@ -181,28 +181,6 @@ export function PrinterSettingsCard() {
           Salvar impressora
         </Button>
       </div>
-
-      <Alert
-        type="info"
-        showIcon
-        message="Instalação no PC da cozinha"
-        description={
-          <ol className="mb-0 mt-1 list-decimal space-y-1 pl-4 text-sm">
-            <li>
-              Copie a pasta <code>FoodWpPrint</code> —{" "}
-              <strong>não precisa instalar Node</strong>.
-            </li>
-            <li>
-              Duplo clique em <code>install.bat</code> (ou no PowerShell:{" "}
-              <code>.\install.ps1</code>) como Administrador.
-            </li>
-            <li>
-              Aqui: <strong>Conectar agente</strong> →{" "}
-              <strong>ELGIN i8</strong> → Salvar. Não deixe nenhum exe aberto.
-            </li>
-          </ol>
-        }
-      />
     </Card>
   );
 }
