@@ -189,15 +189,16 @@ export function PrinterSettingsCard() {
         description={
           <ol className="mb-0 mt-1 list-decimal space-y-1 pl-4 text-sm">
             <li>
-              Copie a pasta <code>FoodWpPrint</code> (com o{" "}
-              <code>.exe</code>) — <strong>não precisa instalar Node</strong>.
+              Copie a pasta <code>FoodWpPrint</code> —{" "}
+              <strong>não precisa instalar Node</strong>.
             </li>
             <li>
-              Execute <code>install.ps1</code> (botão direito → PowerShell).
+              Execute <code>install.ps1</code>{" "}
+              <strong>como Administrador</strong> (instala serviço sem janela).
             </li>
             <li>
-              Aqui no painel: <strong>Conectar agente</strong> → escolha a{" "}
-              <strong>ELGIN i8</strong> → Salvar.
+              Aqui: <strong>Conectar agente</strong> →{" "}
+              <strong>ELGIN i8</strong> → Salvar. Não deixe nenhum exe aberto.
             </li>
           </ol>
         }

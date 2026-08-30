@@ -3,6 +3,7 @@ dist
 dist-ssr
 print-agent/release
 print-agent/dist
+print-agent/vendor
 *.local
 .env
 .env.*

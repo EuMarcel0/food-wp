@@ -113,10 +113,14 @@ app.post("/print", auth, async (req, res) => {
       return;
     }
 
+    const columns =
+      body.columns !== undefined
+        ? Math.min(48, Math.max(32, Number(body.columns) || 48))
+        : config.columns;
     const buffer = buildReceiptEscPos({
       store: body.store,
       order,
-      columns: config.columns,
+      columns,
     });
     await rawPrintWindows(printerName, buffer);
     res.json({ ok: true, printer: printerName, bytes: buffer.length });

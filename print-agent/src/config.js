@@ -30,18 +30,21 @@ export function loadConfig() {
       port: PORT,
       token: randomBytes(24).toString("hex"),
       printerName: "",
-      columns: 42,
+      columns: 48,
     };
     writeFileSync(CONFIG_PATH, JSON.stringify(created, null, 2), "utf8");
     return created;
   }
 
   const raw = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  // 42 era o padrão antigo; 48mm aproveita melhor a Elgin 80mm.
+  let columns = Number(raw.columns);
+  if (!Number.isFinite(columns) || columns === 42) columns = 48;
   return {
     port: Number(raw.port) || PORT,
     token: String(raw.token || "").trim() || randomBytes(24).toString("hex"),
     printerName: String(raw.printerName || "").trim(),
-    columns: Math.min(48, Math.max(32, Number(raw.columns) || 42)),
+    columns: Math.min(48, Math.max(32, columns)),
   };
 }
 
@@ -56,7 +59,7 @@ export function saveConfig(patch) {
     printerName: String(patch.printerName ?? current.printerName).trim(),
     columns: Math.min(
       48,
-      Math.max(32, Number(patch.columns ?? current.columns) || 42),
+      Math.max(32, Number(patch.columns ?? current.columns) || 48),
     ),
   };
   mkdirSync(DIR, { recursive: true });

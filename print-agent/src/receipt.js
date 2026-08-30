@@ -4,8 +4,9 @@ const ESC = 0x1b;
 const GS = 0x1d;
 
 function encodeText(text) {
-  // Code page 850 / Latin-1 aproximado para acentuação PT-BR em térmicas.
+  // Térmicas ESC/POS costumam falhar com NBSP/unicode — vira "?".
   const normalized = String(text ?? "")
+    .replace(/[\u00A0\u202F\u2007\u2009]/g, " ")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/[^\x20-\x7E\n]/g, "?");
@@ -57,7 +58,10 @@ function wrap(text, columns) {
 
 function formatBRL(cents) {
   const value = Number(cents || 0) / 100;
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  // ASCII puro: evita NBSP do toLocaleString ("R$\u00A077,00" → "R$?77,00").
+  const [intPart, decPart = "00"] = value.toFixed(2).split(".");
+  const withDots = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `R$ ${withDots},${decPart}`;
 }
 
 function formatPhone(raw) {

@@ -1,0 +1,14 @@
+<service>
+  <id>FoodWpPrint</id>
+  <name>Food WP Print Agent</name>
+  <description>Agente local de impressao ESC/POS do Food WP (Elgin e similares). Escuta em 127.0.0.1:19100.</description>
+  <executable>%BASE%\food-wp-print-agent.exe</executable>
+  <workingdirectory>%BASE%</workingdirectory>
+  <logmode>rotate</logmode>
+  <onfailure action="restart" delay="5 sec"/>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="none"/>
+  <resetfailure>1 hour</resetfailure>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+</service>
