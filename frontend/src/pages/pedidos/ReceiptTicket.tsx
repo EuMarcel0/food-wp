@@ -5,15 +5,14 @@ import {
   cashChangeLabel,
   formatBRL,
   formatCnpj,
-  formatReceiptDate,
+  formatReceiptDate
 } from "../../lib/format";
 import type { Order, Store } from "../../types";
 
 function formatReceiptPhone(raw?: string | null) {
   const digits = (raw ?? "").replace(/\D/g, "");
   if (!digits) return "";
-  const local =
-    digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+  const local = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
   const ddd = local.slice(0, 2);
   const subscriber = local.slice(2);
   // Celular com 9º dígito: (77) 99177-6299
@@ -41,11 +40,9 @@ function receiptNeighborhood(order: Order, store?: Store) {
   const zones = store?.neighborhoods ?? [];
   if (!zones.length) return null;
   const address = (order.addressText ?? "").toLowerCase();
-  const byAddress = zones.find((zone) =>
-    address.includes(zone.name.trim().toLowerCase()),
-  );
+  const byAddress = zones.find(zone => address.includes(zone.name.trim().toLowerCase()));
   if (byAddress) return byAddress.name;
-  const byFee = zones.filter((zone) => zone.feeCents === order.deliveryFeeCents);
+  const byFee = zones.filter(zone => zone.feeCents === order.deliveryFeeCents);
   if (byFee.length === 1) return byFee[0].name;
   return null;
 }
@@ -56,28 +53,20 @@ function Dash() {
       aria-hidden
       style={{
         borderTop: "1px dashed #111",
-        margin: "8px 0",
+        margin: "8px 0"
       }}
     />
   );
 }
 
-function Line({
-  left,
-  right,
-  strong,
-}: {
-  left: string;
-  right?: string;
-  strong?: boolean;
-}) {
+function Line({ left, right, strong }: { left: string; right?: string; strong?: boolean }) {
   return (
     <div
       style={{
         display: "flex",
         alignItems: "baseline",
         gap: 8,
-        fontWeight: strong ? 700 : 400,
+        fontWeight: strong ? 700 : 400
       }}
     >
       <span style={{ minWidth: 0, wordBreak: "break-word" }}>{left}</span>
@@ -89,25 +78,17 @@ function Line({
               flex: 1,
               minWidth: 12,
               borderBottom: "1px dotted #111",
-              marginBottom: 3,
+              marginBottom: 3
             }}
           />
-          <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-            {right}
-          </span>
+          <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{right}</span>
         </>
       ) : null}
     </div>
   );
 }
 
-export function ReceiptTicket({
-  order,
-  store,
-}: {
-  order: Order;
-  store?: Store;
-}) {
+export function ReceiptTicket({ order, store }: { order: Order; store?: Store }) {
   const name = store?.name?.trim() || "Estabelecimento";
   const legalName = store?.legalName?.trim();
   const cnpj = store?.cnpj ? formatCnpj(store.cnpj) : "";
@@ -118,24 +99,21 @@ export function ReceiptTicket({
 
   return (
     <article
-      className="receipt-ticket"
+      className='receipt-ticket'
       style={{
         width: "80mm",
         maxWidth: "100%",
         background: "#fff",
         color: "#111",
-        fontFamily:
-          'ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace',
+        fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace',
         fontSize: 12,
         lineHeight: 1.35,
         padding: "10px 8px 14px",
-        boxSizing: "border-box",
+        boxSizing: "border-box"
       }}
     >
       <header style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: 0.3 }}>
-          {name}
-        </div>
+        <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: 0.3 }}>{name}</div>
         {legalName ? <div style={{ marginTop: 2 }}>{legalName}</div> : null}
         {cnpj ? <div>CNPJ {cnpj}</div> : null}
       </header>
@@ -152,9 +130,7 @@ export function ReceiptTicket({
         </div>
         {neighborhood ? <div>Bairro: {neighborhood}</div> : null}
         {order.fulfillment === "delivery" && order.addressText ? (
-          <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
-            {order.addressText}
-          </div>
+          <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{order.addressText}</div>
         ) : null}
       </section>
 
@@ -168,25 +144,11 @@ export function ReceiptTicket({
             const lineTotal = item.quantity * item.unitPriceCents;
             const unit = formatBRL(item.unitPriceCents);
             return (
-              <div
-                key={item.id ?? `${item.name}-${index}`}
-                style={{ marginBottom: 8 }}
-              >
-                <Line
-                  left={`${item.quantity}x ${item.name} (un ${unit})`}
-                  right={formatBRL(lineTotal)}
-                />
-                {item.notes ? (
-                  <div style={{ paddingLeft: 8, opacity: 0.85 }}>
-                    obs.: {item.notes}
-                  </div>
-                ) : null}
-                {crust ? (
-                  <div style={{ paddingLeft: 8, opacity: 0.85 }}>{crust}</div>
-                ) : null}
-                {addons ? (
-                  <div style={{ paddingLeft: 8, opacity: 0.85 }}>{addons}</div>
-                ) : null}
+              <div key={item.id ?? `${item.name}-${index}`} style={{ marginBottom: 8 }}>
+                <Line left={`${item.quantity}x ${item.name} (un ${unit})`} right={formatBRL(lineTotal)} />
+                {item.notes ? <div style={{ paddingLeft: 8, opacity: 0.85 }}>obs.: {item.notes}</div> : null}
+                {crust ? <div style={{ paddingLeft: 8, opacity: 0.85 }}>{crust}</div> : null}
+                {addons ? <div style={{ paddingLeft: 8, opacity: 0.85 }}>{addons}</div> : null}
               </div>
             );
           })
@@ -198,22 +160,16 @@ export function ReceiptTicket({
       <Dash />
 
       <section>
-        <Line left="Subtotal" right={formatBRL(order.subtotalCents)} />
+        <Line left='Subtotal' right={formatBRL(order.subtotalCents)} />
         {order.fulfillment === "delivery" ? (
           <Line
-            left={
-              neighborhood
-                ? `Taxa de entrega (${neighborhood})`
-                : "Taxa de entrega"
-            }
+            left={neighborhood ? `Taxa de entrega (${neighborhood})` : "Taxa de entrega"}
             right={formatBRL(order.deliveryFeeCents)}
           />
         ) : null}
-        <Line left="Total" right={formatBRL(order.totalCents)} strong />
+        <Line left='Total' right={formatBRL(order.totalCents)} strong />
         {order.paymentMethod === "cash" && order.changeForCents != null ? (
-          <div style={{ marginTop: 4 }}>
-            {cashChangeLabel(order.changeForCents, order.totalCents)}
-          </div>
+          <div style={{ marginTop: 4 }}>{cashChangeLabel(order.changeForCents, order.totalCents)}</div>
         ) : null}
       </section>
 
@@ -222,16 +178,14 @@ export function ReceiptTicket({
           <Dash />
           <footer>
             {order.notes?.trim() ? (
-              <div style={{ whiteSpace: "pre-wrap" }}>
-                Obs. do pedido: {order.notes.trim()}
-              </div>
+              <div style={{ whiteSpace: "pre-wrap" }}>Obs. da entrega: {order.notes.trim()}</div>
             ) : null}
             {footer ? (
               <div
                 style={{
                   marginTop: order.notes?.trim() ? 8 : 0,
                   textAlign: "center",
-                  whiteSpace: "pre-wrap",
+                  whiteSpace: "pre-wrap"
                 }}
               >
                 {footer}
