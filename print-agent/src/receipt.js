@@ -157,7 +157,8 @@ export function buildReceiptEscPos(input) {
   const payment = order.paymentMethod
     ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
     : "";
-  emit(payment ? `${fulfillment} · ${payment}` : fulfillment);
+  emit(fulfillment);
+  if (payment) emit(payment);
   if (order.fulfillment === "delivery" && order.neighborhoodName) {
     emit(`Bairro: ${order.neighborhoodName}`);
   }

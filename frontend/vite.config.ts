@@ -66,9 +66,9 @@ export default defineConfig({
           },
         ],
       },
+      // Em dev o SW cacheia bundles e esconde HMR (ex.: prévia do cupom desatualizada).
       devOptions: {
-        enabled: true,
-        type: "module",
+        enabled: false,
       },
     }),
   ],
