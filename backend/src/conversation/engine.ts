@@ -798,7 +798,11 @@ async function askGroupOptions(
   const pickedNames = current?.options.map((option) => option.name) ?? [];
 
   if (usesCatalogFlavors(group)) {
-    const remaining = await pizzaFlavorChoices(product.pizzaKind, picked);
+    // Não lista a própria pizza do cardápio nem sabores já marcados nesta montagem.
+    const remaining = await pizzaFlavorChoices(product.pizzaKind, [
+      product.id,
+      ...picked,
+    ]);
     if (!remaining.length) return true;
 
     const listTitle =
@@ -866,10 +870,10 @@ async function groupWantingMore(product: Product, drafts: CartSelection[]) {
       continue;
     }
     if (usesCatalogFlavors(group)) {
-      const remaining = await pizzaFlavorChoices(
-        product.pizzaKind,
-        draft.options.map((option) => option.id),
-      );
+      const remaining = await pizzaFlavorChoices(product.pizzaKind, [
+        product.id,
+        ...draft.options.map((option) => option.id),
+      ]);
       if (remaining.length) return group;
       continue;
     }
@@ -1292,9 +1296,9 @@ export async function handleIncomingMessage(input: {
       let option =
         group?.options.find((item) => item.id === optionId) ?? null;
       if (group && usesCatalogFlavors(group) && !option) {
-        const pizza = (await pizzaFlavorChoices(product.pizzaKind)).find(
-          (item) => item.id === optionId,
-        );
+        const pizza = (
+          await pizzaFlavorChoices(product.pizzaKind, [product.id])
+        ).find((item) => item.id === optionId);
         if (pizza) {
           option = { id: pizza.id, name: pizza.name, extraPrice: 0, sortOrder: 0, active: true };
         }
