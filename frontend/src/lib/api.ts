@@ -276,7 +276,13 @@ export const api = {
     page = 1,
     limit = PAGE_SIZE,
     silent = false,
-    filters?: { q?: string; status?: string; fulfillment?: string },
+    filters?: {
+      q?: string;
+      status?: string;
+      fulfillment?: string;
+      from?: string;
+      to?: string;
+    },
   ) =>
     request<PageResult<Order>>(
       withQuery("/api/orders", {
@@ -285,6 +291,8 @@ export const api = {
         q: filters?.q,
         status: filters?.status,
         fulfillment: filters?.fulfillment,
+        from: filters?.from,
+        to: filters?.to,
       }),
       { silent },
     ),

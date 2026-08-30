@@ -4,7 +4,11 @@ import {
   listOrdersPage,
   updateOrderStatus,
 } from "../data/repository.js";
-import { parseOptionalText, parseSearch } from "../lib/filters.js";
+import {
+  parseDateDay,
+  parseOptionalText,
+  parseSearch,
+} from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { notifyCustomerOrderStatus } from "../lib/orderNotify.js";
 import type { OrderStatus } from "../types.js";
@@ -26,11 +30,20 @@ ordersRouter.get("/stats", async (_req, res) => {
 
 ordersRouter.get("/", async (req, res) => {
   const { page, limit } = parsePageQuery(req.query);
+  let fromDay = parseOptionalText(req.query.from ?? req.query.createdFrom);
+  let toDay = parseOptionalText(req.query.to ?? req.query.createdTo);
+  if (fromDay && toDay && fromDay > toDay) {
+    const swap = fromDay;
+    fromDay = toDay;
+    toDay = swap;
+  }
   res.json(
     await listOrdersPage(page, limit, {
       q: parseSearch(req.query.q),
       status: parseOptionalText(req.query.status),
       fulfillment: parseOptionalText(req.query.fulfillment),
+      createdFrom: parseDateDay(fromDay, false),
+      createdTo: parseDateDay(toDay, true),
     }),
   );
 });

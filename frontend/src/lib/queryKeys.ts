@@ -53,7 +53,13 @@ export const queryKeys = {
     list: (
       page: number,
       limit: number,
-      filters: { q?: string; status?: string; fulfillment?: string },
+      filters: {
+        q?: string;
+        status?: string;
+        fulfillment?: string;
+        from?: string;
+        to?: string;
+      },
     ) => ["orders", "list", page, limit, filters] as const,
   },
 };
@@ -62,4 +68,6 @@ export type OrderListFilters = {
   q?: string;
   status?: Order["status"];
   fulfillment?: Order["fulfillment"];
+  from?: string;
+  to?: string;
 };

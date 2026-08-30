@@ -790,10 +790,20 @@ export const memoryStore = {
 
   listOrdersPage(page: number, limit: number, filter: OrderFilter = {}) {
     const query = filter.q?.toLowerCase();
+    const fromMs = filter.createdFrom
+      ? Date.parse(filter.createdFrom)
+      : Number.NaN;
+    const toMs = filter.createdTo ? Date.parse(filter.createdTo) : Number.NaN;
     const items = this.listOrders().filter((order) => {
       if (filter.status && order.status !== filter.status) return false;
       if (filter.fulfillment && order.fulfillment !== filter.fulfillment) {
         return false;
+      }
+      if (Number.isFinite(fromMs) || Number.isFinite(toMs)) {
+        const created = Date.parse(order.createdAt);
+        if (!Number.isFinite(created)) return false;
+        if (Number.isFinite(fromMs) && created < fromMs) return false;
+        if (Number.isFinite(toMs) && created > toMs) return false;
       }
       if (!query) return true;
       const haystack = [

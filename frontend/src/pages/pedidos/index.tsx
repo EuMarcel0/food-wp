@@ -5,8 +5,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Select, Table, Tag, Tooltip } from "antd";
+import { Button, DatePicker, Input, Select, Table, Tag, Tooltip } from "antd";
 import { FileTextOutlined } from "@ant-design/icons";
+import type { Dayjs } from "dayjs";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -54,14 +55,25 @@ export function OrdersPage() {
   const [fulfillment, setFulfillment] = useState<
     Order["fulfillment"] | undefined
   >();
+  const [dateRange, setDateRange] = useState<
+    [Dayjs | null, Dayjs | null] | null
+  >(null);
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const q = useDebouncedValue(qInput.trim(), 300);
-  const filters = { q: q || undefined, status, fulfillment };
-  const activeCount = [q, status, fulfillment].filter(Boolean).length;
+  const from = dateRange?.[0]?.format("YYYY-MM-DD");
+  const to = dateRange?.[1]?.format("YYYY-MM-DD");
+  const filters = {
+    q: q || undefined,
+    status,
+    fulfillment,
+    from: from || undefined,
+    to: to || undefined,
+  };
+  const activeCount = [q, status, fulfillment, from, to].filter(Boolean).length;
 
   useEffect(() => {
     setPage(1);
-  }, [q, status, fulfillment]);
+  }, [q, status, fulfillment, from, to]);
 
   const listQuery = useQuery({
     queryKey: queryKeys.orders.list(page, limit, filters),
@@ -177,6 +189,7 @@ export function OrdersPage() {
           setQInput("");
           setStatus(undefined);
           setFulfillment(undefined);
+          setDateRange(null);
         }}
       >
         <Input.Search
@@ -204,6 +217,13 @@ export function OrdersPage() {
             { value: "delivery", label: "Entrega" },
             { value: "pickup", label: "Retirada" },
           ]}
+        />
+        <DatePicker.RangePicker
+          allowClear
+          format="DD/MM/YYYY"
+          placeholder={["Data início", "Data fim"]}
+          value={dateRange}
+          onChange={(dates) => setDateRange(dates)}
         />
       </ListFilters>
       <FillTable

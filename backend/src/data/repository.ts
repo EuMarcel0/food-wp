@@ -1566,6 +1566,12 @@ export async function listOrdersPage(
     .order("created_at", { ascending: false });
   if (filter.status) query = query.eq("status", filter.status);
   if (filter.fulfillment) query = query.eq("fulfillment", filter.fulfillment);
+  if (filter.createdFrom) {
+    query = query.gte("created_at", filter.createdFrom);
+  }
+  if (filter.createdTo) {
+    query = query.lte("created_at", filter.createdTo);
+  }
   if (filter.q) {
     query = query.or(
       `code.ilike.%${filter.q}%,address_text.ilike.%${filter.q}%`,
