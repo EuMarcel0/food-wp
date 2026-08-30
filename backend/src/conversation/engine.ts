@@ -1,8 +1,5 @@
 import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
-import {
-  closedStoreMessage,
-  isStoreOpen,
-} from "../lib/businessHours.js";
+import { closedStoreMessage, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
 import {
@@ -16,7 +13,7 @@ import {
   listCrusts,
   listProducts,
   saveConversation,
-  upsertCustomer,
+  upsertCustomer
 } from "../data/repository.js";
 import { describeOrderStatus, formatPrepDuration } from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
@@ -40,7 +37,7 @@ import {
   usesCatalogFlavors,
   variantPriceLabel,
   variantPrompt,
-  activeGroups,
+  activeGroups
 } from "./assemble.js";
 import type {
   CartItem,
@@ -55,7 +52,7 @@ import type {
   PizzaKind,
   Product,
   ProductOptionGroup,
-  Store,
+  Store
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
@@ -77,16 +74,12 @@ function normalize(text: string) {
     .toLowerCase();
 }
 
-function findVariant(
-  incoming: string,
-  normalized: string,
-  groups: ProductOptionGroup[],
-) {
+function findVariant(incoming: string, normalized: string, groups: ProductOptionGroup[]) {
   if (incoming.startsWith("var:")) {
-    const match = groups.find((group) => group.id === incoming.slice(4));
+    const match = groups.find(group => group.id === incoming.slice(4));
     if (match) return match;
   }
-  return groups.find((group) => {
+  return groups.find(group => {
     const name = normalize(group.name);
     return normalized === name || normalized.startsWith(`${name} `);
   });
@@ -109,14 +102,11 @@ function ensureDraftSelection(
   product: Product,
   group: ProductOptionGroup,
   drafts: CartSelection[],
-  options: CartSelection["options"] = [],
+  options: CartSelection["options"] = []
 ): CartSelection {
-  const existing = drafts.find((item) => item.groupId === group.id);
+  const existing = drafts.find(item => item.groupId === group.id);
   if (existing) {
-    if (
-      isSizeGroup(group) &&
-      !(typeof existing.basePrice === "number" && existing.basePrice > 0)
-    ) {
+    if (isSizeGroup(group) && !(typeof existing.basePrice === "number" && existing.basePrice > 0)) {
       existing.basePrice = sizePrice(product, group);
     }
     if (!existing.groupName) existing.groupName = group.name;
@@ -127,28 +117,22 @@ function ensureDraftSelection(
     groupName: group.name,
     priceMode: group.priceMode,
     options,
-    ...(isSizeGroup(group) ? { basePrice: sizePrice(product, group) } : {}),
+    ...(isSizeGroup(group) ? { basePrice: sizePrice(product, group) } : {})
   };
   drafts.push(created);
   return created;
 }
 
 function cartTotal(context: ConversationContext) {
-  return context.cart.reduce(
-    (sum, item) => sum + item.quantity * item.unitPriceCents,
-    0,
-  );
+  return context.cart.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
 }
 
 function itemHeading(
   item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity">,
-  opts?: { withQuantity?: boolean },
+  opts?: { withQuantity?: boolean }
 ) {
   const title = item.catalogName?.trim() || item.name;
-  const heading =
-    opts?.withQuantity && item.quantity > 0
-      ? `*${item.quantity}x ${title}*`
-      : `*${title}*`;
+  const heading = opts?.withQuantity && item.quantity > 0 ? `*${item.quantity}x ${title}*` : `*${title}*`;
   const lines = [heading];
   // Tamanho/sabores logo abaixo do nome do cardápio (sem quantidade).
   if (item.name !== title) lines.push(item.name);
@@ -179,24 +163,20 @@ function renderCart(context: ConversationContext) {
 }
 
 function isSkipStep(incoming: string, normalized: string) {
-  if (
-    incoming === "skip_group" ||
-    incoming === "done_options" ||
-    normalized === "pular" ||
-    normalized === "pronto"
-  ) {
+  if (incoming === "skip_group" || incoming === "done_options" || normalized === "pular" || normalized === "pronto") {
     return true;
   }
-  const last = normalized.split(/[\n/|]+/).pop()?.trim() ?? "";
+  const last =
+    normalized
+      .split(/[\n/|]+/)
+      .pop()
+      ?.trim() ?? "";
   return last === "pular" || last === "pronto";
 }
 
 function isSkipNote(incoming: string, normalized: string) {
   return (
-    incoming === "skip_note" ||
-    normalized === "pular" ||
-    normalized === "sem observacao" ||
-    normalized === "nenhuma"
+    incoming === "skip_note" || normalized === "pular" || normalized === "sem observacao" || normalized === "nenhuma"
   );
 }
 
@@ -207,20 +187,12 @@ function clipNote(raw: string) {
 async function productAddons(product: Product) {
   if (!product.addonsEnabled) return [];
   const linked = (product.addons ?? [])
-    .filter((addon) => addon.active)
-    .sort(
-      (left, right) =>
-        left.sortOrder - right.sortOrder ||
-        left.name.localeCompare(right.name, "pt-BR"),
-    );
+    .filter(addon => addon.active)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"));
   if (linked.length) return linked;
   return (await listAddons())
-    .filter((addon) => addon.active)
-    .sort(
-      (left, right) =>
-        left.sortOrder - right.sortOrder ||
-        left.name.localeCompare(right.name, "pt-BR"),
-    );
+    .filter(addon => addon.active)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"));
 }
 
 async function productHasAddons(product: Product) {
@@ -228,30 +200,27 @@ async function productHasAddons(product: Product) {
 }
 
 function addonStepDone(drafts?: CartSelection[]) {
-  return (drafts ?? []).some((item) => item.groupId === ADDON_GROUP_ID);
+  return (drafts ?? []).some(item => item.groupId === ADDON_GROUP_ID);
 }
 
 function draftAddon(drafts?: CartSelection[]) {
-  return (drafts ?? []).find((item) => item.groupId === ADDON_GROUP_ID);
+  return (drafts ?? []).find(item => item.groupId === ADDON_GROUP_ID);
 }
 
 function pickedAddonIds(drafts?: CartSelection[]) {
-  return new Set(draftAddon(drafts)?.options.map((option) => option.id) ?? []);
+  return new Set(draftAddon(drafts)?.options.map(option => option.id) ?? []);
 }
 
 async function remainingAddons(product: Product, drafts?: CartSelection[]) {
   const picked = pickedAddonIds(drafts);
-  return (await productAddons(product)).filter((addon) => !picked.has(addon.id));
+  return (await productAddons(product)).filter(addon => !picked.has(addon.id));
 }
 
-function addDraftAddon(
-  drafts: CartSelection[],
-  addon: { id: string; name: string; price: number },
-) {
-  const others = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
+function addDraftAddon(drafts: CartSelection[], addon: { id: string; name: string; price: number }) {
+  const others = drafts.filter(item => item.groupId !== ADDON_GROUP_ID);
   const current = draftAddon(drafts);
   const options = [...(current?.options ?? [])];
-  if (!options.some((option) => option.id === addon.id)) {
+  if (!options.some(option => option.id === addon.id)) {
     options.push({ id: addon.id, name: addon.name, extraPrice: addon.price });
   }
   return [
@@ -261,15 +230,15 @@ function addDraftAddon(
       groupName: "Adicional",
       priceMode: "addon" as const,
       options,
-      skipped: false,
-    },
+      skipped: false
+    }
   ];
 }
 
 function skipDraftAddon(drafts: CartSelection[]) {
   const current = draftAddon(drafts);
   if (current?.options.length) return drafts;
-  const others = drafts.filter((item) => item.groupId !== ADDON_GROUP_ID);
+  const others = drafts.filter(item => item.groupId !== ADDON_GROUP_ID);
   return [
     ...others,
     {
@@ -277,17 +246,17 @@ function skipDraftAddon(drafts: CartSelection[]) {
       groupName: "Adicional",
       priceMode: "addon" as const,
       options: [],
-      skipped: true,
-    },
+      skipped: true
+    }
   ];
 }
 
 function crustStepDone(drafts?: CartSelection[]) {
-  return (drafts ?? []).some((item) => item.groupId === CRUST_GROUP_ID);
+  return (drafts ?? []).some(item => item.groupId === CRUST_GROUP_ID);
 }
 
 function setDraftCrust(drafts: CartSelection[], crust: Crust) {
-  const others = drafts.filter((item) => item.groupId !== CRUST_GROUP_ID);
+  const others = drafts.filter(item => item.groupId !== CRUST_GROUP_ID);
   return [
     ...others,
     {
@@ -298,41 +267,32 @@ function setDraftCrust(drafts: CartSelection[], crust: Crust) {
         {
           id: crust.id,
           name: crust.name,
-          extraPrice: crust.addsPrice ? crust.price : 0,
-        },
+          extraPrice: crust.addsPrice ? crust.price : 0
+        }
       ],
-      skipped: false,
-    },
+      skipped: false
+    }
   ];
 }
 
 async function askCrusts(to: string, product: Product, crusts: Crust[]) {
   const visible = crusts.slice(0, 10);
-  await sendList(
-    to,
-    `*${product.name}*\nEscolha a borda.`,
-    "Ver bordas",
-    [
-      {
-        title: "Bordas",
-        rows: visible.map((crust) => ({
-          id: `crust:${crust.id}`,
-          title: crust.name.slice(0, 24),
-          ...(crust.addsPrice && crust.price > 0
-            ? { description: `+ ${formatReais(crust.price)}` }
-            : {}),
-        })),
-      },
-    ],
-  );
+  await sendList(to, `*${product.name}*\nEscolha a borda.`, "Ver bordas", [
+    {
+      title: "Bordas",
+      rows: visible.map(crust => ({
+        id: `crust:${crust.id}`,
+        title: crust.name.slice(0, 24),
+        ...(crust.addsPrice && crust.price > 0 ? { description: `+ ${formatReais(crust.price)}` } : {})
+      }))
+    }
+  ]);
 }
 
 function commitDraftToCart(context: ConversationContext) {
   const added = context.draftItem;
   if (!added) return null;
-  const already = context.cart.find(
-    (item) => selectionKey(item) === selectionKey(added),
-  );
+  const already = context.cart.find(item => selectionKey(item) === selectionKey(added));
   if (already) already.quantity += added.quantity;
   else context.cart.push(added);
   context.draftItem = undefined;
@@ -345,19 +305,11 @@ function commitDraftToCart(context: ConversationContext) {
 const CART_ACTIONS = [
   { id: "order", title: "Adicionar mais" },
   { id: "checkout", title: "Fechar pedido" },
-  { id: "clear_cart", title: "Limpar carrinho" },
+  { id: "clear_cart", title: "Limpar carrinho" }
 ] as const;
 
-async function showCartPrompt(
-  to: string,
-  context: ConversationContext,
-  intro = "Adicionado.",
-) {
-  await sendButtons(
-    to,
-    `${intro}\n\n${renderCart(context)}`,
-    [...CART_ACTIONS],
-  );
+async function showCartPrompt(to: string, context: ConversationContext, intro = "Adicionado.") {
+  await sendButtons(to, `${intro}\n\n${renderCart(context)}`, [...CART_ACTIONS]);
 }
 
 async function showCartAfterAdd(to: string, context: ConversationContext) {
@@ -377,7 +329,7 @@ const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_neighborhood",
   "awaiting_address",
   "awaiting_payment",
-  "awaiting_change",
+  "awaiting_change"
 ]);
 
 const RESUME_HINT = "Para continuar, use as opções desta mensagem.";
@@ -387,20 +339,13 @@ function isOrderInProgress(state: ConversationState) {
 }
 
 /** Reenvia a última etapa do pedido (botões/lista), sem avançar o fluxo. */
-async function resumeCurrentStep(
-  to: string,
-  store: Store,
-  state: ConversationState,
-  context: ConversationContext,
-) {
+async function resumeCurrentStep(to: string, store: Store, state: ConversationState, context: ConversationContext) {
   switch (state) {
     case "awaiting_product":
       await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
       return;
     case "awaiting_option": {
-      const product = context.selectedProductId
-        ? await getProduct(context.selectedProductId)
-        : null;
+      const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product || !isCustomizable(product)) {
         await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
         return;
@@ -408,20 +353,20 @@ async function resumeCurrentStep(
       const drafts = context.draftSelections ?? [];
       const openGroup = await groupWantingMore(product, drafts);
       if (openGroup) {
-        const current = drafts.find((item) => item.groupId === openGroup.id);
+        const current = drafts.find(item => item.groupId === openGroup.id);
         if (current?.options.length) {
           const shares =
             flavorShareLine(
               product.name,
-              current.options.map((item) => item.name),
-            ) || current.options.map((item) => item.name).join(" + ");
+              current.options.map(item => item.name)
+            ) || current.options.map(item => item.name).join(" + ");
           await sendButtons(
             to,
             `${RESUME_HINT}\n*${usesCatalogFlavors(openGroup) ? "Sabores" : openGroup.name}:*\n${shares}`,
             [
               { id: "more_options", title: "Mais um" },
-              { id: "done_options", title: "Pronto" },
-            ],
+              { id: "done_options", title: "Pronto" }
+            ]
           );
           return;
         }
@@ -431,9 +376,7 @@ async function resumeCurrentStep(
       return;
     }
     case "awaiting_crust": {
-      const product = context.selectedProductId
-        ? await getProduct(context.selectedProductId)
-        : null;
+      const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       const crusts = await listCrusts();
       if (!product) {
         await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
@@ -448,9 +391,7 @@ async function resumeCurrentStep(
       return;
     }
     case "awaiting_addon": {
-      const product = context.selectedProductId
-        ? await getProduct(context.selectedProductId)
-        : null;
+      const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product) {
         await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
         return;
@@ -460,9 +401,7 @@ async function resumeCurrentStep(
       return;
     }
     case "awaiting_quantity": {
-      const product = context.selectedProductId
-        ? await getProduct(context.selectedProductId)
-        : null;
+      const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product) {
         await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
         return;
@@ -485,21 +424,14 @@ async function resumeCurrentStep(
       await askOrderNote(to);
       return;
     case "awaiting_fulfillment":
-      await askFulfillment(
-        to,
-        store,
-        `${RESUME_HINT}\n\n${renderCart(context)}`,
-      );
+      await askFulfillment(to, store, `${RESUME_HINT}\n\n${renderCart(context)}`);
       return;
     case "awaiting_neighborhood":
       await sendText(to, RESUME_HINT);
       await askNeighborhoods(to, store);
       return;
     case "awaiting_address": {
-      const zone =
-        (store.neighborhoods ?? []).find(
-          (item) => item.id === context.neighborhoodId,
-        ) ?? null;
+      const zone = (store.neighborhoods ?? []).find(item => item.id === context.neighborhoodId) ?? null;
       await sendText(to, RESUME_HINT);
       await goToAddress(to, zone);
       return;
@@ -522,16 +454,10 @@ async function resumeCurrentStep(
  * Foto, áudio, documento etc.: se há pedido em andamento, mantém a etapa;
  * senão, avisa que só texto/botões são aceitos.
  */
-export async function handleUnsupportedInbound(input: {
-  from: string;
-  name?: string;
-}) {
+export async function handleUnsupportedInbound(input: { from: string; name?: string }) {
   const store = await getStore();
   if (!isStoreOpen(store.businessHours, store.timezone)) {
-    await sendText(
-      input.from,
-      closedStoreMessage(store.name, store.businessHours),
-    );
+    await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
     return;
   }
   const customer = await upsertCustomer(input.from, input.name);
@@ -544,7 +470,7 @@ export async function handleUnsupportedInbound(input: {
   }
   await sendText(
     input.from,
-    "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\n\nPara continuar, responda *por texto* ou toque nas opções da última mensagem.",
+    "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\n\nPara continuar, responda *por texto* ou toque nas opções da última mensagem."
   );
 }
 
@@ -557,11 +483,11 @@ async function askItemNote(to: string, item: CartItem) {
       ...lines,
       itemPriceLine(item),
       "Ex.: sem cebola, bem assada.",
-      "Se não quiser, toque em *Pular*.",
+      "Se não quiser, toque em *Pular*."
     ]
       .filter(Boolean)
       .join("\n"),
-    [{ id: "skip_note", title: "Pular" }],
+    [{ id: "skip_note", title: "Pular" }]
   );
 }
 
@@ -569,11 +495,15 @@ async function askOrderNote(to: string) {
   await sendButtons(
     to,
     "Observação para *entrega*?\nEx.: interfone 12, não bater na porta.\nSe não quiser, toque em *Pular*.",
-    [{ id: "skip_note", title: "Pular" }],
+    [{ id: "skip_note", title: "Pular" }]
   );
 }
 
-async function askFulfillment(to: string, store: { deliveryEnabled: boolean; pickupEnabled: boolean }, cartText: string) {
+async function askFulfillment(
+  to: string,
+  store: { deliveryEnabled: boolean; pickupEnabled: boolean },
+  cartText: string
+) {
   const buttons = [];
   if (store.deliveryEnabled) buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
   if (store.pickupEnabled) buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
@@ -581,60 +511,42 @@ async function askFulfillment(to: string, store: { deliveryEnabled: boolean; pic
 }
 
 async function askNeighborhoods(to: string, store: Store) {
-  const zones = [...(store.neighborhoods ?? [])].sort((left, right) =>
-    left.name.localeCompare(right.name, "pt-BR"),
-  );
+  const zones = [...(store.neighborhoods ?? [])].sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
   const sections = [];
   for (let index = 0; index < zones.length; index += 10) {
     const chunk = zones.slice(index, index + 10);
     sections.push({
       title: zones.length > 10 ? `Bairros ${Math.floor(index / 10) + 1}` : "Bairros",
-      rows: chunk.map((zone) => ({
+      rows: chunk.map(zone => ({
         id: `nbh:${zone.id}`,
         title: zone.name,
-        description: formatBRL(zone.feeCents),
-      })),
+        description: formatBRL(zone.feeCents)
+      }))
     });
   }
-  await sendList(
-    to,
-    "Escolha o bairro da entrega. A taxa já aparece em cada opção.",
-    "Ver bairros",
-    sections,
-  );
+  await sendList(to, "Escolha o bairro da entrega. A taxa já aparece em cada opção.", "Ver bairros", sections);
 }
 
-function findNeighborhood(
-  incoming: string,
-  normalized: string,
-  zones: DeliveryNeighborhood[],
-) {
+function findNeighborhood(incoming: string, normalized: string, zones: DeliveryNeighborhood[]) {
   if (incoming.startsWith("nbh:")) {
     const id = incoming.slice(4);
-    return zones.find((zone) => zone.id === id) ?? null;
+    return zones.find(zone => zone.id === id) ?? null;
   }
-  return zones.find((zone) => normalize(zone.name) === normalized) ?? null;
+  return zones.find(zone => normalize(zone.name) === normalized) ?? null;
 }
 
 async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
   const intro = [
-    zone
-      ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`
-      : null,
+    zone ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
     "Qual o endereço completo da entrega?",
-    "Pode escrever a rua e o número ou, no celular, compartilhar a localização pelo clipe.",
+    "Pode escrever a rua e o número ou, no celular, compartilhar a localização pelo clipe."
   ]
     .filter(Boolean)
     .join("\n");
   await sendText(to, intro);
 }
 
-function formatLocation(location: {
-  latitude: number;
-  longitude: number;
-  name?: string;
-  address?: string;
-}) {
+function formatLocation(location: { latitude: number; longitude: number; name?: string; address?: string }) {
   const maps = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
   const label = location.address?.trim() || location.name?.trim();
   return label ? `${label}\n${maps}` : maps;
@@ -658,13 +570,11 @@ const PAYMENT_ROWS = [
   { id: "pay:pix", title: "Pix" },
   { id: "pay:cash", title: "Dinheiro" },
   { id: "pay:credit", title: "Cartão crédito" },
-  { id: "pay:debit", title: "Cartão débito" },
+  { id: "pay:debit", title: "Cartão débito" }
 ];
 
 async function askPayment(to: string, intro = "Como deseja pagar?") {
-  await sendList(to, intro, "Ver opções", [
-    { title: "Pagamento", rows: PAYMENT_ROWS },
-  ]);
+  await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows: PAYMENT_ROWS }]);
 }
 
 function parsePayment(incoming: string, normalized: string): PaymentMethod | "card_ambiguous" | null {
@@ -672,20 +582,10 @@ function parsePayment(incoming: string, normalized: string): PaymentMethod | "ca
   const value = normalize(raw.replace(/_/g, " "));
   if (value === "pix") return "pix";
   if (value === "cash" || value === "dinheiro") return "cash";
-  if (
-    value === "credit" ||
-    value === "credito" ||
-    value === "cartao credito" ||
-    value === "cartao de credito"
-  ) {
+  if (value === "credit" || value === "credito" || value === "cartao credito" || value === "cartao de credito") {
     return "credit";
   }
-  if (
-    value === "debit" ||
-    value === "debito" ||
-    value === "cartao debito" ||
-    value === "cartao de debito"
-  ) {
+  if (value === "debit" || value === "debito" || value === "cartao debito" || value === "cartao de debito") {
     return "debit";
   }
   if (value === "card" || value === "cartao") return "card_ambiguous";
@@ -701,7 +601,9 @@ function paymentLabel(method: PaymentMethod) {
 }
 
 function parseChangeCents(text: string): number | null {
-  const normalized = normalize(text).replace(/[!?.,]+$/g, "").trim();
+  const normalized = normalize(text)
+    .replace(/[!?.,]+$/g, "")
+    .trim();
   if (["sem troco", "nao precisa", "zero", "0"].includes(normalized)) {
     return 0;
   }
@@ -721,10 +623,7 @@ function parseChangeCents(text: string): number | null {
 }
 
 async function askChange(to: string, totalCents: number) {
-  await sendText(
-    to,
-    `Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`,
-  );
+  await sendText(to, `Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`);
 }
 
 function orderTotalCents(store: Store, context: ConversationContext) {
@@ -732,7 +631,7 @@ function orderTotalCents(store: Store, context: ConversationContext) {
     context.fulfillment === "delivery"
       ? resolveDeliveryFee(store, {
           neighborhoodId: context.neighborhoodId,
-          address: context.addressText,
+          address: context.addressText
         }).cents
       : 0;
   return cartTotal(context) + deliveryFee;
@@ -744,13 +643,13 @@ async function showWelcome(to: string, storeName: string) {
     [
       `Olá! Bem-vindo à *${storeName}*.`,
       "Posso te ajudar com o cardápio, um novo pedido ou o status de um pedido.",
-      'Caso queira encerrar a conversa sem finalizar o pedido, digite *Sair*.',
+      "Caso queira encerrar a conversa sem finalizar o pedido, digite *Sair*."
     ].join("\n"),
     [
       { id: "menu", title: "Ver cardápio" },
       { id: "order", title: "Fazer pedido" },
-      { id: "status", title: "Status do pedido" },
-    ],
+      { id: "status", title: "Status do pedido" }
+    ]
   );
 }
 
@@ -765,13 +664,11 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
 
   const sections = [...grouped.entries()].map(([title, items]) => ({
     title,
-    rows: items.map((product) => ({
+    rows: items.map(product => ({
       id: `product:${product.id}`,
       title: product.name,
-      ...(product.customizable
-        ? {}
-        : { description: formatReais(product.price) }),
-    })),
+      ...(product.customizable ? {} : { description: formatReais(product.price) })
+    }))
   }));
 
   if (!sections.length) {
@@ -782,11 +679,7 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
   await sendList(to, intro, "Ver itens", sections);
 }
 
-async function askAssembly(
-  to: string,
-  product: Product,
-  context: ConversationContext,
-) {
+async function askAssembly(to: string, product: Product, context: ConversationContext) {
   const next = nextAssembly(product, context.draftSelections ?? []);
   if (next.type === "done") return true;
 
@@ -794,12 +687,12 @@ async function askAssembly(
     await sendList(to, variantPrompt(product), "Tamanhos", [
       {
         title: "Tamanhos",
-        rows: next.groups.slice(0, 10).map((group) => ({
+        rows: next.groups.slice(0, 10).map(group => ({
           id: `var:${group.id}`,
           title: group.name.slice(0, 24),
-          description: variantPriceLabel(product, group),
-        })),
-      },
+          description: variantPriceLabel(product, group)
+        }))
+      }
     ]);
     return false;
   }
@@ -808,82 +701,59 @@ async function askAssembly(
   return askGroupOptions(to, product, group, context.draftSelections ?? []);
 }
 
-async function pizzaFlavorChoices(
-  kind: PizzaKind | null | undefined,
-  excludeIds: string[] = [],
-) {
+async function pizzaFlavorChoices(kind: PizzaKind | null | undefined, excludeIds: string[] = []) {
   const blocked = new Set(excludeIds);
-  return (await listProducts()).filter((item) => {
+  return (await listProducts()).filter(item => {
     if (!item.customizable || !item.active || blocked.has(item.id)) return false;
     if (!kind) return true;
     return item.pizzaKind === kind;
   });
 }
 
-async function askGroupOptions(
-  to: string,
-  product: Product,
-  group: ProductOptionGroup,
-  drafts: CartSelection[],
-) {
-  const current = drafts.find((item) => item.groupId === group.id);
-  const picked = current?.options.map((option) => option.id) ?? [];
-  const pickedNames = current?.options.map((option) => option.name) ?? [];
+async function askGroupOptions(to: string, product: Product, group: ProductOptionGroup, drafts: CartSelection[]) {
+  const current = drafts.find(item => item.groupId === group.id);
+  const picked = current?.options.map(option => option.id) ?? [];
+  const pickedNames = current?.options.map(option => option.name) ?? [];
 
   if (usesCatalogFlavors(group)) {
     // Não lista a própria pizza do cardápio nem sabores já marcados nesta montagem.
-    const remaining = await pizzaFlavorChoices(product.pizzaKind, [
-      product.id,
-      ...picked,
-    ]);
+    const remaining = await pizzaFlavorChoices(product.pizzaKind, [product.id, ...picked]);
     if (!remaining.length) return true;
 
-    await sendList(
-      to,
-      groupPrompt(product, group, picked, pickedNames),
-      "Escolha o sabor",
-      [
-        {
-          title: "Sabores",
-          rows: remaining.slice(0, 10).map((pizza) => ({
-            id: `flavor:${pizza.id}`,
-            title: pizza.name.slice(0, 24),
-          })),
-        },
-      ],
-    );
+    await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolha o sabor", [
+      {
+        title: "Sabores",
+        rows: remaining.slice(0, 10).map(pizza => ({
+          id: `flavor:${pizza.id}`,
+          title: pizza.name.slice(0, 24)
+        }))
+      }
+    ]);
     if (picked.length === 0) {
       await sendButtons(to, "Pode seguir só com este sabor ou escolher outro.", [
-        { id: "skip_group", title: "Só este sabor" },
+        { id: "skip_group", title: "Só este sabor" }
       ]);
     }
     return false;
   }
 
-  const remaining = group.options.filter((option) => !picked.includes(option.id));
+  const remaining = group.options.filter(option => !picked.includes(option.id));
   if (!remaining.length) return true;
 
-  await sendList(
-    to,
-    groupPrompt(product, group, picked, pickedNames),
-    "Escolher",
-    [
-      {
-        title: group.name.slice(0, 24),
-        rows: remaining.slice(0, 10).map((option) => ({
-          id: `opt:${option.id}`,
-          title: option.name.slice(0, 24),
-          ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
-            ? {}
-            : { description: optionDescription(option.extraPrice) }),
-        })),
-      },
-    ],
-  );
+  await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolher", [
+    {
+      title: group.name.slice(0, 24),
+      rows: remaining.slice(0, 10).map(option => ({
+        id: `opt:${option.id}`,
+        title: option.name.slice(0, 24),
+        ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
+          ? {}
+          : { description: optionDescription(option.extraPrice) })
+      }))
+    }
+  ]);
   if (!group.required && picked.length === 0) {
-    await sendButtons(to, "Esta etapa é opcional.", [
-      { id: "skip_group", title: "Pular" },
-    ]);
+    await sendButtons(to, "Esta etapa é opcional.", [{ id: "skip_group", title: "Pular" }]);
   }
   return false;
 }
@@ -892,20 +762,20 @@ async function groupWantingMore(product: Product, drafts: CartSelection[]) {
   const groups = activeGroups(product);
   for (let index = drafts.length - 1; index >= 0; index -= 1) {
     const draft = drafts[index];
-    const group = groups.find((item) => item.id === draft.groupId);
+    const group = groups.find(item => item.id === draft.groupId);
     if (!group || draft.skipped || draft.options.length >= group.maxSelect) {
       continue;
     }
     if (usesCatalogFlavors(group)) {
       const remaining = await pizzaFlavorChoices(product.pizzaKind, [
         product.id,
-        ...draft.options.map((option) => option.id),
+        ...draft.options.map(option => option.id)
       ]);
       if (remaining.length) return group;
       continue;
     }
-    const picked = new Set(draft.options.map((option) => option.id));
-    if (group.options.some((option) => !picked.has(option.id))) return group;
+    const picked = new Set(draft.options.map(option => option.id));
+    if (group.options.some(option => !picked.has(option.id))) return group;
   }
   return null;
 }
@@ -918,19 +788,15 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
     variant !== product.name ? variant : null,
     crustLabel(extras),
     addonLabel(extras),
-    formatReais(price / 100),
+    formatReais(price / 100)
   ]
     .filter(Boolean)
     .join("\n");
-  await sendButtons(
-    to,
-    `${heading}\nQuantas unidades?\nOu digite um número.`,
-    [
-      { id: "qty:1", title: "1" },
-      { id: "qty:2", title: "2" },
-      { id: "qty:3", title: "3" },
-    ],
-  );
+  await sendButtons(to, `${heading}\nQuantas unidades?\nOu digite um número.`, [
+    { id: "qty:1", title: "1" },
+    { id: "qty:2", title: "2" },
+    { id: "qty:3", title: "3" }
+  ]);
 }
 
 async function askAddons(to: string, product: Product, drafts?: CartSelection[]) {
@@ -940,57 +806,49 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
   const picked = draftAddon(drafts)?.options.map(addonOptionLabel) ?? [];
   const prompt = [
     `*${product.name}*`,
-    picked.length
-      ? `Adicionais: ${picked.join(", ")}`
-      : "Escolha um adicional",
-    picked.length ? "Quer outro adicional?" : "",
+    picked.length ? `Adicionais: ${picked.join(", ")}` : "Escolha um adicional",
+    picked.length ? "Quer outro adicional?" : ""
   ]
     .filter(Boolean)
     .join("\n");
 
-  const rows = remaining.slice(0, 10).map((addon) => ({
+  const rows = remaining.slice(0, 10).map(addon => ({
     id: `addon:${addon.id}`,
     title: addon.name.slice(0, 24),
-    description: `+ ${formatReais(addon.price)}`,
+    description: `+ ${formatReais(addon.price)}`
   }));
   if (!picked.length && rows.length < 10) {
     rows.push({
       id: "skip_addon",
       title: "Sem adicional",
-      description: "Pular esta etapa",
+      description: "Pular esta etapa"
     });
   }
 
   await sendList(to, prompt, "Adicionais", [
     {
       title: "Adicionais",
-      rows,
-    },
+      rows
+    }
   ]);
   if (picked.length) {
-    await sendButtons(to, "Pode marcar mais de um, um de cada vez.", [
-      { id: "done_addons", title: "Pronto" },
-    ]);
+    await sendButtons(to, "Pode marcar mais de um, um de cada vez.", [{ id: "done_addons", title: "Pronto" }]);
   }
   return false;
 }
 
 async function confirmMoreAddons(to: string, names: string[]) {
-  await sendButtons(
-    to,
-    `Adicionais: ${names.join(", ")}`,
-    [
-      { id: "more_addons", title: "Mais um" },
-      { id: "done_addons", title: "Pronto" },
-    ],
-  );
+  await sendButtons(to, `Adicionais: ${names.join(", ")}`, [
+    { id: "more_addons", title: "Mais um" },
+    { id: "done_addons", title: "Pronto" }
+  ]);
 }
 
 async function askQuantityStage(
   to: string,
   product: Product,
   context: ConversationContext,
-  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (product.crustsEnabled && !crustStepDone(context.draftSelections)) {
     const crusts = await listCrusts();
@@ -1000,10 +858,7 @@ async function askQuantityStage(
       return;
     }
   }
-  if (
-    (await productHasAddons(product)) &&
-    !addonStepDone(context.draftSelections)
-  ) {
+  if ((await productHasAddons(product)) && !addonStepDone(context.draftSelections)) {
     await persist("awaiting_addon", context);
     await askAddons(to, product, context.draftSelections);
     return;
@@ -1016,7 +871,7 @@ async function continueProductFlow(
   to: string,
   product: Product,
   context: ConversationContext,
-  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (isCustomizable(product)) {
     await persist("awaiting_option", context);
@@ -1031,7 +886,7 @@ async function finishOrder(
   store: Store,
   customer: Customer,
   context: ConversationContext,
-  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (!context.fulfillment || !context.paymentMethod) {
     await sendText(to, "Escolha Pix, dinheiro, cartão crédito ou débito.");
@@ -1041,7 +896,7 @@ async function finishOrder(
 
   const deliveryFee = resolveDeliveryFee(store, {
     neighborhoodId: context.neighborhoodId,
-    address: context.fulfillment === "delivery" ? context.addressText : undefined,
+    address: context.fulfillment === "delivery" ? context.addressText : undefined
   });
   const cartSummary = renderCart(context);
   const addressText = context.addressText;
@@ -1059,14 +914,10 @@ async function finishOrder(
     notes: context.orderNotes ?? null,
     deliveryFeeCents: context.fulfillment === "delivery" ? deliveryFee.cents : 0,
     neighborhoodId:
-      context.fulfillment === "delivery"
-        ? (deliveryFee.neighborhood?.id ?? context.neighborhoodId ?? null)
-        : null,
+      context.fulfillment === "delivery" ? (deliveryFee.neighborhood?.id ?? context.neighborhoodId ?? null) : null,
     neighborhoodName:
-      context.fulfillment === "delivery"
-        ? (deliveryFee.neighborhood?.name ?? context.neighborhoodName ?? null)
-        : null,
-    items: context.cart,
+      context.fulfillment === "delivery" ? (deliveryFee.neighborhood?.name ?? context.neighborhoodName ?? null) : null,
+    items: context.cart
   });
 
   await persist("welcome", emptyContext());
@@ -1079,11 +930,7 @@ async function finishOrder(
           ? `Taxa de entrega: ${formatBRL(deliveryFee.cents)}`
           : "Entrega sem taxa";
   const changeLine =
-    paymentMethod === "cash"
-      ? changeForCents
-        ? `Troco para ${formatBRL(changeForCents)}`
-        : "Sem troco"
-      : "";
+    paymentMethod === "cash" ? (changeForCents ? `Troco para ${formatBRL(changeForCents)}` : "Sem troco") : "";
   await sendText(
     to,
     [
@@ -1094,11 +941,11 @@ async function finishOrder(
       changeLine,
       `Total: *${formatBRL(order.totalCents)}*`,
       addressText ? `Entrega: ${addressText}` : "",
-      orderNotes ? `Obs. do pedido: ${orderNotes}` : "",
-      "Assim que o status mudar, eu te aviso por aqui.",
+      orderNotes ? `Obs. da entrega: ${orderNotes}` : "",
+      "Assim que o status mudar, eu te aviso por aqui."
     ]
       .filter(Boolean)
-      .join("\n"),
+      .join("\n")
   );
 
   // Aceite automático: vai para preparo e avisa o cliente (mesma msg do painel).
@@ -1131,10 +978,7 @@ export async function handleIncomingMessage(input: {
 
   // Loja fechada: só informa horário — sem cardápio, status, botões ou qualquer fluxo.
   if (!isStoreOpen(store.businessHours, store.timezone)) {
-    await sendText(
-      input.from,
-      closedStoreMessage(store.name, store.businessHours),
-    );
+    await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
     return;
   }
 
@@ -1142,7 +986,7 @@ export async function handleIncomingMessage(input: {
     await persist("welcome", emptyContext());
     await sendText(
       input.from,
-      "Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem.",
+      "Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."
     );
     return;
   }
@@ -1168,12 +1012,8 @@ export async function handleIncomingMessage(input: {
   const cartAddMore = state === "cart" && incoming === "order";
   const globalShortcut =
     ["menu", "status"].includes(incoming) ||
-    ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(
-      normalized,
-    ) ||
-    (!cartAddMore &&
-      (incoming === "order" ||
-        ["fazer pedido", "pedir"].includes(normalized)));
+    ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
+    (!cartAddMore && (incoming === "order" || ["fazer pedido", "pedir"].includes(normalized)));
 
   if (orderActive && globalShortcut) {
     await resumeCurrentStep(input.from, store, state, context);
@@ -1224,9 +1064,7 @@ export async function handleIncomingMessage(input: {
     await persist("awaiting_product", context);
     await showMenu(
       input.from,
-      context.cart.length
-        ? "Escolha o próximo item:"
-        : "Vamos montar seu pedido. Escolha o primeiro item:",
+      context.cart.length ? "Escolha o próximo item:" : "Vamos montar seu pedido. Escolha o primeiro item:"
     );
     return;
   }
@@ -1235,9 +1073,7 @@ export async function handleIncomingMessage(input: {
     const latest = await findLatestOrder(customer.id);
     if (latest) {
       await persist("welcome", context);
-      const lines = [
-        `Seu último pedido *#${latest.code}* está *${describeOrderStatus(latest.status)}*.`,
-      ];
+      const lines = [`Seu último pedido *#${latest.code}* está *${describeOrderStatus(latest.status)}*.`];
       if (latest.status === "preparing" && latest.prepMinutes) {
         lines.push(`Tempo estimado: ${formatPrepDuration(latest.prepMinutes)}`);
       }
@@ -1297,38 +1133,22 @@ export async function handleIncomingMessage(input: {
     }
 
     if (incoming.startsWith("flavor:") || incoming.startsWith("opt:")) {
-      const optionId = incoming.includes(":")
-        ? incoming.slice(incoming.indexOf(":") + 1)
-        : "";
+      const optionId = incoming.includes(":") ? incoming.slice(incoming.indexOf(":") + 1) : "";
       const openGroup = await groupWantingMore(product, drafts);
-      const pendingGroup =
-        pending.type === "options" ? pending.group : null;
+      const pendingGroup = pending.type === "options" ? pending.group : null;
       const group =
         (openGroup && usesCatalogFlavors(openGroup) ? openGroup : null) ??
-        (pendingGroup && usesCatalogFlavors(pendingGroup)
-          ? pendingGroup
-          : null) ??
-        (openGroup?.options.some((item) => item.id === optionId)
-          ? openGroup
-          : null) ??
-        (pendingGroup?.options.some((item) => item.id === optionId)
-          ? pendingGroup
-          : null) ??
+        (pendingGroup && usesCatalogFlavors(pendingGroup) ? pendingGroup : null) ??
+        (openGroup?.options.some(item => item.id === optionId) ? openGroup : null) ??
+        (pendingGroup?.options.some(item => item.id === optionId) ? pendingGroup : null) ??
         activeGroups(product).find(
-          (item) =>
-            item.options.some((option) => option.id === optionId) &&
-            drafts.some((draft) => draft.groupId === item.id),
+          item => item.options.some(option => option.id === optionId) && drafts.some(draft => draft.groupId === item.id)
         ) ??
-        activeGroups(product).find((item) =>
-          item.options.some((option) => option.id === optionId),
-        );
+        activeGroups(product).find(item => item.options.some(option => option.id === optionId));
 
-      let option =
-        group?.options.find((item) => item.id === optionId) ?? null;
+      let option = group?.options.find(item => item.id === optionId) ?? null;
       if (group && usesCatalogFlavors(group) && !option) {
-        const pizza = (
-          await pizzaFlavorChoices(product.pizzaKind, [product.id])
-        ).find((item) => item.id === optionId);
+        const pizza = (await pizzaFlavorChoices(product.pizzaKind, [product.id])).find(item => item.id === optionId);
         if (pizza) {
           option = { id: pizza.id, name: pizza.name, extraPrice: 0, sortOrder: 0, active: true };
         }
@@ -1339,11 +1159,11 @@ export async function handleIncomingMessage(input: {
         return;
       }
       const current = ensureDraftSelection(product, group, drafts);
-      if (!current.options.some((item) => item.id === option.id)) {
+      if (!current.options.some(item => item.id === option.id)) {
         current.options.push({
           id: option.id,
           name: option.name,
-          extraPrice: option.extraPrice,
+          extraPrice: option.extraPrice
         });
       }
       await persist("awaiting_option", context);
@@ -1355,27 +1175,24 @@ export async function handleIncomingMessage(input: {
 
       const minReached = usesCatalogFlavors(group)
         ? current.options.length >= 1
-        : current.options.length >=
-          Math.max(group.required ? 1 : 0, group.minSelect);
+        : current.options.length >= Math.max(group.required ? 1 : 0, group.minSelect);
 
       if (minReached) {
         const shares =
           flavorShareLine(
             product.name,
-            current.options.map((item) => item.name),
-          ) || current.options.map((item) => item.name).join(" + ");
+            current.options.map(item => item.name)
+          ) || current.options.map(item => item.name).join(" + ");
         const canAddMore = Boolean(await groupWantingMore(product, drafts));
         await sendButtons(
           input.from,
-          usesCatalogFlavors(group)
-            ? `*Sabores:*\n${shares}`
-            : `*${group.name}:*\n${shares}`,
+          usesCatalogFlavors(group) ? `*Sabores:*\n${shares}` : `*${group.name}:*\n${shares}`,
           canAddMore
             ? [
                 { id: "more_options", title: "Mais um" },
-                { id: "done_options", title: "Pronto" },
+                { id: "done_options", title: "Pronto" }
               ]
-            : [{ id: "done_options", title: "Pronto" }],
+            : [{ id: "done_options", title: "Pronto" }]
         );
         return;
       }
@@ -1400,11 +1217,7 @@ export async function handleIncomingMessage(input: {
 
       if (isSkipStep(incoming, normalized)) {
         const catalogFlavors = usesCatalogFlavors(group);
-        if (
-          !catalogFlavors &&
-          group.required &&
-          current.options.length < Math.max(1, group.minSelect)
-        ) {
+        if (!catalogFlavors && group.required && current.options.length < Math.max(1, group.minSelect)) {
           await resumeCurrentStep(input.from, store, state, context);
           return;
         }
@@ -1439,9 +1252,7 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_crust" && !incoming.startsWith("product:")) {
-    const product = context.selectedProductId
-      ? await getProduct(context.selectedProductId)
-      : null;
+    const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
     if (!product) {
       await persist("awaiting_product", context);
       await showMenu(input.from, "Escolha um item do cardápio:");
@@ -1455,8 +1266,8 @@ export async function handleIncomingMessage(input: {
     }
 
     const crust = incoming.startsWith("crust:")
-      ? crusts.find((item) => item.id === incoming.slice("crust:".length))
-      : crusts.find((item) => normalize(item.name) === normalized);
+      ? crusts.find(item => item.id === incoming.slice("crust:".length))
+      : crusts.find(item => normalize(item.name) === normalized);
 
     if (!crust) {
       await persist("awaiting_crust", context);
@@ -1470,9 +1281,7 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_addon" && !incoming.startsWith("product:")) {
-    const product = context.selectedProductId
-      ? await getProduct(context.selectedProductId)
-      : null;
+    const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
     if (!product) {
       await persist("awaiting_product", context);
       await showMenu(input.from, "Escolha um item do cardápio:");
@@ -1523,9 +1332,7 @@ export async function handleIncomingMessage(input: {
     const available = await productAddons(product);
     const remaining = await remainingAddons(product, drafts);
     const addonId = incoming.slice("addon:".length);
-    const addon =
-      remaining.find((item) => item.id === addonId) ??
-      available.find((item) => item.id === addonId);
+    const addon = remaining.find(item => item.id === addonId) ?? available.find(item => item.id === addonId);
 
     if (!addon) {
       await persist("awaiting_addon", context);
@@ -1536,9 +1343,7 @@ export async function handleIncomingMessage(input: {
     context.draftSelections = addDraftAddon(drafts, addon);
     await persist("awaiting_addon", context);
 
-    const names = (draftAddon(context.draftSelections)?.options ?? []).map(
-      addonOptionLabel,
-    );
+    const names = (draftAddon(context.draftSelections)?.options ?? []).map(addonOptionLabel);
     if (!(await remainingAddons(product, context.draftSelections)).length) {
       await askQuantityStage(input.from, product, context, persist);
       return;
@@ -1548,13 +1353,11 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_product") {
-    const productId = incoming.startsWith("product:")
-      ? incoming.slice("product:".length)
-      : null;
+    const productId = incoming.startsWith("product:") ? incoming.slice("product:".length) : null;
     // Lista (product:) ou nome exato do item — texto aleatório não avança.
     const product = productId
       ? await getProduct(productId)
-      : (await listProducts()).find((item) => normalize(item.name) === normalized);
+      : (await listProducts()).find(item => normalize(item.name) === normalized);
 
     if (!product) {
       await persist("awaiting_product", context);
@@ -1572,9 +1375,7 @@ export async function handleIncomingMessage(input: {
 
   if (state === "awaiting_quantity") {
     const quantity = parseQuantity(incoming);
-    const product = context.selectedProductId
-      ? await getProduct(context.selectedProductId)
-      : null;
+    const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
 
     if (!product || quantity == null) {
       await resumeCurrentStep(input.from, store, state, context);
@@ -1588,7 +1389,7 @@ export async function handleIncomingMessage(input: {
       catalogName: product.name,
       quantity,
       unitPriceCents: unitPriceCents(product, extras),
-      extras,
+      extras
     };
     context.selectedProductId = undefined;
     context.draftSelections = [];
@@ -1646,9 +1447,9 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_fulfillment") {
-    const fulfillment = (
-      incoming.startsWith("fulfillment:") ? incoming.slice("fulfillment:".length) : normalized
-    ) as Fulfillment | string;
+    const fulfillment = (incoming.startsWith("fulfillment:") ? incoming.slice("fulfillment:".length) : normalized) as
+      | Fulfillment
+      | string;
     const resolved: Fulfillment | null =
       fulfillment === "delivery" || fulfillment === "entrega"
         ? "delivery"
@@ -1714,10 +1515,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
     if (change > 0 && change < totalCents) {
-      await sendText(
-        input.from,
-        `O troco precisa ser pelo menos o total de *${formatBRL(totalCents)}*.`,
-      );
+      await sendText(input.from, `O troco precisa ser pelo menos o total de *${formatBRL(totalCents)}*.`);
       await askChange(input.from, totalCents);
       return;
     }
@@ -1733,7 +1531,7 @@ export async function handleIncomingMessage(input: {
       await persist("awaiting_payment", context);
       await sendButtons(input.from, "Qual cartão?", [
         { id: "pay:credit", title: "Crédito" },
-        { id: "pay:debit", title: "Débito" },
+        { id: "pay:debit", title: "Débito" }
       ]);
       return;
     }
@@ -1757,17 +1555,13 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_order_code") {
-    const order =
-      (await findOrderByCode(input.text.trim(), customer.id)) ??
-      (await findOrderByCode(input.text.trim()));
+    const order = (await findOrderByCode(input.text.trim(), customer.id)) ?? (await findOrderByCode(input.text.trim()));
     if (!order) {
       await sendText(input.from, "Não achei esse código. Confira e envie de novo.");
       return;
     }
     await persist("welcome", context);
-    const lines = [
-      `Pedido *#${order.code}*: *${describeOrderStatus(order.status)}*.`,
-    ];
+    const lines = [`Pedido *#${order.code}*: *${describeOrderStatus(order.status)}*.`];
     if (order.status === "preparing" && order.prepMinutes) {
       lines.push(`Tempo estimado: ${formatPrepDuration(order.prepMinutes)}`);
     }
