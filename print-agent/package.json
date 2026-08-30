@@ -1,0 +1,32 @@
+{
+  "name": "food-wp-print-agent",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Agente local de impressão ESC/POS para o PC da cozinha",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "build": "node scripts/build.mjs",
+    "build:exe": "node scripts/build.mjs",
+    "install-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-service.ps1",
+    "uninstall-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/uninstall.ps1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.5.1",
+    "esbuild": "^0.25.9"
+  },
+  "pkg": {
+    "targets": [
+      "node20-win-x64"
+    ],
+    "outputPath": "release/FoodWpPrint"
+  }
+}

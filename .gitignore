@@ -1,6 +1,8 @@
 node_modules
 dist
 dist-ssr
+print-agent/release
+print-agent/dist
 *.local
 .env
 .env.*

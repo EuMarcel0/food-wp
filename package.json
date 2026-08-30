@@ -3,12 +3,14 @@
   "private": true,
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "print-agent"
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c yellow,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "dev:api": "npm run dev -w backend",
     "dev:web": "npm run dev -w frontend",
+    "dev:print": "npm run start -w food-wp-print-agent",
     "build": "npm run build -w backend && npm run build -w frontend"
   },
   "devDependencies": {

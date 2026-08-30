@@ -1,10 +1,17 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PrinterOutlined } from "@ant-design/icons";
-import { Button, Modal } from "antd";
+import { Alert, Button, Modal } from "antd";
+import { formatCnpj } from "../../lib/format";
+import {
+  fetchPrintAgentHealth,
+  getPrintAgentToken,
+  printOrderViaAgent,
+} from "../../lib/printAgent";
+import { toast } from "../../lib/toast";
 import { ReceiptTicket } from "./ReceiptTicket";
 import type { Order, Store } from "../../types";
 
-function printTicketNode(node: HTMLElement, title: string) {
+function printTicketFallback(node: HTMLElement, title: string) {
   const win = window.open(
     "",
     "_blank",
@@ -55,14 +62,60 @@ export function ReceiptPreviewModal({
   onClose: () => void;
 }) {
   const ticketRef = useRef<HTMLDivElement>(null);
+  const [agentOnline, setAgentOnline] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
-  function handlePrint() {
-    if (!ticketRef.current || !order) return;
-    const ticket = ticketRef.current.querySelector(
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      if (!getPrintAgentToken()) {
+        if (!cancelled) setAgentOnline(false);
+        return;
+      }
+      try {
+        const health = await fetchPrintAgentHealth();
+        if (!cancelled) setAgentOnline(Boolean(health.ok));
+      } catch {
+        if (!cancelled) setAgentOnline(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  async function handlePrint() {
+    if (!order) return;
+
+    if (agentOnline && getPrintAgentToken()) {
+      setPrinting(true);
+      try {
+        await printOrderViaAgent({
+          order,
+          store: store
+            ? {
+                ...store,
+                cnpj: store.cnpj ? formatCnpj(store.cnpj) : store.cnpj,
+              }
+            : undefined,
+        });
+        toast.success("Cupom enviado para a impressora.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao imprimir no agente.",
+        );
+      } finally {
+        setPrinting(false);
+      }
+      return;
+    }
+
+    const ticket = ticketRef.current?.querySelector(
       ".receipt-ticket",
     ) as HTMLElement | null;
     if (!ticket) return;
-    printTicketNode(ticket, `Cupom #${order.code}`);
+    printTicketFallback(ticket, `Cupom #${order.code}`);
   }
 
   return (
@@ -77,7 +130,8 @@ export function ReceiptPreviewModal({
             type="primary"
             icon={<PrinterOutlined />}
             disabled={!order}
-            onClick={handlePrint}
+            loading={printing}
+            onClick={() => void handlePrint()}
           >
             Imprimir
           </Button>
@@ -87,6 +141,16 @@ export function ReceiptPreviewModal({
       centered
       destroyOnHidden
     >
+      {!agentOnline ? (
+        <Alert
+          type="warning"
+          showIcon
+          className="mb-3"
+          message="Agente de impressão offline"
+          description="Com o agente no PC da cozinha (Configurações → Impressão), o cupom sai direto na térmica sem cortar. Enquanto offline, o botão usa o diálogo do navegador."
+        />
+      ) : null}
+
       {order ? (
         <div
           ref={ticketRef}
@@ -98,8 +162,9 @@ export function ReceiptPreviewModal({
       ) : null}
 
       <p className="mb-0 mt-3 text-center text-xs text-food-muted">
-        Prévia 80 mm. No diálogo de impressão, escolha a impressora deste
-        computador (ex.: ELGIN i8).
+        {agentOnline
+          ? "Prévia 80 mm · impressão via agente local (ESC/POS)."
+          : "Prévia 80 mm · fallback: diálogo do navegador."}
       </p>
     </Modal>
   );
