@@ -141,10 +141,17 @@ function cartTotal(context: ConversationContext) {
 }
 
 function itemHeading(
-  item: Pick<CartItem, "name" | "catalogName" | "extras">,
+  item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity">,
+  opts?: { withQuantity?: boolean },
 ) {
   const title = item.catalogName?.trim() || item.name;
-  const lines = [`*${title}*`];
+  const heading =
+    opts?.withQuantity && item.quantity > 0
+      ? `*${item.quantity}x ${title}*`
+      : `*${title}*`;
+  const lines = [heading];
+  // Tamanho/sabores logo abaixo do nome do cardápio (sem quantidade).
+  if (item.name !== title) lines.push(item.name);
   const crust = crustLabel(item.extras);
   if (crust) lines.push(crust);
   const addons = addonLabel(item.extras);
@@ -152,11 +159,16 @@ function itemHeading(
   return { title, lines };
 }
 
+function itemPriceLine(item: CartItem) {
+  const unit = formatBRL(item.unitPriceCents);
+  if (item.quantity <= 1) return `Unitário ${unit}`;
+  const total = formatBRL(item.quantity * item.unitPriceCents);
+  return `Unitário ${unit} · ${item.quantity}x = ${total}`;
+}
+
 function renderCartItem(item: CartItem) {
-  const { title, lines } = itemHeading(item);
-  const detail =
-    item.name !== title ? `${item.quantity}x ${item.name}` : `${item.quantity}x`;
-  lines.push(`${detail} — ${formatBRL(item.quantity * item.unitPriceCents)}`);
+  const { lines } = itemHeading(item, { withQuantity: true });
+  lines.push(itemPriceLine(item));
   if (item.notes?.trim()) lines.push(`Obs.: ${item.notes.trim()}`);
   return lines.join("\n");
 }
@@ -537,13 +549,13 @@ export async function handleUnsupportedInbound(input: {
 }
 
 async function askItemNote(to: string, item: CartItem) {
-  const { title, lines } = itemHeading(item);
+  const { lines } = itemHeading(item, { withQuantity: true });
   await sendButtons(
     to,
     [
       "Observação para este item?",
       ...lines,
-      item.name !== title ? item.name : null,
+      itemPriceLine(item),
       "Ex.: sem cebola, bem assada.",
       "Se não quiser, toque em *Pular*.",
     ]
