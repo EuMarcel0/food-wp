@@ -6,12 +6,14 @@ export function PrepTimeModal({
   order,
   open,
   submitting,
+  defaultMinutes,
   onCancel,
   onConfirm,
 }: {
   order: Order | null;
   open: boolean;
   submitting: boolean;
+  defaultMinutes?: number | null;
   onCancel: () => void;
   onConfirm: (minutes: number) => void;
 }) {
@@ -21,10 +23,11 @@ export function PrepTimeModal({
 
   useEffect(() => {
     if (open) {
-      setMinutes(null);
+      const preset = Number(defaultMinutes);
+      setMinutes(Number.isFinite(preset) && preset >= 1 ? Math.round(preset) : null);
       setTouched(false);
     }
-  }, [open, order?.id]);
+  }, [open, order?.id, defaultMinutes]);
 
   return (
     <Modal

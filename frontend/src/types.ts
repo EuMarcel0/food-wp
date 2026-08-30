@@ -136,6 +136,8 @@ export type Store = {
   pickupEnabled: boolean;
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
+  defaultPrepMinutes: number;
+  autoAcceptOrders: boolean;
   profilePhotoUrl: string | null;
   legalName: string | null;
   cnpj: string | null;

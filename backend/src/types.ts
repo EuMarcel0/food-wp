@@ -106,6 +106,8 @@ export type Store = {
   pickupEnabled: boolean;
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
+  defaultPrepMinutes: number;
+  autoAcceptOrders: boolean;
   profilePhotoUrl: string | null;
   legalName: string | null;
   cnpj: string | null;
@@ -123,6 +125,8 @@ export type StorePatch = {
   cnpj?: string | null;
   receiptFooter?: string | null;
   businessHours?: BusinessHoursDay[] | null;
+  defaultPrepMinutes?: number;
+  autoAcceptOrders?: boolean;
 };
 
 export type Addon = {

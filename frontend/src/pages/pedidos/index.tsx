@@ -382,6 +382,7 @@ export function OrdersPage() {
         order={prepOrder}
         open={Boolean(prepOrder)}
         submitting={statusMutation.isPending && Boolean(prepOrder)}
+        defaultMinutes={storeQuery.data?.defaultPrepMinutes}
         onCancel={() => {
           if (!statusMutation.isPending) setPrepOrder(null);
         }}

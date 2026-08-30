@@ -94,6 +94,11 @@ function mapStore(row: Record<string, unknown>): Store {
     pickupEnabled: Boolean(row.pickup_enabled ?? true),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     idleTimeoutMinutes: Math.max(1, Number(row.idle_timeout_minutes ?? 60)),
+    defaultPrepMinutes: Math.min(
+      480,
+      Math.max(1, Number(row.default_prep_minutes ?? 40)),
+    ),
+    autoAcceptOrders: Boolean(row.auto_accept_orders ?? false),
     profilePhotoUrl: (row.profile_photo_url as string | null) ?? null,
     legalName: (row.legal_name as string | null) ?? null,
     cnpj: (row.cnpj as string | null) ?? null,
@@ -298,6 +303,15 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
   if (patch.businessHours !== undefined) {
     payload.business_hours = patch.businessHours;
   }
+  if (patch.defaultPrepMinutes !== undefined) {
+    payload.default_prep_minutes = Math.min(
+      480,
+      Math.max(1, Math.round(Number(patch.defaultPrepMinutes))),
+    );
+  }
+  if (patch.autoAcceptOrders !== undefined) {
+    payload.auto_accept_orders = Boolean(patch.autoAcceptOrders);
+  }
   const supabase = getSupabase();
   if (!supabase) return memoryStore.updateStore(patch);
 
@@ -320,6 +334,9 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
           ? "Rode a migration 023_store_receipt.sql no Supabase."
         : error?.message?.includes("business_hours")
           ? "Rode a migration 027_store_hours.sql no Supabase."
+        : error?.message?.includes("default_prep_minutes") ||
+            error?.message?.includes("auto_accept_orders")
+          ? "Rode a migration 029_store_auto_prep.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }

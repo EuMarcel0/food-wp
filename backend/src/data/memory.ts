@@ -41,6 +41,8 @@ const store: Store = {
   pickupEnabled: true,
   deliveryFeeCents: 700,
   idleTimeoutMinutes: 60,
+  defaultPrepMinutes: 40,
+  autoAcceptOrders: false,
   profilePhotoUrl: null,
   legalName: null,
   cnpj: null,
@@ -225,6 +227,15 @@ export const memoryStore = {
     if (patch.cnpj !== undefined) store.cnpj = patch.cnpj;
     if (patch.receiptFooter !== undefined) store.receiptFooter = patch.receiptFooter;
     if (patch.businessHours !== undefined) store.businessHours = patch.businessHours;
+    if (patch.defaultPrepMinutes !== undefined) {
+      store.defaultPrepMinutes = Math.min(
+        480,
+        Math.max(1, Math.round(patch.defaultPrepMinutes)),
+      );
+    }
+    if (patch.autoAcceptOrders !== undefined) {
+      store.autoAcceptOrders = Boolean(patch.autoAcceptOrders);
+    }
     return store;
   },
 

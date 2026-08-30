@@ -187,6 +187,37 @@ catalogRouter.patch("/store", async (req, res) => {
     }
   }
 
+  if (body.defaultPrepMinutes !== undefined) {
+    const defaultPrepMinutes = Number(body.defaultPrepMinutes);
+    if (
+      !Number.isFinite(defaultPrepMinutes) ||
+      defaultPrepMinutes < 1 ||
+      defaultPrepMinutes > 480
+    ) {
+      res.status(400).json({
+        error: "Informe o tempo de preparo em minutos (1 a 480).",
+      });
+      return;
+    }
+    patch.defaultPrepMinutes = Math.round(defaultPrepMinutes);
+  }
+
+  if (body.autoAcceptOrders !== undefined) {
+    patch.autoAcceptOrders = Boolean(body.autoAcceptOrders);
+  }
+
+  if (patch.autoAcceptOrders === true) {
+    const minutes =
+      patch.defaultPrepMinutes ??
+      (await getStore()).defaultPrepMinutes;
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      res.status(400).json({
+        error: "Cadastre o tempo de preparo padrão para ativar o aceite automático.",
+      });
+      return;
+    }
+  }
+
   const photo = body.photo as { mime?: string; data?: string } | undefined;
   let picture: { bytes: Buffer; mime: string; fileName: string } | undefined;
   if (photo?.data) {

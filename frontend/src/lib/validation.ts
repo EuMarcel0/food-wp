@@ -249,6 +249,16 @@ export const botSettingsSchema = Yup.object({
     .max(10080, "Máximo de 7 dias"),
 });
 
+export const prepSettingsSchema = Yup.object({
+  defaultPrepMinutes: Yup.number()
+    .typeError("Informe o tempo em minutos")
+    .required("Informe o tempo de preparo")
+    .integer("Use um número inteiro")
+    .min(1, "Mínimo de 1 minuto")
+    .max(480, "Máximo de 8 horas"),
+  autoAcceptOrders: Yup.boolean().default(false),
+});
+
 export const defaultDeliveryFeeSchema = Yup.object({
   deliveryFee: Yup.string().test(
     "fee",
@@ -282,6 +292,7 @@ export type SizeValues = Yup.InferType<typeof sizeSchema>;
 export type StoreBrandingValues = Yup.InferType<typeof storeBrandingSchema>;
 export type StoreReceiptValues = Yup.InferType<typeof storeReceiptSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;
+export type PrepSettingsValues = Yup.InferType<typeof prepSettingsSchema>;
 export type DefaultDeliveryFeeValues = Yup.InferType<typeof defaultDeliveryFeeSchema>;
 export type NeighborhoodFeeValues = Yup.InferType<typeof neighborhoodFeeSchema>;
 

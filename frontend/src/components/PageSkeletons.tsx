@@ -108,6 +108,18 @@ export function SettingsSkeleton() {
           </div>
         </SettingsCardSkeleton>
 
+        <SettingsCardSkeleton titleWidth={160}>
+          <div className="max-w-xl space-y-3">
+            <Skeleton active title={false} paragraph={{ rows: 2, width: ["90%", "65%"] }} />
+            <div className="flex flex-wrap items-end gap-4">
+              <Skeleton.Input active className="!h-9 !w-52" />
+              <Skeleton.Button active className="!h-8 !w-20" />
+            </div>
+            <Skeleton.Input active className="!h-14 !w-full" />
+            <Skeleton.Button active className="!h-9 !w-24" />
+          </div>
+        </SettingsCardSkeleton>
+
         <SettingsCardSkeleton titleWidth={170}>
           <div className="max-w-xl space-y-3">
             <Skeleton active title={false} paragraph={{ rows: 2, width: ["90%", "60%"] }} />

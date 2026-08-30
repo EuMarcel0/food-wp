@@ -1,3 +1,4 @@
+import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
 import {
   closedStoreMessage,
   isStoreOpen,
@@ -1073,6 +1074,9 @@ async function finishOrder(
       .filter(Boolean)
       .join("\n"),
   );
+
+  // Aceite automático: vai para preparo e avisa o cliente (mesma msg do painel).
+  await applyAutoAccept(order);
 }
 
 export async function handleIncomingMessage(input: {

@@ -6,9 +6,7 @@ import {
 } from "../data/repository.js";
 import { parseOptionalText, parseSearch } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
-import { sendText } from "../lib/whatsapp.js";
-import { formatBRL } from "../lib/money.js";
-import { describeOrderStatus, formatPrepDuration } from "../conversation/status.js";
+import { notifyCustomerOrderStatus } from "../lib/orderNotify.js";
 import type { OrderStatus } from "../types.js";
 
 const STATUSES = new Set<OrderStatus>([
@@ -77,18 +75,9 @@ ordersRouter.patch("/:id/status", async (req, res) => {
     return;
   }
 
-  if (order.customerPhone) {
-    const lines = [
-      `Atualização do pedido *#${order.code}*: agora está *${describeOrderStatus(order.status)}*.`,
-    ];
-    if (order.status === "preparing" && order.prepMinutes) {
-      lines.push(`Tempo estimado: ${formatPrepDuration(order.prepMinutes)}`);
-    }
-    lines.push(`Total: ${formatBRL(order.totalCents)}.`);
-    await sendText(order.customerPhone, lines.join("\n")).catch((error) => {
-      console.error("Falha ao notificar cliente", error);
-    });
-  }
+  await notifyCustomerOrderStatus(order).catch((error) => {
+    console.error("Falha ao notificar cliente", error);
+  });
 
   res.json(order);
 });
