@@ -193,8 +193,8 @@ export function PrinterSettingsCard() {
               <strong>não precisa instalar Node</strong>.
             </li>
             <li>
-              Execute <code>install.ps1</code>{" "}
-              <strong>como Administrador</strong> (instala serviço sem janela).
+              Duplo clique em <code>install.bat</code> (ou no PowerShell:{" "}
+              <code>.\install.ps1</code>) como Administrador.
             </li>
             <li>
               Aqui: <strong>Conectar agente</strong> →{" "}
