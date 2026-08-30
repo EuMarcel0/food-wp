@@ -3,7 +3,6 @@ import type { Order } from "../types";
 export const queryKeys = {
   health: ["health"] as const,
   store: ["store"] as const,
-  printers: ["printers"] as const,
   stats: ["orders", "stats"] as const,
   categories: {
     all: ["categories"] as const,

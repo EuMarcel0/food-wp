@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { PrinterOutlined } from "@ant-design/icons";
-import { Alert, Button, Modal } from "antd";
-import { getDefaultPrinter } from "../../lib/printer";
+import { Button, Modal } from "antd";
 import { ReceiptTicket } from "./ReceiptTicket";
 import type { Order, Store } from "../../types";
 
@@ -56,16 +55,9 @@ export function ReceiptPreviewModal({
   onClose: () => void;
 }) {
   const ticketRef = useRef<HTMLDivElement>(null);
-  const [printer, setPrinter] = useState("");
-
-  useEffect(() => {
-    if (open) setPrinter(getDefaultPrinter());
-  }, [open]);
-
-  const canPrint = Boolean(printer);
 
   function handlePrint() {
-    if (!canPrint || !ticketRef.current || !order) return;
+    if (!ticketRef.current || !order) return;
     const ticket = ticketRef.current.querySelector(
       ".receipt-ticket",
     ) as HTMLElement | null;
@@ -84,7 +76,7 @@ export function ReceiptPreviewModal({
           <Button
             type="primary"
             icon={<PrinterOutlined />}
-            disabled={!canPrint || !order}
+            disabled={!order}
             onClick={handlePrint}
           >
             Imprimir
@@ -95,15 +87,6 @@ export function ReceiptPreviewModal({
       centered
       destroyOnHidden
     >
-      {!canPrint ? (
-        <Alert
-          type="warning"
-          showIcon
-          className="mb-3"
-          message="Configure a impressora padrão em Configurações para imprimir."
-        />
-      ) : null}
-
       {order ? (
         <div
           ref={ticketRef}
@@ -115,9 +98,8 @@ export function ReceiptPreviewModal({
       ) : null}
 
       <p className="mb-0 mt-3 text-center text-xs text-food-muted">
-        {canPrint
-          ? `Prévia 80 mm · impressora: ${printer}`
-          : "Prévia em 80 mm."}
+        Prévia 80 mm. No diálogo de impressão, escolha a impressora deste
+        computador (ex.: ELGIN i8).
       </p>
     </Modal>
   );

@@ -41,7 +41,6 @@ import {
 import { parseBusinessHours } from "../lib/businessHours.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
-import { listInstalledPrinters } from "../lib/printers.js";
 import type { PizzaKind, ProductOptionGroup, StorePatch } from "../types.js";
 
 export const catalogRouter = Router();
@@ -111,10 +110,6 @@ function categoryPayload(body: Record<string, unknown>) {
 
 catalogRouter.get("/store", async (_req, res) => {
   res.json(await getStore());
-});
-
-catalogRouter.get("/printers", async (_req, res) => {
-  res.json(await listInstalledPrinters());
 });
 
 catalogRouter.patch("/store", async (req, res) => {

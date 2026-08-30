@@ -10,7 +10,6 @@ import type {
   Order,
   OrderStats,
   OrderStatus,
-  PrinterList,
   Product,
   Size,
   Store,
@@ -54,7 +53,6 @@ async function readError(response: Response) {
 export const api = {
   health: () => request<Health>("/health", { silent: true }),
   store: () => request<Store>("/api/store", { silent: true }),
-  printers: () => request<PrinterList>("/api/printers", { silent: true }),
   updateStore: (payload: {
     idleTimeoutMinutes?: number;
     deliveryFeeCents?: number;

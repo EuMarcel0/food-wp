@@ -36,10 +36,6 @@ export function SettingsPage() {
     queryKey: queryKeys.health,
     queryFn: api.health,
   });
-  const printersQuery = useQuery({
-    queryKey: queryKeys.printers,
-    queryFn: api.printers,
-  });
 
   const saveMutation = useMutation({
     mutationFn: (values: BotSettingsValues) =>
@@ -50,8 +46,7 @@ export function SettingsPage() {
     },
   });
 
-  const loading =
-    storeQuery.isPending || healthQuery.isPending || printersQuery.isPending;
+  const loading = storeQuery.isPending || healthQuery.isPending;
 
   if (loading) {
     return <SettingsSkeleton />;
@@ -68,7 +63,7 @@ export function SettingsPage() {
       <PageHeader
         kicker="Retaguarda"
         title="Configurações"
-        subtitle="Perfil no WhatsApp, horário, preparo, cupom, impressora, tempo sem resposta e taxas de entrega."
+        subtitle="Perfil no WhatsApp, horário, preparo, cupom, impressão, tempo sem resposta e taxas de entrega."
       />
 
       <div className="flex flex-col gap-6">
