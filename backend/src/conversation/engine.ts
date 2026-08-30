@@ -838,19 +838,13 @@ async function askGroupOptions(
     ]);
     if (!remaining.length) return true;
 
-    const listTitle =
-      product.pizzaKind === "doce"
-        ? "Doces"
-        : product.pizzaKind === "salgada"
-          ? "Salgadas"
-          : "Sabores";
     await sendList(
       to,
       groupPrompt(product, group, picked, pickedNames),
-      listTitle,
+      "Escolha o sabor",
       [
         {
-          title: listTitle,
+          title: "Sabores",
           rows: remaining.slice(0, 10).map((pizza) => ({
             id: `flavor:${pizza.id}`,
             title: pizza.name.slice(0, 24),
