@@ -3,8 +3,8 @@ import type { Order } from "../types.js";
 import { notifyCustomerOrderStatus } from "./orderNotify.js";
 
 /**
- * Se a loja estiver com aceite automático, move o pedido para preparo
- * com o tempo padrão e avisa o cliente no WhatsApp.
+ * Se a loja estiver com aceite automático, move o pedido para Aceito
+ * com o prazo médio padrão e avisa o cliente no WhatsApp.
  */
 export async function applyAutoAccept(order: Order): Promise<Order> {
   if (order.status !== "received") return order;
@@ -17,13 +17,13 @@ export async function applyAutoAccept(order: Order): Promise<Order> {
   }
 
   if (!store.autoAcceptOrders) return order;
-  const minutes = Math.round(Number(store.defaultPrepMinutes));
+  const minutes = Math.round(Number(store.defaultAcceptMinutes));
   if (!Number.isFinite(minutes) || minutes < 1) return order;
 
   try {
     const updated = await updateOrderStatus(
       order.id,
-      "preparing",
+      "accepted",
       "Aceite automático",
       minutes,
     );

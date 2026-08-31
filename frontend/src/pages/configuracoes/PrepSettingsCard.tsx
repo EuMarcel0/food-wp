@@ -27,11 +27,11 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
   const saveMutation = useMutation({
     mutationFn: (values: PrepSettingsValues) =>
       api.updateStore({
-        defaultPrepMinutes: Number(values.defaultPrepMinutes),
+        defaultAcceptMinutes: Number(values.defaultAcceptMinutes),
         autoAcceptOrders: Boolean(values.autoAcceptOrders),
       }),
     onSuccess: async () => {
-      toast.success("Tempo de preparo salvo.");
+      toast.success("Configuração de aceite salva.");
       await queryClient.invalidateQueries({ queryKey: queryKeys.store });
     },
   });
@@ -39,12 +39,12 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
   return (
     <Card
       className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
-      title="Tempo de preparo"
+      title="Aceite de pedidos"
     >
       <Formik
         enableReinitialize
         initialValues={{
-          defaultPrepMinutes: store?.defaultPrepMinutes ?? 40,
+          defaultAcceptMinutes: store?.defaultAcceptMinutes ?? 40,
           autoAcceptOrders: store?.autoAcceptOrders ?? false,
         }}
         validationSchema={prepSettingsSchema}
@@ -73,13 +73,14 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
             ) : null}
 
             <p className="mb-4 text-sm leading-normal text-food-muted">
-              Tempo estimado padrão usado no WhatsApp. Com o aceite automático,
-              todo pedido novo vai direto para preparo com esse prazo — sem
-              precisar confirmar no painel.
+              Tempo médio informado ao cliente quando o pedido é aceito. Com o
+              aceite automático, todo pedido novo vai para Aceito com esse prazo
+              — sem precisar confirmar no painel. O status Em preparo continua
+              manual, com o diálogo de tempo.
             </p>
 
             <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
-              <FormControl name="defaultPrepMinutes" label="Tempo padrão">
+              <FormControl name="defaultAcceptMinutes" label="Tempo médio">
                 {({ value, setValue, setTouched }) => (
                   <InputNumber
                     min={1}
@@ -97,7 +98,7 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
                 className="mb-3 text-[22px] font-extrabold leading-tight tracking-tight text-food-accent tabular-nums"
                 aria-live="polite"
               >
-                {formatPrepLabel(Number(values.defaultPrepMinutes))}
+                {formatPrepLabel(Number(values.defaultAcceptMinutes))}
               </p>
             </div>
 
@@ -105,8 +106,8 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
               <div>
                 <strong>Aceitar automaticamente</strong>
                 <p>
-                  Pedidos novos entram em preparo na hora e o cliente recebe o
-                  prazo no WhatsApp
+                  Pedidos novos são aceitos na hora e o cliente recebe o prazo
+                  médio no WhatsApp
                 </p>
               </div>
               <FormControl name="autoAcceptOrders" compact>

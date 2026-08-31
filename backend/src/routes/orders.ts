@@ -16,6 +16,7 @@ import type { OrderStatus } from "../types.js";
 
 const STATUSES = new Set<OrderStatus>([
   "received",
+  "accepted",
   "preparing",
   "ready",
   "out_for_delivery",
@@ -81,11 +82,17 @@ ordersRouter.patch("/:id/status", async (req, res) => {
 
   let order;
   try {
+    const minutesForStatus =
+      status === "preparing" || status === "accepted"
+        ? prepMinutes !== undefined && Number.isFinite(prepMinutes)
+          ? Math.round(Number(prepMinutes))
+          : undefined
+        : undefined;
     order = await updateOrderStatus(
       req.params.id,
       status,
       actorName,
-      status === "preparing" ? Math.round(Number(prepMinutes)) : undefined,
+      minutesForStatus,
     );
   } catch (error) {
     res.status(400).json({

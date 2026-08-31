@@ -38,10 +38,10 @@ export function isAutoAcceptNotification(item: {
   if (item.type !== "order_updated") return false;
   if (item.actorName?.trim() !== AUTO_ACTOR) return false;
   const summary = item.changeSummary ?? "";
-  return /em preparo/i.test(summary);
+  return /aceito/i.test(summary);
 }
 
-/** Imprime via agente local quando o aceite automático manda o pedido para preparo. */
+/** Imprime via agente local quando o aceite automático aceita o pedido. */
 export async function printAfterAutoAccept(orderId: string, orderCode?: string) {
   if (!orderId || readPrinted().has(orderId)) return;
   if (!getPrintAgentToken()) {

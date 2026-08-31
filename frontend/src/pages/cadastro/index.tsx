@@ -10,7 +10,7 @@ const initialValues: SignupValues = {
   name: "",
   email: "",
   password: "",
-  confirm: "",
+  confirm: ""
 };
 
 export function SignupPage() {
@@ -18,7 +18,7 @@ export function SignupPage() {
   const navigate = useNavigate();
 
   return (
-    <AuthLayout title='Criar conta' subtitle='Cadastro simples com e-mail e senha do Supabase Auth.'>
+    <AuthLayout title='Criar conta' subtitle='Cadastro simples com e-mail e senha.'>
       {!ready ? (
         <Alert
           type='warning'
@@ -33,11 +33,7 @@ export function SignupPage() {
         onSubmit={async (values, helpers) => {
           helpers.setStatus(undefined);
           try {
-            const result = await signUp(
-              values.email.trim(),
-              values.password,
-              values.name.trim(),
-            );
+            const result = await signUp(values.email.trim(), values.password, values.name.trim());
             if (result === "confirm") {
               helpers.setStatus({ confirm: true });
               return;
@@ -57,27 +53,27 @@ export function SignupPage() {
                 type='success'
                 showIcon
                 style={{ marginBottom: 16 }}
-                message='Conta criada. Confirme o e-mail se o Supabase estiver pedindo verificação e depois faça login.'
+                message='Conta criada. Se pedirmos confirmação por e-mail, confirme e depois faça login.'
               />
             ) : null}
             {status?.error ? <Alert type='error' showIcon style={{ marginBottom: 16 }} message={status.error} /> : null}
             <FormField name='name' label='Nome'>
-              <Input autoComplete="name" placeholder="Nome da equipe…" />
+              <Input autoComplete='name' placeholder='Nome da equipe…' />
             </FormField>
             <FormField name='email' label='E-mail'>
               <Input
-                type="email"
-                autoComplete="email"
+                type='email'
+                autoComplete='email'
                 spellCheck={false}
-                inputMode="email"
-                placeholder="voce@loja.com…"
+                inputMode='email'
+                placeholder='voce@loja.com…'
               />
             </FormField>
             <FormField name='password' label='Senha'>
-              <Input.Password autoComplete="new-password" placeholder="Mínimo 6 caracteres…" />
+              <Input.Password autoComplete='new-password' placeholder='Mínimo 6 caracteres…' />
             </FormField>
             <FormField name='confirm' label='Confirmar senha'>
-              <Input.Password autoComplete="new-password" placeholder="Repita a senha…" />
+              <Input.Password autoComplete='new-password' placeholder='Repita a senha…' />
             </FormField>
             <Button type='primary' htmlType='submit' block loading={isSubmitting} disabled={!ready}>
               Cadastrar
@@ -85,7 +81,7 @@ export function SignupPage() {
           </FormikForm>
         )}
       </Formik>
-      <Typography.Paragraph className="!mt-4 !mb-0">
+      <Typography.Paragraph className='!mt-4 !mb-0'>
         Já tem conta? <Link to='/login'>Entrar</Link>
       </Typography.Paragraph>
     </AuthLayout>

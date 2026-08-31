@@ -64,7 +64,7 @@ export const api = {
     cnpj?: string | null;
     receiptFooter?: string | null;
     businessHours?: Store["businessHours"];
-    defaultPrepMinutes?: number;
+    defaultAcceptMinutes?: number;
     autoAcceptOrders?: boolean;
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {

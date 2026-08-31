@@ -1,5 +1,6 @@
 export type OrderStatus =
   | "received"
+  | "accepted"
   | "preparing"
   | "ready"
   | "out_for_delivery"
@@ -166,7 +167,7 @@ export type Store = {
   pickupEnabled: boolean;
   deliveryFeeCents: number;
   idleTimeoutMinutes: number;
-  defaultPrepMinutes: number;
+  defaultAcceptMinutes: number;
   autoAcceptOrders: boolean;
   profilePhotoUrl: string | null;
   legalName: string | null;

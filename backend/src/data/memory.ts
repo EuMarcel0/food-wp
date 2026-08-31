@@ -43,7 +43,7 @@ const store: Store = {
   pickupEnabled: true,
   deliveryFeeCents: 700,
   idleTimeoutMinutes: 60,
-  defaultPrepMinutes: 40,
+  defaultAcceptMinutes: 40,
   autoAcceptOrders: false,
   profilePhotoUrl: null,
   legalName: null,
@@ -229,10 +229,10 @@ export const memoryStore = {
     if (patch.cnpj !== undefined) store.cnpj = patch.cnpj;
     if (patch.receiptFooter !== undefined) store.receiptFooter = patch.receiptFooter;
     if (patch.businessHours !== undefined) store.businessHours = patch.businessHours;
-    if (patch.defaultPrepMinutes !== undefined) {
-      store.defaultPrepMinutes = Math.min(
+    if (patch.defaultAcceptMinutes !== undefined) {
+      store.defaultAcceptMinutes = Math.min(
         480,
-        Math.max(1, Math.round(patch.defaultPrepMinutes)),
+        Math.max(1, Math.round(patch.defaultAcceptMinutes)),
       );
     }
     if (patch.autoAcceptOrders !== undefined) {
@@ -1007,6 +1007,15 @@ export const memoryStore = {
         throw new Error("Informe o tempo de preparo em minutos.");
       }
       order.prepMinutes = minutes;
+    }
+    if (status === "accepted") {
+      let minutes = Math.round(Number(prepMinutes));
+      if (!Number.isFinite(minutes) || minutes < 1) {
+        minutes = Math.round(Number(store.defaultAcceptMinutes));
+      }
+      if (Number.isFinite(minutes) && minutes >= 1) {
+        order.prepMinutes = minutes;
+      }
     }
     const previous = order.status;
     order.status = status;

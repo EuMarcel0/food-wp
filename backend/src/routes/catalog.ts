@@ -182,19 +182,24 @@ catalogRouter.patch("/store", async (req, res) => {
     }
   }
 
-  if (body.defaultPrepMinutes !== undefined) {
-    const defaultPrepMinutes = Number(body.defaultPrepMinutes);
+  if (
+    body.defaultAcceptMinutes !== undefined ||
+    body.defaultPrepMinutes !== undefined
+  ) {
+    const defaultAcceptMinutes = Number(
+      body.defaultAcceptMinutes ?? body.defaultPrepMinutes,
+    );
     if (
-      !Number.isFinite(defaultPrepMinutes) ||
-      defaultPrepMinutes < 1 ||
-      defaultPrepMinutes > 480
+      !Number.isFinite(defaultAcceptMinutes) ||
+      defaultAcceptMinutes < 1 ||
+      defaultAcceptMinutes > 480
     ) {
       res.status(400).json({
-        error: "Informe o tempo de preparo em minutos (1 a 480).",
+        error: "Informe o tempo estimado em minutos (1 a 480).",
       });
       return;
     }
-    patch.defaultPrepMinutes = Math.round(defaultPrepMinutes);
+    patch.defaultAcceptMinutes = Math.round(defaultAcceptMinutes);
   }
 
   if (body.autoAcceptOrders !== undefined) {
@@ -203,11 +208,11 @@ catalogRouter.patch("/store", async (req, res) => {
 
   if (patch.autoAcceptOrders === true) {
     const minutes =
-      patch.defaultPrepMinutes ??
-      (await getStore()).defaultPrepMinutes;
+      patch.defaultAcceptMinutes ??
+      (await getStore()).defaultAcceptMinutes;
     if (!Number.isFinite(minutes) || minutes < 1) {
       res.status(400).json({
-        error: "Cadastre o tempo de preparo padrão para ativar o aceite automático.",
+        error: "Cadastre o tempo estimado padrão para ativar o aceite automático.",
       });
       return;
     }

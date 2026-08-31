@@ -100,12 +100,20 @@ export function formatCnpj(value: string) {
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   received: "Recebido",
+  accepted: "Aceito",
   preparing: "Em preparo",
   ready: "Pronto",
   out_for_delivery: "Saiu p/ entrega",
   delivered: "Entregue",
   cancelled: "Cancelado",
 };
+
+/** Rótulo do botão/ação que avança para o status. */
+export function statusActionLabel(status: OrderStatus) {
+  if (status === "accepted") return "Aceitar";
+  if (status === "preparing") return "Em preparo";
+  return STATUS_LABEL[status];
+}
 
 const CONVERSATION_STATE_LABEL: Record<string, string> = {
   welcome: "Início",
@@ -148,9 +156,10 @@ export function formatPhoneDisplay(raw?: string | null) {
 
 export const STATUS_COLOR: Record<OrderStatus, string> = {
   received: "orange",
+  accepted: "blue",
   preparing: "gold",
   ready: "green",
-  out_for_delivery: "blue",
+  out_for_delivery: "cyan",
   delivered: "success",
   cancelled: "red",
 };
@@ -159,7 +168,8 @@ export function nextStatus(
   status: OrderStatus,
   fulfillment: "delivery" | "pickup",
 ): OrderStatus | undefined {
-  if (status === "received") return "preparing";
+  if (status === "received") return "accepted";
+  if (status === "accepted") return "preparing";
   if (status === "preparing") return "ready";
   if (status === "ready") {
     return fulfillment === "pickup" ? "delivered" : "out_for_delivery";

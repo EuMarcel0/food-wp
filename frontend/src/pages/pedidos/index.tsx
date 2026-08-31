@@ -28,6 +28,7 @@ import {
   PAYMENT_LABEL,
   STATUS_COLOR,
   STATUS_LABEL,
+  statusActionLabel,
   formatBRL,
   formatDate,
   cashChangeLabel,
@@ -345,7 +346,7 @@ export function OrdersPage() {
                     next
                       ? {
                           key: "next",
-                          label: STATUS_LABEL[next],
+                          label: statusActionLabel(next),
                           disabled: updatingId === order.id,
                           onClick: () => changeStatus(order, next),
                         }
@@ -402,7 +403,7 @@ export function OrdersPage() {
         order={prepOrder}
         open={Boolean(prepOrder)}
         submitting={statusMutation.isPending && Boolean(prepOrder)}
-        defaultMinutes={storeQuery.data?.defaultPrepMinutes}
+        defaultMinutes={storeQuery.data?.defaultAcceptMinutes}
         onCancel={() => {
           if (!statusMutation.isPending) setPrepOrder(null);
         }}

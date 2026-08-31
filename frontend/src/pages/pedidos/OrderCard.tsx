@@ -8,6 +8,7 @@ import {
   PAYMENT_LABEL,
   STATUS_COLOR,
   STATUS_LABEL,
+  statusActionLabel,
   formatBRL,
   formatDate,
   addonLabel,
@@ -58,7 +59,7 @@ export function OrderCard({
             next
               ? {
                   key: "next",
-                  label: STATUS_LABEL[next],
+                  label: statusActionLabel(next),
                   disabled: updating,
                   onClick: () => onChangeStatus(order, next),
                 }
@@ -136,7 +137,7 @@ export function OrderCard({
           loading={updating}
           onClick={() => onChangeStatus(order, next)}
         >
-          {STATUS_LABEL[next]}
+          {statusActionLabel(next)}
         </Button>
       ) : null}
     </EntityCard>

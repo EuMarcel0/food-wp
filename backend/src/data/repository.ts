@@ -96,9 +96,12 @@ function mapStore(row: Record<string, unknown>): Store {
     pickupEnabled: Boolean(row.pickup_enabled ?? true),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     idleTimeoutMinutes: Math.max(1, Number(row.idle_timeout_minutes ?? 60)),
-    defaultPrepMinutes: Math.min(
+    defaultAcceptMinutes: Math.min(
       480,
-      Math.max(1, Number(row.default_prep_minutes ?? 40)),
+      Math.max(
+        1,
+        Number(row.default_accept_minutes ?? row.default_prep_minutes ?? 40),
+      ),
     ),
     autoAcceptOrders: Boolean(row.auto_accept_orders ?? false),
     profilePhotoUrl: (row.profile_photo_url as string | null) ?? null,
@@ -305,10 +308,10 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
   if (patch.businessHours !== undefined) {
     payload.business_hours = patch.businessHours;
   }
-  if (patch.defaultPrepMinutes !== undefined) {
-    payload.default_prep_minutes = Math.min(
+  if (patch.defaultAcceptMinutes !== undefined) {
+    payload.default_accept_minutes = Math.min(
       480,
-      Math.max(1, Math.round(Number(patch.defaultPrepMinutes))),
+      Math.max(1, Math.round(Number(patch.defaultAcceptMinutes))),
     );
   }
   if (patch.autoAcceptOrders !== undefined) {
@@ -336,9 +339,10 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
           ? "Rode a migration 023_store_receipt.sql no Supabase."
         : error?.message?.includes("business_hours")
           ? "Rode a migration 027_store_hours.sql no Supabase."
-        : error?.message?.includes("default_prep_minutes") ||
+        : error?.message?.includes("default_accept_minutes") ||
+            error?.message?.includes("default_prep_minutes") ||
             error?.message?.includes("auto_accept_orders")
-          ? "Rode a migration 029_store_auto_prep.sql no Supabase."
+          ? "Rode as migrations 029 e 033 no banco (aceite automático)."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }
@@ -1915,12 +1919,28 @@ export async function updateOrderStatus(
     prepMinutes = minutes;
   }
 
+  if (status === "accepted") {
+    let minutes = Math.round(Number(prepMinutes));
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      try {
+        const store = await getStore();
+        minutes = Math.round(Number(store.defaultAcceptMinutes));
+      } catch {
+        minutes = NaN;
+      }
+    }
+    prepMinutes = Number.isFinite(minutes) && minutes >= 1 ? minutes : null;
+  }
+
   const previous = current.status as OrderStatus;
   const payload: Record<string, unknown> = {
     status,
     updated_at: new Date().toISOString(),
   };
-  if (status === "preparing" && prepMinutes != null) {
+  if (
+    (status === "preparing" || status === "accepted") &&
+    prepMinutes != null
+  ) {
     payload.prep_minutes = prepMinutes;
   }
 

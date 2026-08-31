@@ -152,7 +152,7 @@ export function SettingsPage() {
               API {health?.ok ? "online" : "offline"}
             </Tag>
             <Tag color={health?.supabase ? "green" : "orange"}>
-              Supabase {health?.supabase ? "ok" : "pendente"}
+              Banco de dados {health?.supabase ? "ok" : "pendente"}
             </Tag>
             <Tag color={health?.whatsapp ? "green" : "orange"}>
               WhatsApp {health?.whatsapp ? "ok" : "pendente"}

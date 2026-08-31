@@ -66,6 +66,7 @@ create table if not exists public.orders (
   status text not null default 'received'
     check (status in (
       'received',
+      'accepted',
       'preparing',
       'ready',
       'out_for_delivery',
@@ -676,9 +677,9 @@ alter table public.products
 
 -- ========== 029_store_auto_prep ==========
 alter table public.stores
-  add column if not exists default_prep_minutes integer
+  add column if not exists default_accept_minutes integer
     not null default 40
-    check (default_prep_minutes >= 1 and default_prep_minutes <= 480);
+    check (default_accept_minutes >= 1 and default_accept_minutes <= 480);
 
 alter table public.stores
   add column if not exists auto_accept_orders boolean

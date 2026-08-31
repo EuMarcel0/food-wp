@@ -3,6 +3,7 @@ import type { Fulfillment, Order, OrderStatus } from "../types.js";
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   received: "Recebido",
+  accepted: "Aceito",
   preparing: "Em preparo",
   ready: "Pronto",
   out_for_delivery: "Saiu para entrega",
@@ -12,6 +13,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 
 const STATUS_EMOJI: Record<OrderStatus, string> = {
   received: "📥",
+  accepted: "👍",
   preparing: "👨‍🍳",
   ready: "✅",
   out_for_delivery: "🛵",
@@ -37,9 +39,28 @@ export function isOpenOrderStatus(status: OrderStatus) {
 }
 
 export function formatOrderStatusMessage(order: Order, opts?: { thanks?: boolean }) {
+  const thanks = opts?.thanks ? "Por nada! 😊" : null;
+
+  if (order.status === "accepted") {
+    const eta =
+      order.prepMinutes && order.prepMinutes > 0
+        ? formatPrepDuration(order.prepMinutes)
+        : null;
+    return [
+      thanks,
+      eta
+        ? `👍 Seu pedido *#${order.code}* foi aceito e levará em média *${eta}* para ficar pronto.`
+        : `👍 Seu pedido *#${order.code}* foi *aceito*!`,
+      `💰 Total: ${formatBRL(order.totalCents)}.`,
+      "Assim que mudar, eu te aviso por aqui.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
   const emoji = STATUS_EMOJI[order.status] ?? "📦";
   const lines = [
-    opts?.thanks ? "Por nada! 😊" : null,
+    thanks,
     `${emoji} Pedido *#${order.code}*: agora está *${describeOrderStatus(order.status)}*.`,
   ];
   if (order.status === "preparing" && order.prepMinutes) {

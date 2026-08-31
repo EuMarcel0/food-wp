@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       async signIn(email, password) {
-        if (!supabase) throw new Error("Supabase ainda não foi configurado.");
+        if (!supabase) throw new Error("Autenticação ainda não foi configurada.");
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw new Error(translateAuthError(error));
       },
       async signUp(email, password, name) {
-        if (!supabase) throw new Error("Supabase ainda não foi configurado.");
+        if (!supabase) throw new Error("Autenticação ainda não foi configurada.");
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -99,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw new Error(translateAuthError(error));
       },
       async updateProfile(input) {
-        if (!supabase) throw new Error("Supabase ainda não foi configurado.");
+        if (!supabase) throw new Error("Autenticação ainda não foi configurada.");
         const { error } = await supabase.auth.updateUser({
           data: {
             full_name: input.fullName.trim(),
@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw new Error(translateAuthError(error));
       },
       async changePassword(currentPassword, newPassword) {
-        if (!supabase) throw new Error("Supabase ainda não foi configurado.");
+        if (!supabase) throw new Error("Autenticação ainda não foi configurada.");
         const email = session?.user.email;
         if (!email) throw new Error("Sessão expirada. Entre novamente.");
         const { error: currentError } = await supabase.auth.signInWithPassword({
@@ -125,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (outError) throw new Error(translateAuthError(outError));
       },
       async uploadAvatar(file) {
-        if (!supabase) throw new Error("Supabase ainda não foi configurado.");
+        if (!supabase) throw new Error("Autenticação ainda não foi configurada.");
         const userId = session?.user.id;
         if (!userId) throw new Error("Sessão expirada. Entre novamente.");
         const prepared = await resizeImage(file);
@@ -138,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
         if (error) {
           throw new Error(
-            "Não foi possível enviar a foto. Confira se o bucket avatars existe no Supabase.",
+            "Não foi possível enviar a foto. Tente de novo em instantes.",
           );
         }
         const { data } = supabase.storage.from("avatars").getPublicUrl(path);

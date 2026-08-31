@@ -250,9 +250,9 @@ export const botSettingsSchema = Yup.object({
 });
 
 export const prepSettingsSchema = Yup.object({
-  defaultPrepMinutes: Yup.number()
+  defaultAcceptMinutes: Yup.number()
     .typeError("Informe o tempo em minutos")
-    .required("Informe o tempo de preparo")
+    .required("Informe o tempo estimado")
     .integer("Use um número inteiro")
     .min(1, "Mínimo de 1 minuto")
     .max(480, "Máximo de 8 horas"),
