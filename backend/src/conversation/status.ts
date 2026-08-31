@@ -47,6 +47,7 @@ export function formatOrderStatusMessage(order: Order, opts?: { thanks?: boolean
   }
   if (order.status === "delivered") {
     lines.push("Obrigado pela preferência! Esperamos você de novo. 🍕");
+    lines.push("Qualquer nova interação por aqui inicia um *novo pedido*.");
   } else if (order.status !== "cancelled") {
     lines.push(`💰 Total: ${formatBRL(order.totalCents)}.`);
     lines.push("Assim que mudar, eu te aviso por aqui.");
