@@ -30,22 +30,35 @@ const EMPTY_BY_STATUS: Record<OrderStatus, number> = {
   cancelled: 0,
 };
 
-function normalizeStats(raw: OrderStats | undefined): OrderStats | null {
-  // Cache antigo (sem byStatus) não serve — evita fila “1” com status zerados.
-  if (!raw?.byStatus || !raw.openByFulfillment || !raw.today) return null;
+const EMPTY_STATS: OrderStats = {
+  open: 0,
+  total: 0,
+  byStatus: { ...EMPTY_BY_STATUS },
+  today: { created: 0, delivered: 0, cancelled: 0, open: 0 },
+  openByFulfillment: { delivery: 0, pickup: 0 },
+  oldestOpenMinutes: null,
+  avgPrepMinutesToday: null,
+};
+
+function normalizeStats(raw: OrderStats | undefined): OrderStats {
+  if (!raw) return EMPTY_STATS;
+  // Payload antigo (só open/total/totalCents): ignora campos parciais.
+  const byStatus = raw.byStatus
+    ? { ...EMPTY_BY_STATUS, ...raw.byStatus }
+    : { ...EMPTY_BY_STATUS };
   return {
     open: Number(raw.open ?? 0),
     total: Number(raw.total ?? 0),
-    byStatus: { ...EMPTY_BY_STATUS, ...raw.byStatus },
+    byStatus,
     today: {
-      created: Number(raw.today.created ?? 0),
-      delivered: Number(raw.today.delivered ?? 0),
-      cancelled: Number(raw.today.cancelled ?? 0),
-      open: Number(raw.today.open ?? 0),
+      created: Number(raw.today?.created ?? 0),
+      delivered: Number(raw.today?.delivered ?? 0),
+      cancelled: Number(raw.today?.cancelled ?? 0),
+      open: Number(raw.today?.open ?? 0),
     },
     openByFulfillment: {
-      delivery: Number(raw.openByFulfillment.delivery ?? 0),
-      pickup: Number(raw.openByFulfillment.pickup ?? 0),
+      delivery: Number(raw.openByFulfillment?.delivery ?? 0),
+      pickup: Number(raw.openByFulfillment?.pickup ?? 0),
     },
     oldestOpenMinutes:
       raw.oldestOpenMinutes == null ? null : Number(raw.oldestOpenMinutes),
@@ -145,15 +158,15 @@ export function DashboardPage() {
     refetchInterval: 60_000,
   });
 
-  const loading =
-    storeQuery.isLoading || statsQuery.isLoading || healthQuery.isLoading;
+  // Health não bloqueia a tela; só store + stats.
+  const loading = storeQuery.isPending || statsQuery.isPending;
   const store = storeQuery.data;
   const stats = normalizeStats(statsQuery.data);
   const health = healthQuery.data;
   const title = store?.name ?? "Estabelecimento";
   const subtitle = `Segmento: ${store?.segment ?? "food"} · ${SUBTITLE_SUFFIX}`;
 
-  if (loading || !stats) {
+  if (loading) {
     return (
       <>
         <HeaderSkeleton />
