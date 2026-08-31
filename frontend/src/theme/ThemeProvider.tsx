@@ -77,7 +77,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         theme={resolved === "dark" ? darkTheme : lightTheme}
       >
         <App
-          className="flex h-full max-w-full flex-col overflow-hidden"
+          className="max-w-full"
           message={{
             maxCount: 3,
             duration: 5,

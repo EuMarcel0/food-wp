@@ -151,7 +151,7 @@ export function NotificationBell() {
           onClose={() => setOpen(false)}
           width={isPhone ? "100%" : 400}
           className="[&_.ant-drawer-header]:border-food-border [&_.ant-drawer-body]:min-h-0 [&_.ant-drawer-body]:pb-[env(safe-area-inset-bottom)]"
-          destroyOnClose={false}
+          destroyOnHidden={false}
           styles={{
             body: { padding: 0, display: "flex", flexDirection: "column" },
           }}

@@ -4,6 +4,7 @@ import type {
   OrderFilter,
   ProductFilter,
 } from "../lib/filters.js";
+import { buildOrderStats } from "../lib/orderStats.js";
 import { paginateItems } from "../lib/pagination.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { env } from "../config/env.js";
@@ -991,14 +992,16 @@ export const memoryStore = {
   },
 
   getOrderStats() {
-    const all = this.listOrders();
-    return {
-      total: all.length,
-      open: all.filter(
-        (order) => !["delivered", "cancelled"].includes(order.status),
-      ).length,
-      totalCents: all.reduce((sum, order) => sum + order.totalCents, 0),
-    };
+    const store = this.getStore();
+    return buildOrderStats(
+      this.listOrders().map((order) => ({
+        status: order.status,
+        fulfillment: order.fulfillment,
+        prepMinutes: order.prepMinutes ?? null,
+        createdAt: order.createdAt,
+      })),
+      store.timezone || "America/Sao_Paulo",
+    );
   },
 
   getOrder(id: string) {

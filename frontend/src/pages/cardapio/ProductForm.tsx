@@ -128,7 +128,7 @@ export function ProductForm({
       open={open}
       onCancel={onCancel}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       centered
       width="80vw"
       styles={{

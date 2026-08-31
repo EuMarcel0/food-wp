@@ -6,6 +6,7 @@ import type {
   OrderFilter,
   ProductFilter,
 } from "../lib/filters.js";
+import { buildOrderStats } from "../lib/orderStats.js";
 import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
 import {
@@ -1867,19 +1868,22 @@ export async function getOrderStats() {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.getOrderStats();
 
+  const store = await getStore();
   const { data, error } = await supabase
     .from("orders")
-    .select("status, total_cents");
+    .select("status, fulfillment, prep_minutes, created_at");
   if (error || !data) return memoryStore.getOrderStats();
 
-  const rows = data as { status: string; total_cents: number }[];
-  return {
-    total: rows.length,
-    open: rows.filter(
-      (row) => row.status !== "delivered" && row.status !== "cancelled",
-    ).length,
-    totalCents: rows.reduce((sum, row) => sum + Number(row.total_cents ?? 0), 0),
-  };
+  return buildOrderStats(
+    (data as Record<string, unknown>[]).map((row) => ({
+      status: String(row.status ?? "received"),
+      fulfillment: String(row.fulfillment ?? "delivery"),
+      prepMinutes:
+        row.prep_minutes == null ? null : Number(row.prep_minutes),
+      createdAt: String(row.created_at ?? new Date().toISOString()),
+    })),
+    store.timezone || DEFAULT_TIMEZONE,
+  );
 }
 
 export async function findOrderByCode(code: string, customerId?: string) {

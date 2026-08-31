@@ -185,9 +185,21 @@ export type Health = {
 };
 
 export type OrderStats = {
-  total: number;
   open: number;
-  totalCents: number;
+  total: number;
+  byStatus: Record<OrderStatus, number>;
+  today: {
+    created: number;
+    delivered: number;
+    cancelled: number;
+    open: number;
+  };
+  openByFulfillment: {
+    delivery: number;
+    pickup: number;
+  };
+  oldestOpenMinutes: number | null;
+  avgPrepMinutesToday: number | null;
 };
 
 export type NotificationType = "order_created" | "order_updated";

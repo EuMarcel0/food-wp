@@ -167,7 +167,11 @@ export function AppLayout() {
 
   return (
     <NotificationProvider>
-      <Layout className='relative h-full min-h-0 flex-1 overflow-hidden' hasSider={!isMobile}>
+      <Layout
+        className='relative min-h-0 flex-1 overflow-hidden bg-food-bg'
+        style={{ height: "100%", maxHeight: "100%", flex: "1 1 0%" }}
+        hasSider={!isMobile}
+      >
         <a
           className='absolute top-3 left-3 z-[4000] -translate-y-[160%] rounded-[10px] bg-food-accent px-3 py-2 text-[13px] font-bold text-white no-underline transition-transform duration-150 focus:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none'
           href='#conteudo'
@@ -201,7 +205,7 @@ export function AppLayout() {
             <nav aria-label='Menu principal'>{menu}</nav>
           </Layout.Sider>
         )}
-        <Layout className='h-full min-h-0 min-w-0 overflow-hidden'>
+        <Layout className='h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-food-bg'>
           <Layout.Header
             className='flex h-15 shrink-0 items-center justify-between gap-2 leading-15 backdrop-blur-md'
             style={{ borderBottom: `1px solid ${token.colorBorder}`, paddingInline: 8 }}
@@ -229,7 +233,7 @@ export function AppLayout() {
           <Layout.Content
             id='conteudo'
             className={cn(
-              "min-h-0 min-w-0 flex-1 scroll-mt-3",
+              "min-h-0 min-w-0 flex-1 scroll-mt-3 bg-food-bg",
               usesFillLayout
                 ? "flex h-full min-h-0 flex-col overflow-hidden px-4 py-3 max-lg:h-auto max-lg:overflow-auto max-lg:px-3.5"
                 : "overflow-auto px-7 py-6 pb-8 max-lg:px-3.5 max-lg:py-4 max-lg:pb-6"
@@ -240,7 +244,7 @@ export function AppLayout() {
               className={
                 usesFillLayout
                   ? "flex h-full min-h-0 w-full flex-1 flex-col max-lg:h-auto max-lg:flex-none"
-                  : "mx-auto w-full max-w-[1200px]"
+                  : "mx-auto min-h-full w-full max-w-[1200px]"
               }
             >
               <Outlet />

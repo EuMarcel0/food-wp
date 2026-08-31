@@ -12,7 +12,7 @@ export function AuthLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="relative grid h-full place-items-center overflow-auto bg-food-bg p-4 max-sm:place-items-start max-sm:justify-center max-sm:p-3">
+    <div className="relative grid h-dvh place-items-center overflow-auto bg-food-bg p-4 max-sm:place-items-start max-sm:justify-center max-sm:p-3">
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_420px_at_10%_-10%,rgba(232,93,4,0.18),transparent_55%)]"
         aria-hidden="true"

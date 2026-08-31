@@ -12,16 +12,30 @@ export function HeaderSkeleton() {
 
 export function StatCardsSkeleton() {
   return (
-    <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-1">
-      {Array.from({ length: 3 }, (_, index) => (
-        <article
-          key={index}
-          className="rounded-2xl border border-food-border bg-food-surface px-[18px] pt-[18px] pb-5 shadow-food-soft"
-        >
-          <Skeleton active title={{ width: "45%" }} paragraph={false} />
-          <Skeleton.Button active className="mt-3 !h-9 !w-28" />
-        </article>
-      ))}
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label="Carregando painel">
+      <div className="grid grid-cols-4 gap-4 max-xl:grid-cols-2 max-sm:grid-cols-1">
+        {Array.from({ length: 4 }, (_, index) => (
+          <article
+            key={index}
+            className="rounded-2xl border border-food-border bg-food-surface px-[18px] pt-[18px] pb-5 shadow-food-soft"
+          >
+            <Skeleton active title={{ width: "45%" }} paragraph={false} />
+            <Skeleton.Button active className="mt-3 !h-9 !w-28" />
+          </article>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-food-border bg-food-surface p-4 shadow-food-soft">
+        <Skeleton active title={{ width: 160 }} paragraph={{ rows: 1, width: "40%" }} />
+        <div className="mt-4 grid grid-cols-5 gap-3 max-lg:grid-cols-2">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton.Button key={index} active className="!h-20 !w-full" />
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+        <Skeleton.Button active className="!h-48 !w-full" />
+        <Skeleton.Button active className="!h-48 !w-full" />
+      </div>
     </div>
   );
 }

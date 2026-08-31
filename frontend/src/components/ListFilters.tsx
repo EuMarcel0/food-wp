@@ -50,7 +50,7 @@ export function ListFilters({
         title="Filtros"
         open={open}
         onCancel={() => setOpen(false)}
-        destroyOnClose={false}
+        destroyOnHidden={false}
         footer={
           <div className="flex justify-end gap-2">
             <Button onClick={onClear} disabled={activeCount === 0}>

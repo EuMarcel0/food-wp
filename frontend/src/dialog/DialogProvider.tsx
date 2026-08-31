@@ -141,7 +141,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 
   return (
     <DialogContext.Provider value={api}>
-      {children}
+      <div className="app-shell">{children}</div>
       <Modal
         {...(options?.modalProps ?? {})}
         className={options?.modalProps?.className}

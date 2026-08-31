@@ -28,7 +28,7 @@ export function FormModal({
       open={open}
       onCancel={onCancel}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       centered
       width={width}
       title={null}

@@ -42,7 +42,7 @@ export function SettingsModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       afterClose={() => setPhoto(null)}
     >
       <Formik
