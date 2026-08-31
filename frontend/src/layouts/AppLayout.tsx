@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   AppstoreOutlined,
+  CommentOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
@@ -27,6 +28,7 @@ const SIDER_STORAGE_KEY = "food-wp-sider-collapsed";
 const items = [
   { key: "/", icon: <ThunderboltOutlined />, label: "Painel" },
   { key: "/pedidos", icon: <ShoppingOutlined />, label: "Pedidos" },
+  { key: "/conversas", icon: <CommentOutlined />, label: "Conversas" },
   { key: "/cardapio", icon: <AppstoreOutlined />, label: "Cardápio" },
   { key: "/categorias", icon: <TagsOutlined />, label: "Categorias" },
   { key: "/adicionais", icon: <PlusCircleOutlined />, label: "Adicionais" },

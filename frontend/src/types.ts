@@ -6,6 +6,21 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
+export type HandoffMode = "bot" | "human";
+
+export type LiveConversation = {
+  id: string;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string;
+  state: string;
+  handoffMode: HandoffMode;
+  handoffAt: string | null;
+  handoffBy: string | null;
+  lastMessageAt: string;
+  cartItemCount: number;
+};
+
 export type OrderItem = {
   id?: string;
   name: string;

@@ -704,8 +704,75 @@ export const memoryStore = {
     return customer;
   },
 
+  findCustomerPhone(customerId: string) {
+    for (const customer of customers.values()) {
+      if (customer.id === customerId) return customer.waPhone;
+    }
+    return null;
+  },
+
   getConversation(customerId: string) {
     return conversations.get(customerId) ?? null;
+  },
+
+  getConversationById(id: string) {
+    for (const conversation of conversations.values()) {
+      if (conversation.id === id) return conversation;
+    }
+    return null;
+  },
+
+  touchConversation(customerId: string) {
+    const current = conversations.get(customerId);
+    if (!current) return null;
+    const next = { ...current, lastMessageAt: new Date().toISOString() };
+    conversations.set(customerId, next);
+    return next;
+  },
+
+  listLiveConversations(hours = 24) {
+    const since = Date.now() - hours * 60 * 60 * 1000;
+    return [...conversations.values()]
+      .filter(
+        (item) =>
+          item.handoffMode === "human" ||
+          (item.lastMessageAt && new Date(item.lastMessageAt).getTime() >= since),
+      )
+      .sort(
+        (left, right) =>
+          new Date(right.lastMessageAt ?? 0).getTime() -
+          new Date(left.lastMessageAt ?? 0).getTime(),
+      )
+      .map((item) => {
+        const customer = [...customers.values()].find((row) => row.id === item.customerId);
+        return {
+          id: item.id,
+          customerId: item.customerId,
+          customerName: customer?.name ?? null,
+          customerPhone: customer?.waPhone ?? "",
+          state: item.state,
+          handoffMode: item.handoffMode === "human" ? ("human" as const) : ("bot" as const),
+          handoffAt: item.handoffAt ?? null,
+          handoffBy: item.handoffBy ?? null,
+          lastMessageAt: item.lastMessageAt ?? new Date().toISOString(),
+          cartItemCount: item.context.cart?.length ?? 0,
+        };
+      });
+  },
+
+  setConversationHandoff(id: string, mode: "bot" | "human", by?: string | null) {
+    const current = this.getConversationById(id);
+    if (!current) return null;
+    const now = new Date().toISOString();
+    const next: Conversation = {
+      ...current,
+      handoffMode: mode,
+      handoffAt: mode === "human" ? now : null,
+      handoffBy: mode === "human" ? by?.trim() || null : null,
+      lastMessageAt: now,
+    };
+    conversations.set(current.customerId, next);
+    return next;
   },
 
   saveConversation(
@@ -721,6 +788,9 @@ export const memoryStore = {
       state,
       context,
       lastMessageAt: new Date().toISOString(),
+      handoffMode: current?.handoffMode ?? "bot",
+      handoffAt: current?.handoffAt ?? null,
+      handoffBy: current?.handoffBy ?? null,
     };
     conversations.set(customer.id, conversation);
     return conversation;

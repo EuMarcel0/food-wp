@@ -107,6 +107,41 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   cancelled: "Cancelado",
 };
 
+const CONVERSATION_STATE_LABEL: Record<string, string> = {
+  welcome: "Início",
+  awaiting_product: "Escolhendo item",
+  awaiting_addon: "Adicionais",
+  awaiting_crust: "Borda",
+  awaiting_option: "Montando item",
+  awaiting_quantity: "Quantidade",
+  awaiting_item_note: "Obs. do item",
+  cart: "Carrinho",
+  awaiting_order_note: "Obs. da entrega",
+  awaiting_fulfillment: "Entrega ou retirada",
+  awaiting_neighborhood: "Bairro",
+  awaiting_address: "Endereço",
+  awaiting_payment: "Pagamento",
+  awaiting_change: "Troco",
+  awaiting_order_code: "Consultando pedido",
+};
+
+export function conversationStateLabel(state: string) {
+  return CONVERSATION_STATE_LABEL[state] ?? state;
+}
+
+export function formatPhoneDisplay(raw?: string | null) {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  const local = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+  return raw?.trim() || digits;
+}
+
 export const STATUS_COLOR: Record<OrderStatus, string> = {
   received: "orange",
   preparing: "gold",

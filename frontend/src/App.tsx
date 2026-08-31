@@ -8,6 +8,7 @@ import { CategoriesPage } from "./pages/categorias";
 import { SettingsPage } from "./pages/configuracoes";
 import { DashboardPage } from "./pages/dashboard";
 import { LoginPage } from "./pages/login";
+import { ConversationsPage } from "./pages/conversas";
 import { OrdersPage } from "./pages/pedidos";
 
 export function App() {
@@ -21,6 +22,7 @@ export function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/pedidos" element={<OrdersPage />} />
+          <Route path="/conversas" element={<ConversationsPage />} />
           <Route path="/cardapio" element={<CatalogPage />} />
           <Route path="/categorias" element={<CategoriesPage />} />
           <Route path="/adicionais" element={<AddonsPage />} />

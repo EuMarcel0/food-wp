@@ -7,12 +7,13 @@ import type {
   Category,
   Crust,
   Health,
+  LiveConversation,
   Order,
   OrderStats,
   OrderStatus,
   Product,
   Size,
-  Store,
+  Store
 } from "../types";
 
 const base = import.meta.env.VITE_API_URL ?? "";
@@ -25,8 +26,8 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
     ...fetchInit,
     headers: {
       "Content-Type": "application/json",
-      ...(fetchInit.headers ?? {}),
-    },
+      ...(fetchInit.headers ?? {})
+    }
   });
 
   if (!response.ok) {
@@ -67,140 +68,92 @@ export const api = {
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
   createNeighborhood: (payload: { name: string; feeCents: number }) =>
     request<Store["neighborhoods"][number]>("/api/store/neighborhoods", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  deleteNeighborhood: (id: string) =>
-    request<void>(`/api/store/neighborhoods/${id}`, { method: "DELETE" }),
-  categories: (all = false) =>
-    request<Category[]>(`/api/categories${all ? "?all=1" : ""}`),
-  listCategories: (
-    page = 1,
-    limit = PAGE_SIZE,
-    filters?: { q?: string; active?: boolean },
-  ) =>
+  deleteNeighborhood: (id: string) => request<void>(`/api/store/neighborhoods/${id}`, { method: "DELETE" }),
+  categories: (all = false) => request<Category[]>(`/api/categories${all ? "?all=1" : ""}`),
+  listCategories: (page = 1, limit = PAGE_SIZE, filters?: { q?: string; active?: boolean }) =>
     request<PageResult<Category>>(
       withQuery("/api/categories", {
         all: 1,
         page,
         limit,
         q: filters?.q,
-        active: filters?.active,
-      }),
+        active: filters?.active
+      })
     ),
-  createCategory: (payload: {
-    name: string;
-    sortOrder: number;
-    active: boolean;
-  }) =>
+  createCategory: (payload: { name: string; sortOrder: number; active: boolean }) =>
     request<Category>("/api/categories", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  updateCategory: (
-    id: string,
-    payload: { name: string; sortOrder: number; active: boolean },
-  ) =>
+  updateCategory: (id: string, payload: { name: string; sortOrder: number; active: boolean }) =>
     request<Category>(`/api/categories/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  deleteCategory: (id: string) =>
-    request<void>(`/api/categories/${id}`, { method: "DELETE" }),
-  addons: (all = false) =>
-    request<Addon[]>(`/api/addons${all ? "?all=1" : ""}`),
-  listAddons: (
-    page = 1,
-    limit = PAGE_SIZE,
-    filters?: { q?: string; active?: boolean },
-  ) =>
+  deleteCategory: (id: string) => request<void>(`/api/categories/${id}`, { method: "DELETE" }),
+  addons: (all = false) => request<Addon[]>(`/api/addons${all ? "?all=1" : ""}`),
+  listAddons: (page = 1, limit = PAGE_SIZE, filters?: { q?: string; active?: boolean }) =>
     request<PageResult<Addon>>(
       withQuery("/api/addons", {
         all: 1,
         page,
         limit,
         q: filters?.q,
-        active: filters?.active,
-      }),
+        active: filters?.active
+      })
     ),
-  createAddon: (payload: {
-    name: string;
-    price: number;
-    sortOrder: number;
-    active: boolean;
-  }) =>
+  createAddon: (payload: { name: string; price: number; sortOrder: number; active: boolean }) =>
     request<Addon>("/api/addons", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  updateAddon: (
-    id: string,
-    payload: { name: string; price: number; sortOrder: number; active: boolean },
-  ) =>
+  updateAddon: (id: string, payload: { name: string; price: number; sortOrder: number; active: boolean }) =>
     request<Addon>(`/api/addons/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  deleteAddon: (id: string) =>
-    request<void>(`/api/addons/${id}`, { method: "DELETE" }),
-  listCrusts: (
-    page = 1,
-    limit = PAGE_SIZE,
-    filters?: { q?: string },
-  ) =>
+  deleteAddon: (id: string) => request<void>(`/api/addons/${id}`, { method: "DELETE" }),
+  listCrusts: (page = 1, limit = PAGE_SIZE, filters?: { q?: string }) =>
     request<PageResult<Crust>>(
       withQuery("/api/crusts", {
         all: 1,
         page,
         limit,
-        q: filters?.q,
-      }),
+        q: filters?.q
+      })
     ),
   createCrust: (payload: { name: string; addsPrice: boolean; price: number }) =>
     request<Crust>("/api/crusts", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  updateCrust: (
-    id: string,
-    payload: { name: string; addsPrice: boolean; price: number },
-  ) =>
+  updateCrust: (id: string, payload: { name: string; addsPrice: boolean; price: number }) =>
     request<Crust>(`/api/crusts/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  deleteCrust: (id: string) =>
-    request<void>(`/api/crusts/${id}`, { method: "DELETE" }),
-  sizes: (activeOnly = true) =>
-    request<Size[]>(
-      activeOnly ? "/api/sizes" : withQuery("/api/sizes", { all: 1 }),
-    ),
-  listSizes: (
-    page = 1,
-    limit = PAGE_SIZE,
-    filters?: { q?: string },
-  ) =>
+  deleteCrust: (id: string) => request<void>(`/api/crusts/${id}`, { method: "DELETE" }),
+  sizes: (activeOnly = true) => request<Size[]>(activeOnly ? "/api/sizes" : withQuery("/api/sizes", { all: 1 })),
+  listSizes: (page = 1, limit = PAGE_SIZE, filters?: { q?: string }) =>
     request<PageResult<Size>>(
       withQuery("/api/sizes", {
         all: 1,
         page,
         limit,
-        q: filters?.q,
-      }),
+        q: filters?.q
+      })
     ),
-  createSize: (payload: {
-    name: string;
-    price: number;
-    maxSelect: number;
-    priceMode: "addon" | "replace";
-  }) =>
+  createSize: (payload: { name: string; price: number; maxSelect: number; priceMode: "addon" | "replace" }) =>
     request<Size>("/api/sizes", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
   updateSize: (
     id: string,
@@ -209,27 +162,22 @@ export const api = {
       price: number;
       maxSelect: number;
       priceMode: "addon" | "replace";
-    },
+    }
   ) =>
     request<Size>(`/api/sizes/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
-  deleteSize: (id: string) =>
-    request<void>(`/api/sizes/${id}`, { method: "DELETE" }),
-  products: (
-    page = 1,
-    limit = PAGE_SIZE,
-    filters?: { q?: string; categoryId?: string; active?: boolean },
-  ) =>
+  deleteSize: (id: string) => request<void>(`/api/sizes/${id}`, { method: "DELETE" }),
+  products: (page = 1, limit = PAGE_SIZE, filters?: { q?: string; categoryId?: string; active?: boolean }) =>
     request<PageResult<Product>>(
       withQuery("/api/products", {
         page,
         limit,
         q: filters?.q,
         categoryId: filters?.categoryId,
-        active: filters?.active,
-      }),
+        active: filters?.active
+      })
     ),
   createProduct: (payload: {
     categoryId: string;
@@ -247,7 +195,7 @@ export const api = {
   }) =>
     request<Product>("/api/products", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
   updateProduct: (
     id: string,
@@ -264,11 +212,11 @@ export const api = {
       crustsEnabled: boolean;
       addonIds: string[];
       optionGroups: Product["optionGroups"];
-    }>,
+    }>
   ) =>
     request<Product>(`/api/products/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     }),
   orders: (
     page = 1,
@@ -280,7 +228,7 @@ export const api = {
       fulfillment?: string;
       from?: string;
       to?: string;
-    },
+    }
   ) =>
     request<PageResult<Order>>(
       withQuery("/api/orders", {
@@ -290,36 +238,37 @@ export const api = {
         status: filters?.status,
         fulfillment: filters?.fulfillment,
         from: filters?.from,
-        to: filters?.to,
+        to: filters?.to
       }),
-      { silent },
+      { silent }
     ),
   orderStats: () => request<OrderStats>("/api/orders/stats"),
-  order: (id: string, silent = false) =>
-    request<Order>(`/api/orders/${id}`, { silent }),
-  updateOrderStatus: (
-    id: string,
-    status: OrderStatus,
-    actorName?: string,
-    prepMinutes?: number,
-  ) =>
+  order: (id: string, silent = false) => request<Order>(`/api/orders/${id}`, { silent }),
+  conversations: (silent = true) => request<LiveConversation[]>("/api/conversations", { silent }),
+  takeoverConversation: (id: string, by?: string) =>
+    request<unknown>(`/api/conversations/${id}/takeover`, {
+      method: "POST",
+      body: JSON.stringify({ by })
+    }),
+  releaseConversation: (id: string) =>
+    request<unknown>(`/api/conversations/${id}/release`, {
+      method: "POST"
+    }),
+  updateOrderStatus: (id: string, status: OrderStatus, actorName?: string, prepMinutes?: number) =>
     request<Order>(`/api/orders/${id}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status, actorName, prepMinutes }),
+      body: JSON.stringify({ status, actorName, prepMinutes })
     }),
   notifications: (reader: string, silent = true) =>
-    request<AppNotification[]>(
-      `/api/notifications?reader=${encodeURIComponent(reader)}`,
-      { silent },
-    ),
+    request<AppNotification[]>(`/api/notifications?reader=${encodeURIComponent(reader)}`, { silent }),
   markNotificationRead: (id: string, reader: string) =>
     request<{ ok: boolean }>(`/api/notifications/${id}/read`, {
       method: "PATCH",
-      body: JSON.stringify({ reader }),
+      body: JSON.stringify({ reader })
     }),
   markAllNotificationsRead: (reader: string) =>
     request<{ ok: boolean; count: number }>("/api/notifications/read-all", {
       method: "PATCH",
-      body: JSON.stringify({ reader }),
-    }),
+      body: JSON.stringify({ reader })
+    })
 };

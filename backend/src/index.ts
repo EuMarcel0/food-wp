@@ -3,6 +3,7 @@ import cors from "cors";
 import { env, flags } from "./config/env.js";
 import { webhookRouter } from "./routes/webhook.js";
 import { ordersRouter } from "./routes/orders.js";
+import { conversationsRouter } from "./routes/conversations.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { legalRouter } from "./routes/legal.js";
@@ -68,6 +69,7 @@ app.get("/health", async (_req, res) => {
 app.use("/legal", legalRouter);
 app.use("/webhook", webhookRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/conversations", conversationsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api", catalogRouter);
 

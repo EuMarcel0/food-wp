@@ -1378,6 +1378,20 @@ export async function upsertCustomer(waPhone: string, name?: string | null) {
   } satisfies Customer;
 }
 
+function mapConversation(data: Record<string, unknown>): Conversation {
+  return {
+    id: String(data.id),
+    storeId: String(data.store_id),
+    customerId: String(data.customer_id),
+    state: data.state as ConversationState,
+    context: (data.context ?? { cart: [] }) as ConversationContext,
+    lastMessageAt: data.last_message_at ? String(data.last_message_at) : undefined,
+    handoffMode: data.handoff_mode === "human" ? "human" : "bot",
+    handoffAt: data.handoff_at ? String(data.handoff_at) : null,
+    handoffBy: data.handoff_by != null ? String(data.handoff_by) : null,
+  };
+}
+
 export async function getConversation(customerId: string) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.getConversation(customerId);
@@ -1388,14 +1402,105 @@ export async function getConversation(customerId: string) {
     .eq("customer_id", customerId)
     .maybeSingle();
   if (!data) return null;
-  return {
-    id: data.id,
-    storeId: data.store_id,
-    customerId: data.customer_id,
-    state: data.state as ConversationState,
-    context: (data.context ?? { cart: [] }) as ConversationContext,
-    lastMessageAt: data.last_message_at ? String(data.last_message_at) : undefined,
-  } satisfies Conversation;
+  return mapConversation(data as Record<string, unknown>);
+}
+
+export async function getConversationById(id: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.getConversationById(id);
+
+  const { data } = await supabase.from("conversations").select("*").eq("id", id).maybeSingle();
+  if (!data) return null;
+  return mapConversation(data as Record<string, unknown>);
+}
+
+export async function touchConversation(customerId: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.touchConversation(customerId);
+
+  const now = new Date().toISOString();
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: now })
+    .eq("customer_id", customerId);
+}
+
+export async function listLiveConversations(hours = 24) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listLiveConversations(hours);
+
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*, customers(id, name, wa_phone)")
+    .or(`last_message_at.gte.${since},handoff_mode.eq.human`)
+    .order("last_message_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    if (error.message?.includes("handoff_mode")) {
+      throw new Error("Rode a migration 030_conversation_handoff.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => {
+    const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
+    const context = (row.context ?? { cart: [] }) as ConversationContext;
+    return {
+      id: String(row.id),
+      customerId: String(row.customer_id),
+      customerName: customer?.name ?? null,
+      customerPhone: String(customer?.wa_phone ?? ""),
+      state: row.state as ConversationState,
+      handoffMode: row.handoff_mode === "human" ? ("human" as const) : ("bot" as const),
+      handoffAt: row.handoff_at ? String(row.handoff_at) : null,
+      handoffBy: row.handoff_by != null ? String(row.handoff_by) : null,
+      lastMessageAt: String(row.last_message_at ?? new Date().toISOString()),
+      cartItemCount: Array.isArray(context.cart) ? context.cart.length : 0,
+    };
+  });
+}
+
+export async function setConversationHandoff(
+  id: string,
+  mode: "bot" | "human",
+  by?: string | null,
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.setConversationHandoff(id, mode, by);
+
+  const now = new Date().toISOString();
+  const payload =
+    mode === "human"
+      ? {
+          handoff_mode: "human",
+          handoff_at: now,
+          handoff_by: by?.trim() || null,
+          last_message_at: now,
+        }
+      : {
+          handoff_mode: "bot",
+          handoff_at: null,
+          handoff_by: null,
+          last_message_at: now,
+        };
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .update(payload)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("handoff_mode")) {
+      throw new Error("Rode a migration 030_conversation_handoff.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+  return mapConversation(data as Record<string, unknown>);
 }
 
 export async function saveConversation(
@@ -1407,16 +1512,17 @@ export async function saveConversation(
   if (!supabase) return memoryStore.saveConversation(customer, state, context);
 
   const current = await getConversation(customer.id);
+  const now = new Date().toISOString();
   if (current) {
     await supabase
       .from("conversations")
       .update({
         state,
         context,
-        last_message_at: new Date().toISOString(),
+        last_message_at: now,
       })
       .eq("id", current.id);
-    return { ...current, state, context, lastMessageAt: new Date().toISOString() };
+    return { ...current, state, context, lastMessageAt: now };
   }
 
   const { data } = await supabase
@@ -1426,20 +1532,22 @@ export async function saveConversation(
       customer_id: customer.id,
       state,
       context,
+      handoff_mode: "bot",
     })
     .select("*")
     .single();
 
-  return {
-    id: data?.id ?? `conv-${customer.id}`,
-    storeId: customer.storeId,
-    customerId: customer.id,
-    state,
-    context,
-    lastMessageAt: data?.last_message_at
-      ? String(data.last_message_at)
-      : new Date().toISOString(),
-  } satisfies Conversation;
+  return mapConversation(
+    (data ?? {
+      id: `conv-${customer.id}`,
+      store_id: customer.storeId,
+      customer_id: customer.id,
+      state,
+      context,
+      last_message_at: now,
+      handoff_mode: "bot",
+    }) as Record<string, unknown>,
+  );
 }
 
 export async function createOrder(input: {

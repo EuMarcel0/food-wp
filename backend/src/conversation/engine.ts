@@ -13,6 +13,7 @@ import {
   listCrusts,
   listProducts,
   saveConversation,
+  touchConversation,
   upsertCustomer
 } from "../data/repository.js";
 import { describeOrderStatus, formatPrepDuration } from "./status.js";
@@ -1007,6 +1008,13 @@ export async function handleIncomingMessage(input: {
   const store = await getStore();
   const customer = await upsertCustomer(input.from, input.name);
   const existing = await getConversation(customer.id);
+
+  // Atendente assumiu no painel: bot fica em silêncio neste chat.
+  if (existing?.handoffMode === "human") {
+    await touchConversation(customer.id);
+    return;
+  }
+
   const state: ConversationState = existing?.state ?? "welcome";
   const context = existing?.context ?? emptyContext();
   const incoming = input.replyId || input.text;

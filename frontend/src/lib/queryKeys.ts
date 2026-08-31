@@ -61,6 +61,10 @@ export const queryKeys = {
       },
     ) => ["orders", "list", page, limit, filters] as const,
   },
+  conversations: {
+    all: ["conversations"] as const,
+    live: ["conversations", "live"] as const,
+  },
 };
 
 export type OrderListFilters = {
