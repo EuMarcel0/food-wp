@@ -8,9 +8,10 @@ import {
   getPrintAgentToken,
   pairPrintAgent,
   savePrintAgentPrinter,
-  type PrintAgentPrinter,
+  type PrintAgentPrinter
 } from "../../lib/printAgent";
 import { toast } from "../../lib/toast";
+import { cn } from "../../lib/cn";
 
 export function PrinterSettingsCard() {
   const [online, setOnline] = useState(false);
@@ -35,9 +36,7 @@ export function PrinterSettingsCard() {
     } catch {
       setOnline(false);
       setHost("");
-      setError(
-        "Agente offline. No PC da cozinha, abra a pasta print-agent e rode npm start (ou instale o serviço).",
-      );
+      setError("Agente offline. No PC da cozinha, abra a pasta print-agent e rode npm start (ou instale o serviço).");
     } finally {
       setChecking(false);
     }
@@ -51,7 +50,7 @@ export function PrinterSettingsCard() {
       const data = await fetchPrintAgentPrinters();
       setPrinters(data.printers ?? []);
       setHost(data.host || host);
-      setSelected((current) => current || data.printerName || "");
+      setSelected(current => current || data.printerName || "");
       setOnline(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao listar impressoras.");
@@ -69,42 +68,29 @@ export function PrinterSettingsCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const options = printers.map((item) => ({
+  const options = printers.map(item => ({
     value: item.name,
-    label: [
-      item.name,
-      item.isDefault ? "padrão do Windows" : null,
-      item.offline ? "offline" : null,
-    ]
+    label: [item.name, item.isDefault ? "padrão do Windows" : null, item.offline ? "offline" : null]
       .filter(Boolean)
-      .join(" · "),
+      .join(" · ")
   }));
 
   return (
     <Card
-      className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
-      title="Impressão do cupom"
-      extra={
-        online ? (
-          <Tag color="success">Agente online</Tag>
-        ) : (
-          <Tag>Agente offline</Tag>
-        )
-      }
+      className='overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl'
+      title='Impressão do cupom'
+      extra={online ? <Tag color='success'>Agente online</Tag> : <Tag>Agente offline</Tag>}
     >
-      <p className="mb-3 text-sm leading-normal text-food-muted">
-        A impressão usa um <strong>agente no PC da cozinha</strong> (porta 19100),
-        que fala direto com a térmica (ESC/POS). A API na nuvem não acessa a
-        impressora.
+      <p className='mb-3 text-sm leading-normal text-food-muted'>
+        A impressão usa um <strong>agente no PC da cozinha</strong> (porta 19100), que fala direto com a térmica
+        (ESC/POS). A API na nuvem não acessa a impressora.
       </p>
 
-      {error ? (
-        <Alert type="warning" showIcon className="mb-3" message={error} />
-      ) : null}
+      {error ? <Alert type='warning' showIcon className='mb-3' message={error} /> : null}
 
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div className={cn("mb-3 flex flex-wrap gap-2", error ? "mt-3" : "mb-0")}>
         <Button
-          type="primary"
+          type='primary'
           loading={pairing}
           onClick={async () => {
             setPairing(true);
@@ -117,9 +103,7 @@ export function PrinterSettingsCard() {
               await refreshPrinters();
             } catch (err) {
               setError(
-                err instanceof Error
-                  ? err.message
-                  : "Não foi possível conectar. O agente está rodando neste PC?",
+                err instanceof Error ? err.message : "Não foi possível conectar. O agente está rodando neste PC?"
               );
               setOnline(false);
             } finally {
@@ -141,27 +125,27 @@ export function PrinterSettingsCard() {
         </Button>
       </div>
 
-      <p className="mb-3 text-xs text-food-muted">
+      <p className='mb-3 text-xs text-food-muted'>
         {connected
           ? `Conectado em ${getPrintAgentBase()}${host ? ` · ${host}` : ""}`
           : "Ainda não conectado neste navegador."}
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className='flex flex-wrap items-center gap-2'>
         <Select
           showSearch
           allowClear
-          placeholder="Escolha a impressora"
-          optionFilterProp="label"
+          placeholder='Escolha a impressora'
+          optionFilterProp='label'
           value={selected || undefined}
           options={options}
           style={{ width: "100%", maxWidth: 420 }}
           disabled={!online || !connected}
           loading={loadingList}
-          onChange={(value) => setSelected(value ?? "")}
+          onChange={value => setSelected(value ?? "")}
         />
         <Button
-          type="primary"
+          type='primary'
           disabled={!selected || !online || !connected}
           loading={saving}
           onClick={async () => {
@@ -170,9 +154,7 @@ export function PrinterSettingsCard() {
               await savePrintAgentPrinter(selected);
               toast.success("Impressora padrão salva no agente.");
             } catch (err) {
-              toast.error(
-                err instanceof Error ? err.message : "Falha ao salvar impressora.",
-              );
+              toast.error(err instanceof Error ? err.message : "Falha ao salvar impressora.");
             } finally {
               setSaving(false);
             }
