@@ -157,12 +157,16 @@ function cartTotal(context: ConversationContext) {
 }
 
 function itemHeading(
-  item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity">,
-  opts?: { withQuantity?: boolean }
+  item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity" | "unitPriceCents">,
+  opts?: { withQuantity?: boolean; withUnitPrice?: boolean },
 ) {
   const title = item.catalogName?.trim() || item.name;
-  const heading = opts?.withQuantity && item.quantity > 0 ? `*${item.quantity}x ${title}*` : `*${title}*`;
-  const lines = [heading];
+  let heading =
+    opts?.withQuantity && item.quantity > 0 ? `${item.quantity}x ${title}` : title;
+  if (opts?.withUnitPrice) {
+    heading = `${heading} — ${formatBRL(item.unitPriceCents)}`;
+  }
+  const lines = [`*${heading}*`];
   // Tamanho/sabores logo abaixo do nome do cardápio (sem quantidade).
   if (item.name !== title) lines.push(item.name);
   const crust = crustLabel(item.extras);
@@ -180,7 +184,7 @@ function itemPriceLine(item: CartItem) {
 }
 
 function renderCartItem(item: CartItem) {
-  const { lines } = itemHeading(item, { withQuantity: true });
+  const { lines } = itemHeading(item, { withQuantity: true, withUnitPrice: true });
   lines.push(itemPriceLine(item));
   if (item.notes?.trim()) lines.push(`Obs.: ${item.notes.trim()}`);
   return lines.join("\n");
