@@ -83,6 +83,8 @@ const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
 function isCustomerAck(normalized: string) {
   const text = normalized.replace(/[!?.,]+$/g, "").trim();
   if (!text) return false;
+  // Joinha / curtida do WhatsApp
+  if (/^👍+$/u.test(text) || /^👍\s/u.test(text)) return true;
   if (ACK_KEYS.includes(text)) return true;
   return ACK_KEYS.some((key) => text === key || text.startsWith(`${key} `));
 }
@@ -1097,7 +1099,8 @@ export async function handleIncomingMessage(input: {
 
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
-    if (isCustomerAck(command) && (await replyOpenOrderStatus(true))) return;
+    // Pedido em aberto (Aceito/Preparo/…): não reinicia o menu — só informa o status.
+    if (await replyOpenOrderStatus(isCustomerAck(command))) return;
     // Bem-vindo já conta como conversa ativa no painel.
     await persist("welcome", emptyContext(), { reopen: true });
     await showWelcome(input.from, store.name);
@@ -1189,17 +1192,17 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  // Após status (pedido ainda aberto), "obrigado/ok" não reinicia o menu.
+  // Após o pedido (conversa em welcome/fechada), texto livre não reinicia o menu
+  // enquanto houver pedido em aberto — responde o status (com "Por nada" se for ack).
   if (
     !orderActive &&
     !hasReply &&
-    isCustomerAck(command) &&
-    (await replyOpenOrderStatus(true))
+    (await replyOpenOrderStatus(isCustomerAck(command)))
   ) {
     return;
   }
 
-  // Fora do pedido, texto livre volta ao menu inicial.
+  // Fora do pedido e sem pedido em aberto, texto livre volta ao menu inicial.
   if (state === "welcome" && !hasReply) {
     await persist("welcome", context, { reopen: true });
     await showWelcome(input.from, store.name);
@@ -1705,7 +1708,8 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  if (isCustomerAck(command) && (await replyOpenOrderStatus(true))) {
+  // Pedido em aberto: qualquer mensagem residual responde o status, sem Bem-vindo.
+  if (await replyOpenOrderStatus(isCustomerAck(command))) {
     return;
   }
 
