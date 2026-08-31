@@ -238,31 +238,31 @@ export function OrdersPage() {
         dataSource={orders}
         tableLayout="fixed"
         pagination={false}
-        scroll={{ x: 1420, y: bodyHeight }}
+        scroll={{ x: 1580, y: bodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
             title: "Cliente",
-            width: 160,
+            width: 150,
             ellipsis: true,
             render: (_, order) => order.customerName || order.customerPhone || "—",
           },
           {
-            title: (
-              <span className="flex w-full items-baseline justify-between gap-3">
-                <span>Itens</span>
-                <span>Quantidade</span>
-              </span>
-            ),
+            title: "Itens",
+            width: 320,
             render: (_, order) => (
               <OrderItemsLeaders items={order.items ?? []} />
             ),
           },
           {
             title: "Obs.",
-            ellipsis: true,
-            width: 140,
-            render: (_, order) => order.notes || "—",
+            width: 260,
+            render: (_, order) =>
+              order.notes ? (
+                <span className="whitespace-normal break-words">{order.notes}</span>
+              ) : (
+                "—"
+              ),
           },
           {
             title: "Tipo",

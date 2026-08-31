@@ -107,11 +107,11 @@ export function OrderCard({
               const crust = crustLabel(item.extras);
               const addons = addonLabel(item.extras);
               return (
-              <li key={item.id ?? `${item.name}-${index}`} className="flex items-baseline gap-1.5">
-                <span className="tabular-nums">{item.quantity}</span>
+              <li key={item.id ?? `${item.name}-${index}`}>
                 <span>
                   {item.name}
-                  {item.notes ? ` · obs.: ${item.notes}` : ""}
+                  {item.notes ? ` (obs.: ${item.notes})` : ""}
+                  {` x ${item.quantity} - ${formatBRL(item.unitPriceCents)}`}
                   {crust ? (
                     <div className="font-normal text-food-muted">{crust}</div>
                   ) : null}
