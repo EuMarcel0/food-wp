@@ -437,12 +437,18 @@ export function groupPrompt(
   const lines = [
     `*${product.name}*`,
     catalogFlavors
-      ? `Tamanho *${group.name}* — escolha o sabor`
+      ? chosen.length
+        ? `Tamanho *${group.name}* — escolha o sabor`
+        : `Tamanho *${group.name}*`
       : `Escolha: *${group.name}*`,
     catalogFlavors
-      ? group.maxSelect > 1
-        ? `Pode marcar até ${group.maxSelect} sabores.`
-        : "Pode marcar 1 sabor."
+      ? chosen.length
+        ? group.maxSelect > 1
+          ? `Pode marcar até ${group.maxSelect} sabores.`
+          : "Pode marcar 1 sabor."
+        : group.maxSelect > 1
+          ? `Só este sabor ou combine até ${group.maxSelect}.`
+          : "Só este sabor ou escolha outro."
       : group.maxSelect > 1
         ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
         : group.required

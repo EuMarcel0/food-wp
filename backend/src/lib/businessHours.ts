@@ -219,5 +219,5 @@ export function closedStoreMessage(
         : null,
     "Quando reabrirmos, é só mandar uma mensagem.",
   ].filter(Boolean);
-  return lines.join("\n\n");
+  return lines.join("\n");
 }

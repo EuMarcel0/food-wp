@@ -159,11 +159,18 @@ function renderCartItem(item: CartItem) {
 
 function renderCart(context: ConversationContext) {
   if (!context.cart.length) return "Seu carrinho está vazio.";
-  return `${context.cart.map(renderCartItem).join("\n\n")}\n\nSubtotal: ${formatBRL(cartTotal(context))}`;
+  return `${context.cart.map(renderCartItem).join("\n")}\nSubtotal: ${formatBRL(cartTotal(context))}`;
 }
 
 function isSkipStep(incoming: string, normalized: string) {
-  if (incoming === "skip_group" || incoming === "done_options" || normalized === "pular" || normalized === "pronto") {
+  if (
+    incoming === "skip_group" ||
+    incoming === "done_options" ||
+    normalized === "pular" ||
+    normalized === "pronto" ||
+    normalized === "so este sabor" ||
+    normalized === "so esse sabor"
+  ) {
     return true;
   }
   const last =
@@ -309,7 +316,7 @@ const CART_ACTIONS = [
 ] as const;
 
 async function showCartPrompt(to: string, context: ConversationContext, intro = "Adicionado.") {
-  await sendButtons(to, `${intro}\n\n${renderCart(context)}`, [...CART_ACTIONS]);
+  await sendButtons(to, `${intro}\n${renderCart(context)}`, [...CART_ACTIONS]);
 }
 
 async function showCartAfterAdd(to: string, context: ConversationContext) {
@@ -424,7 +431,7 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
       await askOrderNote(to);
       return;
     case "awaiting_fulfillment":
-      await askFulfillment(to, store, `${RESUME_HINT}\n\n${renderCart(context)}`);
+      await askFulfillment(to, store, `${RESUME_HINT}\n${renderCart(context)}`);
       return;
     case "awaiting_neighborhood":
       await sendText(to, RESUME_HINT);
@@ -470,7 +477,7 @@ export async function handleUnsupportedInbound(input: { from: string; name?: str
   }
   await sendText(
     input.from,
-    "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\n\nPara continuar, responda *por texto* ou toque nas opções da última mensagem."
+    "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\nPara continuar, responda *por texto* ou toque nas opções da última mensagem."
   );
 }
 
@@ -507,7 +514,7 @@ async function askFulfillment(
   const buttons = [];
   if (store.deliveryEnabled) buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
   if (store.pickupEnabled) buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
-  await sendButtons(to, `${cartText}\n\nComo você prefere receber?`, buttons);
+  await sendButtons(to, `${cartText}\nComo você prefere receber?`, buttons);
 }
 
 async function askNeighborhoods(to: string, store: Store) {
@@ -655,6 +662,24 @@ async function showWelcome(to: string, storeName: string) {
 
 async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
   const products = await listProducts();
+  if (!products.length) {
+    await sendText(to, "O cardápio ainda não foi cadastrado.");
+    return;
+  }
+
+  // Até 3 itens: botões de resposta (evita lista com 1 opção e linha vazia estranha).
+  if (products.length <= 3) {
+    await sendButtons(
+      to,
+      intro,
+      products.map(product => ({
+        id: `product:${product.id}`,
+        title: product.name.slice(0, 20)
+      }))
+    );
+    return;
+  }
+
   const grouped = new Map<string, typeof products>();
   for (const product of products) {
     const list = grouped.get(product.categoryName) ?? [];
@@ -670,11 +695,6 @@ async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
       ...(product.customizable ? {} : { description: formatReais(product.price) })
     }))
   }));
-
-  if (!sections.length) {
-    await sendText(to, "O cardápio ainda não foi cadastrado.");
-    return;
-  }
 
   await sendList(to, intro, "Ver itens", sections);
 }
@@ -710,6 +730,30 @@ async function pizzaFlavorChoices(kind: PizzaKind | null | undefined, excludeIds
   });
 }
 
+async function showFlavorList(
+  to: string,
+  product: Product,
+  group: ProductOptionGroup,
+  drafts: CartSelection[]
+) {
+  const current = drafts.find(item => item.groupId === group.id);
+  const picked = current?.options.map(option => option.id) ?? [];
+  const pickedNames = current?.options.map(option => option.name) ?? [];
+  const remaining = await pizzaFlavorChoices(product.pizzaKind, [product.id, ...picked]);
+  if (!remaining.length) return true;
+
+  await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolha o sabor", [
+    {
+      title: "Sabores",
+      rows: remaining.slice(0, 10).map(pizza => ({
+        id: `flavor:${pizza.id}`,
+        title: pizza.name.slice(0, 24)
+      }))
+    }
+  ]);
+  return false;
+}
+
 async function askGroupOptions(to: string, product: Product, group: ProductOptionGroup, drafts: CartSelection[]) {
   const current = drafts.find(item => item.groupId === group.id);
   const picked = current?.options.map(option => option.id) ?? [];
@@ -720,20 +764,16 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
     const remaining = await pizzaFlavorChoices(product.pizzaKind, [product.id, ...picked]);
     if (!remaining.length) return true;
 
-    await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolha o sabor", [
-      {
-        title: "Sabores",
-        rows: remaining.slice(0, 10).map(pizza => ({
-          id: `flavor:${pizza.id}`,
-          title: pizza.name.slice(0, 24)
-        }))
-      }
-    ]);
-    if (picked.length === 0) {
-      await sendButtons(to, "Pode seguir só com este sabor ou escolher outro.", [
-        { id: "skip_group", title: "Só este sabor" }
-      ]);
+    // Já tem sabor extra: abre a lista direto (fluxo "Mais um").
+    if (picked.length > 0) {
+      return showFlavorList(to, product, group, drafts);
     }
+
+    // Primeira decisão: botões lado a lado — "Escolher sabor" por último (mais clicado).
+    await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
+      { id: "skip_group", title: "Só este sabor" },
+      { id: "choose_flavor", title: "Escolher sabor" }
+    ]);
     return false;
   }
 
@@ -1128,6 +1168,22 @@ export async function handleIncomingMessage(input: {
       }
       await persist("awaiting_option", context);
       const finished = await askGroupOptions(input.from, product, group, drafts);
+      if (finished) await goNext();
+      return;
+    }
+
+    if (incoming === "choose_flavor" || normalized === "escolher sabor") {
+      const openGroup = await groupWantingMore(product, drafts);
+      const pendingGroup = pending.type === "options" ? pending.group : null;
+      const group =
+        (openGroup && usesCatalogFlavors(openGroup) ? openGroup : null) ??
+        (pendingGroup && usesCatalogFlavors(pendingGroup) ? pendingGroup : null);
+      if (!group) {
+        await resumeCurrentStep(input.from, store, state, context);
+        return;
+      }
+      await persist("awaiting_option", context);
+      const finished = await showFlavorList(input.from, product, group, drafts);
       if (finished) await goNext();
       return;
     }

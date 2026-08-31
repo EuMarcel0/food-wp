@@ -9,6 +9,11 @@ type ListSection = {
   rows: { id: string; title: string; description?: string }[];
 };
 
+/** Evita linhas em branco extras no balão do WhatsApp. */
+function normalizeBody(body: string) {
+  return body.replace(/\r\n/g, "\n").replace(/\n{2,}/g, "\n").trim();
+}
+
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
 }
@@ -107,7 +112,11 @@ export async function subscribeWhatsAppApp() {
 }
 
 export async function sendText(to: string, body: string) {
-  return send({ to, type: "text", text: { preview_url: false, body } });
+  return send({
+    to,
+    type: "text",
+    text: { preview_url: false, body: normalizeBody(body) },
+  });
 }
 
 export async function sendButtons(to: string, body: string, buttons: Button[]) {
@@ -116,7 +125,7 @@ export async function sendButtons(to: string, body: string, buttons: Button[]) {
     type: "interactive",
     interactive: {
       type: "button",
-      body: { text: body },
+      body: { text: normalizeBody(body) },
       action: {
         buttons: buttons.slice(0, 3).map((button) => ({
           type: "reply",
@@ -133,21 +142,31 @@ export async function sendList(
   buttonLabel: string,
   sections: ListSection[],
 ) {
+  const cleanedSections = sections
+    .map((section) => ({
+      title: section.title.trim().slice(0, 24),
+      rows: section.rows.slice(0, 10).map((row) => ({
+        id: row.id,
+        title: row.title.slice(0, 24),
+        ...(row.description ? { description: row.description.slice(0, 72) } : {}),
+      })),
+    }))
+    .filter((section) => section.rows.length > 0);
+
   return send({
     to,
     type: "interactive",
     interactive: {
       type: "list",
-      body: { text: body },
+      body: { text: normalizeBody(body) },
       action: {
         button: buttonLabel.slice(0, 20),
-        sections: sections.map((section) => ({
-          title: section.title.slice(0, 24),
-          rows: section.rows.slice(0, 10).map((row) => ({
-            id: row.id,
-            title: row.title.slice(0, 24),
-            ...(row.description ? { description: row.description.slice(0, 72) } : {}),
-          })),
+        sections: cleanedSections.map((section) => ({
+          // Título da seção só é obrigatório com mais de uma seção.
+          ...(cleanedSections.length > 1 && section.title
+            ? { title: section.title }
+            : {}),
+          rows: section.rows,
         })),
       },
     },
