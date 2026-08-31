@@ -34,6 +34,9 @@ export function CrustCard({
       }
       footer={
         <>
+          <Tag color={crust.pizzaKind === "doce" ? "magenta" : "blue"}>
+            {crust.pizzaKind === "doce" ? "Doce" : "Salgada"}
+          </Tag>
           <Tag color={crust.addsPrice ? "gold" : "default"}>
             {crust.addsPrice ? "Soma no valor da pizza" : "Sem acréscimo"}
           </Tag>

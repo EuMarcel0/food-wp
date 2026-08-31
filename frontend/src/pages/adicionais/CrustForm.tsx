@@ -1,5 +1,5 @@
 import { Formik, Form as FormikForm } from "formik";
-import { Alert, Button, Checkbox, Input } from "antd";
+import { Alert, Button, Checkbox, Input, Radio } from "antd";
 import { BorderOuterOutlined } from "@ant-design/icons";
 import { FormControl, FormField } from "../../components/FormField";
 import { FormModal } from "../../components/FormModal";
@@ -26,6 +26,7 @@ export function CrustForm({
 }) {
   const initialValues: CrustValues = {
     name: crust?.name ?? "",
+    pizzaKind: crust?.pizzaKind ?? "salgada",
     addsPrice: crust?.addsPrice ?? false,
     price: crust?.addsPrice
       ? maskBRL(String(Math.round(crust.price * 100)))
@@ -55,7 +56,7 @@ export function CrustForm({
           onCancel={onCancel}
           kicker="Bordas"
           title={crust ? "Editar borda" : "Incluir borda"}
-          hint="Nas pizzas com “Perguntar borda”, o cliente escolhe uma destas opções no WhatsApp."
+          hint="Nas pizzas com “Perguntar borda”, o cliente só vê bordas do mesmo tipo (doce ou salgada)."
           icon={<BorderOuterOutlined />}
           footer={
             <>
@@ -82,6 +83,22 @@ export function CrustForm({
             <FormField name="name" label="Nome">
               <Input placeholder="Ex.: Sem Borda, Borda de cheddar…" />
             </FormField>
+            <FormControl name="pizzaKind" label="Doce ou salgada">
+              {({ value, setValue, setTouched, invalid }) => (
+                <Radio.Group
+                  value={value ?? undefined}
+                  onChange={(event) => setValue(event.target.value)}
+                  onBlur={setTouched}
+                  optionType="button"
+                  buttonStyle="solid"
+                  className={invalid ? "ring-2 ring-red-400 rounded-md" : undefined}
+                  options={[
+                    { label: "Salgada", value: "salgada" },
+                    { label: "Doce", value: "doce" },
+                  ]}
+                />
+              )}
+            </FormControl>
             <FormControl name="addsPrice">
               {({ value, setValue }) => (
                 <div className="mb-1">
@@ -120,8 +137,12 @@ export function toCrustPayload(values: CrustValues) {
   if (values.addsPrice && price === null) {
     throw new Error("Informe um valor válido.");
   }
+  if (values.pizzaKind !== "doce" && values.pizzaKind !== "salgada") {
+    throw new Error("Informe se a borda é doce ou salgada.");
+  }
   return {
     name: values.name.trim(),
+    pizzaKind: values.pizzaKind,
     addsPrice: Boolean(values.addsPrice),
     price: price ?? 0,
   };

@@ -162,6 +162,9 @@ export const addonSchema = Yup.object({
 
 export const crustSchema = Yup.object({
   name: Yup.string().trim().required("Informe o nome da borda"),
+  pizzaKind: Yup.string()
+    .oneOf(["salgada", "doce"], "Informe se é doce ou salgada")
+    .required("Informe se é doce ou salgada"),
   addsPrice: Yup.boolean().default(false),
   price: Yup.string().default("").when("addsPrice", {
     is: true,

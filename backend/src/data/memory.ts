@@ -136,6 +136,7 @@ const crusts: Crust[] = [
     price: 0,
     sortOrder: 0,
     active: true,
+    pizzaKind: "salgada",
   },
   {
     id: "crust-cheddar",
@@ -144,6 +145,7 @@ const crusts: Crust[] = [
     price: 0,
     sortOrder: 1,
     active: true,
+    pizzaKind: "salgada",
   },
   {
     id: "crust-catupiry",
@@ -152,6 +154,25 @@ const crusts: Crust[] = [
     price: 0,
     sortOrder: 2,
     active: true,
+    pizzaKind: "salgada",
+  },
+  {
+    id: "crust-none-doce",
+    name: "Sem Borda",
+    addsPrice: false,
+    price: 0,
+    sortOrder: 0,
+    active: true,
+    pizzaKind: "doce",
+  },
+  {
+    id: "crust-chocolate",
+    name: "Borda de chocolate",
+    addsPrice: false,
+    price: 0,
+    sortOrder: 1,
+    active: true,
+    pizzaKind: "doce",
   },
 ];
 
@@ -466,7 +487,12 @@ export const memoryStore = {
     return paginateItems(items, page, limit);
   },
 
-  createCrust(input: { name: string; addsPrice: boolean; price: number }) {
+  createCrust(input: {
+    name: string;
+    addsPrice: boolean;
+    price: number;
+    pizzaKind: "salgada" | "doce";
+  }) {
     const sortOrder =
       crusts.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
     const crust: Crust = {
@@ -476,6 +502,7 @@ export const memoryStore = {
       price: input.addsPrice ? input.price : 0,
       sortOrder,
       active: true,
+      pizzaKind: input.pizzaKind,
     };
     crusts.push(crust);
     return crust;
@@ -483,13 +510,19 @@ export const memoryStore = {
 
   updateCrust(
     id: string,
-    input: { name: string; addsPrice: boolean; price: number },
+    input: {
+      name: string;
+      addsPrice: boolean;
+      price: number;
+      pizzaKind: "salgada" | "doce";
+    },
   ) {
     const crust = crusts.find((item) => item.id === id);
     if (!crust) return null;
     crust.name = input.name;
     crust.addsPrice = input.addsPrice;
     crust.price = input.addsPrice ? input.price : 0;
+    crust.pizzaKind = input.pizzaKind;
     return crust;
   },
 

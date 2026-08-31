@@ -780,6 +780,7 @@ function missingCrustsTable(message?: string) {
 }
 
 function mapCrust(row: Record<string, unknown>): Crust {
+  const kind = String(row.pizza_kind ?? "salgada");
   return {
     id: String(row.id),
     name: String(row.name),
@@ -787,13 +788,16 @@ function mapCrust(row: Record<string, unknown>): Crust {
     price: Number(row.price ?? 0),
     sortOrder: Number(row.sort_order ?? 0),
     active: Boolean(row.active ?? true),
+    pizzaKind: kind === "doce" ? "doce" : "salgada",
   };
 }
 
 const DEFAULT_CRUSTS = [
-  { name: "Sem Borda", sortOrder: 0 },
-  { name: "Borda de cheddar", sortOrder: 1 },
-  { name: "Borda de Catupiry", sortOrder: 2 },
+  { name: "Sem Borda", sortOrder: 0, pizzaKind: "salgada" as const },
+  { name: "Borda de cheddar", sortOrder: 1, pizzaKind: "salgada" as const },
+  { name: "Borda de Catupiry", sortOrder: 2, pizzaKind: "salgada" as const },
+  { name: "Sem Borda", sortOrder: 0, pizzaKind: "doce" as const },
+  { name: "Borda de chocolate", sortOrder: 1, pizzaKind: "doce" as const },
 ] as const;
 
 async function ensureDefaultCrusts() {
@@ -817,6 +821,7 @@ async function ensureDefaultCrusts() {
       price: 0,
       sort_order: item.sortOrder,
       active: true,
+      pizza_kind: item.pizzaKind,
     })),
   );
   if (insertError && !missingCrustsTable(insertError.message)) {
@@ -897,6 +902,7 @@ export async function createCrust(input: {
   name: string;
   addsPrice: boolean;
   price: number;
+  pizzaKind: "salgada" | "doce";
 }) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.createCrust(input);
@@ -918,14 +924,17 @@ export async function createCrust(input: {
       price: input.addsPrice ? input.price : 0,
       sort_order: sortOrder,
       active: true,
+      pizza_kind: input.pizzaKind,
     })
     .select("*")
     .single();
   if (error || !data) {
     throw new Error(
-      missingCrustsTable(error?.message)
-        ? "Rode a migration 025_crusts.sql no Supabase."
-        : error?.message ?? "Não foi possível salvar a borda.",
+      error?.message?.includes("pizza_kind")
+        ? "Rode a migration 034_crust_pizza_kind.sql no banco."
+        : missingCrustsTable(error?.message)
+          ? "Rode a migration 025_crusts.sql no banco."
+          : error?.message ?? "Não foi possível salvar a borda.",
     );
   }
   return mapCrust(data as Record<string, unknown>);
@@ -933,7 +942,12 @@ export async function createCrust(input: {
 
 export async function updateCrust(
   id: string,
-  input: { name: string; addsPrice: boolean; price: number },
+  input: {
+    name: string;
+    addsPrice: boolean;
+    price: number;
+    pizzaKind: "salgada" | "doce";
+  },
 ) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.updateCrust(id, input);
@@ -943,11 +957,17 @@ export async function updateCrust(
       name: input.name,
       adds_price: input.addsPrice,
       price: input.addsPrice ? input.price : 0,
+      pizza_kind: input.pizzaKind,
     })
     .eq("id", id)
     .select("*")
     .single();
-  if (error || !data) return null;
+  if (error || !data) {
+    if (error?.message?.includes("pizza_kind")) {
+      throw new Error("Rode a migration 034_crust_pizza_kind.sql no banco.");
+    }
+    return null;
+  }
   return mapCrust(data as Record<string, unknown>);
 }
 

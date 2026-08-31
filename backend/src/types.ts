@@ -175,6 +175,7 @@ export type Crust = {
   price: number;
   sortOrder: number;
   active: boolean;
+  pizzaKind: PizzaKind;
 };
 
 export type Size = {

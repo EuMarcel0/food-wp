@@ -442,14 +442,28 @@ catalogRouter.delete("/addons/:id", async (req, res) => {
   }
 });
 
-function crustPayload(body: Record<string, unknown>) {
+function crustPayload(body: Record<string, unknown>): {
+  name: string;
+  addsPrice: boolean;
+  price: number;
+  pizzaKind: "salgada" | "doce";
+} | null {
   const name = String(body.name ?? "").trim();
   const addsPrice = Boolean(body.addsPrice);
   const price = addsPrice ? Number(body.price ?? 0) : 0;
-  if (!name || !Number.isFinite(price) || price < 0) {
+  const pizzaKind =
+    body.pizzaKind === "doce" || body.pizzaKind === "salgada"
+      ? body.pizzaKind
+      : null;
+  if (!name || !pizzaKind || !Number.isFinite(price) || price < 0) {
     return null;
   }
-  return { name, addsPrice, price: Math.round(price * 100) / 100 };
+  return {
+    name,
+    addsPrice,
+    price: Math.round(price * 100) / 100,
+    pizzaKind,
+  };
 }
 
 catalogRouter.get("/crusts", async (req, res) => {
@@ -472,7 +486,9 @@ catalogRouter.get("/crusts", async (req, res) => {
 catalogRouter.post("/crusts", async (req, res) => {
   const payload = crustPayload(req.body ?? {});
   if (!payload) {
-    res.status(400).json({ error: "Preencha o nome da borda." });
+    res.status(400).json({
+      error: "Preencha o nome da borda e informe se é doce ou salgada.",
+    });
     return;
   }
   if (payload.addsPrice && payload.price < 0) {
@@ -491,7 +507,9 @@ catalogRouter.post("/crusts", async (req, res) => {
 catalogRouter.patch("/crusts/:id", async (req, res) => {
   const payload = crustPayload(req.body ?? {});
   if (!payload) {
-    res.status(400).json({ error: "Preencha o nome da borda." });
+    res.status(400).json({
+      error: "Preencha o nome da borda e informe se é doce ou salgada.",
+    });
     return;
   }
   try {

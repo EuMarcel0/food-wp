@@ -315,8 +315,14 @@ function setDraftCrust(drafts: CartSelection[], crust: Crust) {
   ];
 }
 
+function crustsForPizza(product: Product, crusts: Crust[]) {
+  if (!product.pizzaKind) return crusts;
+  return crusts.filter((crust) => crust.pizzaKind === product.pizzaKind);
+}
+
 async function askCrusts(to: string, product: Product, crusts: Crust[]) {
-  const visible = crusts.slice(0, 10);
+  const visible = crustsForPizza(product, crusts).slice(0, 10);
+  if (!visible.length) return false;
   await sendList(to, `*${product.name}*\n🧀 Escolha a borda.`, "Ver bordas", [
     {
       title: "Bordas",
@@ -327,6 +333,7 @@ async function askCrusts(to: string, product: Product, crusts: Crust[]) {
       }))
     }
   ]);
+  return true;
 }
 
 function commitDraftToCart(context: ConversationContext) {
@@ -406,12 +413,13 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
         await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
         return;
       }
-      if (!crusts.length) {
+      const matching = crustsForPizza(product, crusts);
+      if (!matching.length) {
         await askQuantity(to, product, context.draftSelections ?? []);
         return;
       }
       await sendText(to, RESUME_HINT);
-      await askCrusts(to, product, crusts);
+      await askCrusts(to, product, matching);
       return;
     }
     case "awaiting_addon": {
@@ -920,7 +928,7 @@ async function askQuantityStage(
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (product.crustsEnabled && !crustStepDone(context.draftSelections)) {
-    const crusts = await listCrusts();
+    const crusts = crustsForPizza(product, await listCrusts());
     if (crusts.length) {
       await persist("awaiting_crust", context);
       await askCrusts(to, product, crusts);
@@ -1380,7 +1388,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    const crusts = await listCrusts();
+    const crusts = crustsForPizza(product, await listCrusts());
     if (!crusts.length) {
       await askQuantityStage(input.from, product, context, persist);
       return;

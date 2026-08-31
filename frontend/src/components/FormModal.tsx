@@ -33,13 +33,19 @@ export function FormModal({
       width={width}
       title={null}
       closable
+      styles={{
+        content: { padding: 0 },
+        header: { display: "none", padding: 0, margin: 0 },
+        body: { padding: 0 },
+        footer: { display: "none", padding: 0 },
+      }}
       classNames={{
         content:
-          "overflow-hidden border border-food-border bg-food-surface p-0 shadow-food",
-        header: "hidden",
-        body: "p-0",
+          "!p-0 !px-0 !py-0 overflow-hidden border border-food-border bg-food-surface shadow-food",
+        header: "hidden !p-0 !m-0",
+        body: "!p-0 !px-0 !py-0",
       }}
-      rootClassName="[&_.ant-modal-close]:top-3.5 [&_.ant-modal-close]:right-3.5 [&_.ant-modal-close]:text-food-muted"
+      rootClassName="[&_.ant-modal-content]:!p-0 [&_.ant-modal-body]:!p-0 [&_.ant-modal-close]:top-3.5 [&_.ant-modal-close]:right-3.5 [&_.ant-modal-close]:text-food-muted"
     >
       <div className="overflow-hidden">
         <div className="flex gap-3.5 border-b border-food-border px-5 pt-5 pb-4">

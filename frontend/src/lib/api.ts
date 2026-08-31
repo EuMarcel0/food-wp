@@ -130,12 +130,25 @@ export const api = {
         q: filters?.q
       })
     ),
-  createCrust: (payload: { name: string; addsPrice: boolean; price: number }) =>
+  createCrust: (payload: {
+    name: string;
+    addsPrice: boolean;
+    price: number;
+    pizzaKind: Crust["pizzaKind"];
+  }) =>
     request<Crust>("/api/crusts", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  updateCrust: (id: string, payload: { name: string; addsPrice: boolean; price: number }) =>
+  updateCrust: (
+    id: string,
+    payload: {
+      name: string;
+      addsPrice: boolean;
+      price: number;
+      pizzaKind: Crust["pizzaKind"];
+    }
+  ) =>
     request<Crust>(`/api/crusts/${id}`, {
       method: "PATCH",
       body: JSON.stringify(payload)

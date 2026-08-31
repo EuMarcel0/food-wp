@@ -685,4 +685,143 @@ alter table public.stores
   add column if not exists auto_accept_orders boolean
     not null default false;
 
+-- ========== 030_conversation_handoff ==========
+alter table public.conversations
+  add column if not exists handoff_mode text not null default 'bot',
+  add column if not exists handoff_at timestamptz,
+  add column if not exists handoff_by text;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'conversations_handoff_mode_check'
+  ) then
+    alter table public.conversations
+      add constraint conversations_handoff_mode_check
+      check (handoff_mode in ('bot', 'human'));
+  end if;
+end $$;
+
+create index if not exists conversations_last_message_idx
+  on public.conversations (last_message_at desc);
+
+create index if not exists conversations_handoff_mode_idx
+  on public.conversations (handoff_mode)
+  where handoff_mode = 'human';
+
+drop policy if exists "conversations_read" on public.conversations;
+create policy "conversations_read"
+  on public.conversations for select
+  to authenticated
+  using (true);
+
+grant select on public.conversations to authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_rel prel
+    join pg_publication pub on pub.oid = prel.prpubid
+    join pg_class rel on rel.oid = prel.prrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where pub.pubname = 'supabase_realtime'
+      and nsp.nspname = 'public'
+      and rel.relname = 'conversations'
+  ) then
+    alter publication supabase_realtime add table public.conversations;
+  end if;
+end $$;
+
+-- ========== 031_conversation_closed ==========
+alter table public.conversations
+  add column if not exists closed_at timestamptz,
+  add column if not exists last_order_id uuid references public.orders(id) on delete set null,
+  add column if not exists last_order_code text;
+
+create index if not exists conversations_closed_at_idx
+  on public.conversations (closed_at)
+  where closed_at is null;
+
+create index if not exists conversations_last_order_idx
+  on public.conversations (last_order_id)
+  where last_order_id is not null;
+
+-- ========== 032_customer_avatar ==========
+alter table public.customers
+  add column if not exists avatar_url text;
+
+-- ========== 033_order_accepted_status ==========
+alter table public.orders drop constraint if exists orders_status_check;
+
+alter table public.orders
+  add constraint orders_status_check
+  check (status in (
+    'received',
+    'accepted',
+    'preparing',
+    'ready',
+    'out_for_delivery',
+    'delivered',
+    'cancelled'
+  ));
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'stores'
+      and column_name = 'default_prep_minutes'
+  ) and not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'stores'
+      and column_name = 'default_accept_minutes'
+  ) then
+    alter table public.stores
+      rename column default_prep_minutes to default_accept_minutes;
+  end if;
+end $$;
+
+alter table public.stores
+  add column if not exists default_accept_minutes integer
+    not null default 40
+    check (default_accept_minutes >= 1 and default_accept_minutes <= 480);
+
+-- ========== 034_crust_pizza_kind ==========
+alter table public.crusts
+  add column if not exists pizza_kind text;
+
+update public.crusts
+set pizza_kind = 'salgada'
+where pizza_kind is null or btrim(pizza_kind) = '';
+
+alter table public.crusts
+  alter column pizza_kind set default 'salgada';
+
+alter table public.crusts
+  alter column pizza_kind set not null;
+
+alter table public.crusts drop constraint if exists crusts_pizza_kind_check;
+
+alter table public.crusts
+  add constraint crusts_pizza_kind_check
+  check (pizza_kind in ('salgada', 'doce'));
+
+insert into public.crusts (store_id, name, adds_price, price, sort_order, active, pizza_kind)
+select s.id, 'Sem Borda', false, 0, 0, true, 'doce'
+from public.stores s
+where not exists (
+  select 1
+  from public.crusts c
+  where c.store_id = s.id
+    and c.pizza_kind = 'doce'
+    and lower(c.name) = 'sem borda'
+);
+
 

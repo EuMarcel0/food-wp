@@ -535,9 +535,19 @@ export function AddonsPage() {
             columns={[
               { title: "Nome", dataIndex: "name" },
               {
+                title: "Tipo",
+                dataIndex: "pizzaKind",
+                width: 110,
+                render: (value: Crust["pizzaKind"]) => (
+                  <Tag color={value === "doce" ? "magenta" : "blue"}>
+                    {value === "doce" ? "Doce" : "Salgada"}
+                  </Tag>
+                ),
+              },
+              {
                 title: "Soma no valor",
                 dataIndex: "addsPrice",
-                width: 160,
+                width: 140,
                 render: (value: boolean) => (
                   <Tag color={value ? "gold" : "default"}>
                     {value ? "Sim" : "Não"}

@@ -131,14 +131,18 @@ export function ProductForm({
       destroyOnClose
       centered
       width="80vw"
+      styles={{
+        content: { padding: 0 },
+        body: { padding: 0 },
+      }}
       classNames={{
         content:
-          "flex h-[75vh] flex-col overflow-hidden border border-food-border bg-food-surface p-0 shadow-food max-[1366px]:h-[99vh] max-[1366px]:max-h-[99vh] max-lg:h-[99dvh] max-lg:max-h-[99dvh] [@media(max-height:768px)]:h-[99vh]",
+          "flex h-[75vh] flex-col overflow-hidden border border-food-border bg-food-surface !p-0 shadow-food max-[1366px]:h-[99vh] max-[1366px]:max-h-[99vh] max-lg:h-[99dvh] max-lg:max-h-[99dvh] [@media(max-height:768px)]:h-[99vh]",
         header:
           "m-0 border-b border-food-border bg-transparent px-6 py-4",
-        body: "flex min-h-0 flex-1 flex-col overflow-hidden p-0",
+        body: "flex min-h-0 flex-1 flex-col overflow-hidden !p-0",
       }}
-      rootClassName="[&_.ant-modal]:max-w-none [&_.ant-modal]:pb-0 max-[1366px]:[&_.ant-modal]:!w-[99vw] max-[1366px]:[&_.ant-modal]:top-[0.5vh] max-lg:[&_.ant-modal]:!w-[99vw] [&_.ant-modal-title]:text-lg [&_.ant-modal-title]:font-bold [&_.ant-modal-title]:tracking-tight [&_.ant-modal-close]:top-3.5"
+      rootClassName="[&_.ant-modal-content]:!p-0 [&_.ant-modal-body]:!p-0 [&_.ant-modal]:max-w-none [&_.ant-modal]:pb-0 max-[1366px]:[&_.ant-modal]:!w-[99vw] max-[1366px]:[&_.ant-modal]:top-[0.5vh] max-lg:[&_.ant-modal]:!w-[99vw] [&_.ant-modal-title]:text-lg [&_.ant-modal-title]:font-bold [&_.ant-modal-title]:tracking-tight [&_.ant-modal-close]:top-3.5"
     >
       <Formik
         enableReinitialize
