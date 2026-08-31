@@ -1,34 +1,90 @@
-import { useEffect } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Empty, Tag, Typography } from "antd";
+import { Alert, Avatar, Button, Empty, Segmented, Table, Tabs, Tag, Typography } from "antd";
 import {
+  AppstoreOutlined,
   CommentOutlined,
   RobotOutlined,
+  UnorderedListOutlined,
   UserSwitchOutlined,
 } from "@ant-design/icons";
+import { FillTable } from "../../components/FillTable";
+import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
+import { RowActions } from "../../components/RowActions";
+import { useDialog } from "../../dialog";
 import { useAuth } from "../../auth/AuthProvider";
 import { api } from "../../lib/api";
 import {
+  STATUS_COLOR,
+  STATUS_LABEL,
   conversationStateLabel,
+  formatBRL,
   formatDate,
   formatPhoneDisplay,
 } from "../../lib/format";
-import { displayName } from "../../lib/profile";
+import { useMediaQuery } from "../../lib/hooks";
+import { displayName, generatedAvatar } from "../../lib/profile";
 import { queryKeys } from "../../lib/queryKeys";
 import { supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
+import { PAGE_SIZE, serverPagination } from "../../lib/pagination";
+import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import { cn } from "../../lib/cn";
-import { entityCard, listPage } from "../../ui";
-import type { LiveConversation } from "../../types";
+import { entityCard, listCards, listPage, tableClass, tableGridFill } from "../../ui";
+import type { ConversationHistoryItem, LiveConversation } from "../../types";
+
+const VIEW_STORAGE_KEY = "food-wp-conversations-view";
+
+type ViewMode = "grid" | "list";
+type TabKey = "active" | "history";
+
+function readViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
 
 export function ConversationsPage() {
+  const dialog = useDialog();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isDesktop = useMediaQuery("(min-width: 992px)");
+  const [tab, setTab] = useState<TabKey>("active");
+  const [view, setView] = useState<ViewMode>(readViewMode);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const listMode = view === "list" && isDesktop;
+  const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(
+    listMode,
+    `${tab}-${view}`,
+  );
 
-  const listQuery = useQuery({
+  function changeView(next: ViewMode) {
+    setView(next);
+    setPage(1);
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      // storage bloqueado
+    }
+  }
+
+  useEffect(() => {
+    setPage(1);
+  }, [tab]);
+
+  const activeQuery = useQuery({
     queryKey: queryKeys.conversations.live,
-    queryFn: () => api.conversations(true),
+    queryFn: () => api.conversations("active", true),
+    refetchInterval: supabase ? false : 8000,
+  });
+
+  const historyQuery = useQuery({
+    queryKey: queryKeys.conversations.history,
+    queryFn: () => api.conversationHistory(true),
     refetchInterval: supabase ? false : 8000,
   });
 
@@ -52,6 +108,13 @@ export function ConversationsPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
+        () => {
+          void refresh();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
         () => {
           void refresh();
         },
@@ -84,71 +147,518 @@ export function ConversationsPage() {
     },
   });
 
-  const items = listQuery.data ?? [];
-  const humanCount = items.filter((item) => item.handoffMode === "human").length;
+  function askTakeover(item: LiveConversation) {
+    const name = item.customerName?.trim() || "este cliente";
+    void dialog.confirm({
+      title: "Assumir atendimento",
+      description: (
+        <>
+          O bot vai parar de responder <strong>{name}</strong>. Continue a
+          conversa no WhatsApp Manager. Deseja assumir?
+        </>
+      ),
+      okText: "Assumir",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        await takeoverMutation.mutateAsync(item.id);
+      },
+    });
+  }
+
+  const activeItems = activeQuery.data ?? [];
+  const historyItems = historyQuery.data ?? [];
+  const humanCount = activeItems.filter((item) => item.handoffMode === "human").length;
+  const pagedActive = activeItems.slice((page - 1) * limit, page * limit);
+  const pagedHistory = historyItems.slice((page - 1) * limit, page * limit);
 
   return (
-    <div className={listPage}>
+    <div className={cn(listPage, "min-h-0")}>
       <PageHeader
+        className="mb-3 shrink-0"
         kicker="WhatsApp"
         title="Conversas"
-        subtitle="Acompanhe atendimentos em andamento no bot. Assuma quando a cliente precisar de ajuda humana."
+        subtitle="Atendimentos em andamento no bot e histórico dos que viraram pedido."
         extra={
-          <div className="flex flex-wrap items-center gap-2 text-sm text-food-muted">
-            <Tag icon={<CommentOutlined />}>{items.length} ativas</Tag>
-            {humanCount ? (
-              <Tag color="purple" icon={<UserSwitchOutlined />}>
-                {humanCount} com atendente
-              </Tag>
-            ) : null}
-          </div>
+          <Segmented
+            value={view}
+            onChange={(value) => changeView(value as ViewMode)}
+            options={[
+              {
+                value: "grid",
+                icon: <AppstoreOutlined />,
+                label: "Cards",
+              },
+              {
+                value: "list",
+                icon: <UnorderedListOutlined />,
+                label: "Lista",
+              },
+            ]}
+          />
         }
       />
 
-      <Alert
-        type="info"
-        showIcon
-        className="mb-4"
-        message="Como usar o Assumir"
-        description="Ao assumir, o bot para de responder só aquele chat. Continue a conversa no WhatsApp Manager (Meta). Quando terminar, devolva ao bot."
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => setTab(key as TabKey)}
+        className="mb-0 shrink-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden"
+        items={[
+          {
+            key: "active",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                Ativas
+                <Tag className="!m-0" icon={<CommentOutlined />}>
+                  {activeItems.length}
+                </Tag>
+                {humanCount ? (
+                  <Tag className="!m-0" color="purple">
+                    {humanCount} humano
+                  </Tag>
+                ) : null}
+              </span>
+            ),
+          },
+          {
+            key: "history",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                Histórico
+                <Tag className="!m-0">{historyItems.length}</Tag>
+              </span>
+            ),
+          },
+        ]}
       />
 
-      {listQuery.isError ? (
-        <Alert
-          type="error"
-          showIcon
-          className="mb-4"
-          message="Não foi possível carregar as conversas"
-          description={
-            listQuery.error instanceof Error
-              ? listQuery.error.message
-              : "Tente de novo em instantes."
-          }
-        />
-      ) : null}
-
-      {!listQuery.isLoading && !items.length ? (
-        <Empty
-          className="rounded-2xl border border-food-border bg-food-surface py-16"
-          description="Nenhuma conversa nas últimas 24h."
+      {tab === "history" ? (
+        <HistoryPane
+          items={view === "list" ? pagedHistory : historyItems}
+          allCount={historyItems.length}
+          error={historyQuery.error}
+          loading={historyQuery.isLoading}
+          view={view}
+          isDesktop={isDesktop}
+          listMode={listMode}
+          shellRef={shellRef}
+          tableAreaRef={tableAreaRef}
+          bodyHeight={bodyHeight}
+          page={page}
+          limit={limit}
+          onPageChange={(nextPage, nextSize) => {
+            setPage(nextPage);
+            setLimit(nextSize);
+          }}
         />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <ActivePane
+          items={view === "list" ? pagedActive : activeItems}
+          allCount={activeItems.length}
+          error={activeQuery.error}
+          loading={activeQuery.isLoading}
+          view={view}
+          isDesktop={isDesktop}
+          listMode={listMode}
+          shellRef={shellRef}
+          tableAreaRef={tableAreaRef}
+          bodyHeight={bodyHeight}
+          page={page}
+          limit={limit}
+          onPageChange={(nextPage, nextSize) => {
+            setPage(nextPage);
+            setLimit(nextSize);
+          }}
+          busyId={
+            takeoverMutation.isPending
+              ? takeoverMutation.variables
+              : releaseMutation.isPending
+                ? releaseMutation.variables
+                : null
+          }
+          onTakeover={askTakeover}
+          onRelease={(item) => releaseMutation.mutate(item.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ActivePane({
+  items,
+  allCount,
+  error,
+  loading,
+  view,
+  isDesktop,
+  listMode,
+  shellRef,
+  tableAreaRef,
+  bodyHeight,
+  page,
+  limit,
+  onPageChange,
+  busyId,
+  onTakeover,
+  onRelease,
+}: {
+  items: LiveConversation[];
+  allCount: number;
+  error: unknown;
+  loading: boolean;
+  view: ViewMode;
+  isDesktop: boolean;
+  listMode: boolean;
+  shellRef: RefObject<HTMLDivElement | null>;
+  tableAreaRef: RefObject<HTMLDivElement | null>;
+  bodyHeight: number;
+  page: number;
+  limit: number;
+  onPageChange: (page: number, pageSize: number) => void;
+  busyId: string | null | undefined;
+  onTakeover: (item: LiveConversation) => void;
+  onRelease: (item: LiveConversation) => void;
+}) {
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Não foi possível carregar as conversas ativas"
+        description={
+          error instanceof Error ? error.message : "Tente de novo em instantes."
+        }
+      />
+    );
+  }
+
+  if (!loading && allCount === 0) {
+    return (
+      <Empty
+        className="rounded-2xl border border-food-border bg-food-surface py-16"
+        description="Nenhuma conversa ativa nas últimas 24h."
+      />
+    );
+  }
+
+  if (view === "grid") {
+    return (
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
+          <ConversationCard
+            key={item.id}
+            item={item}
+            busy={busyId === item.id}
+            onTakeover={() => onTakeover(item)}
+            onRelease={() => onRelease(item)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const pagination = serverPagination(page, limit, allCount, onPageChange);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {listMode ? (
+        <FillTable
+          shellRef={shellRef}
+          tableAreaRef={tableAreaRef}
+          pagination={pagination}
+        >
+          <Table<LiveConversation>
+            rowKey="id"
+            loading={loading}
+            dataSource={items}
+            pagination={false}
+            scroll={{ x: 720, y: bodyHeight }}
+            className={`${tableClass} ${tableGridFill}`}
+            columns={[
+            {
+              title: "Cliente",
+              key: "customer",
+              render: (_, item) => (
+                <CustomerIdentity
+                  name={item.customerName?.trim() || "Cliente"}
+                  phone={formatPhoneDisplay(item.customerPhone)}
+                  avatarUrl={item.customerAvatarUrl}
+                  seed={item.customerId}
+                />
+              ),
+            },
+            {
+              title: "Etapa",
+              dataIndex: "state",
+              render: (state: string) => conversationStateLabel(state),
+            },
+            {
+              title: "Carrinho",
+              dataIndex: "cartItemCount",
+              width: 100,
+              render: (count: number) =>
+                count ? `${count} item${count > 1 ? "s" : ""}` : "Vazio",
+            },
+            {
+              title: "Modo",
+              dataIndex: "handoffMode",
+              width: 120,
+              render: (mode: LiveConversation["handoffMode"]) =>
+                mode === "human" ? (
+                  <Tag color="purple" icon={<UserSwitchOutlined />}>
+                    Atendente
+                  </Tag>
+                ) : (
+                  <Tag icon={<RobotOutlined />}>Bot</Tag>
+                ),
+            },
+            {
+              title: "Última msg",
+              dataIndex: "lastMessageAt",
+              width: 160,
+              render: (value: string) => formatDate(value),
+            },
+            {
+              title: "Ações",
+              key: "actions",
+              width: 72,
+              align: "center",
+              render: (_, item) => (
+                <RowActions
+                  items={
+                    item.handoffMode === "human"
+                      ? [
+                          {
+                            key: "release",
+                            label: "Devolver ao bot",
+                            icon: <RobotOutlined />,
+                            onClick: () => onRelease(item),
+                          },
+                        ]
+                      : [
+                          {
+                            key: "takeover",
+                            label: "Assumir",
+                            icon: <UserSwitchOutlined />,
+                            onClick: () => onTakeover(item),
+                          },
+                        ]
+                  }
+                />
+              ),
+            },
+          ]}
+        />
+      </FillTable>
+      ) : null}
+
+      <div className={cn(listCards, isDesktop && view === "list" && "hidden")}>
+        <MobileCardList
+          loading={loading}
+          isEmpty={allCount === 0}
+          empty="Nenhuma conversa ativa nas últimas 24h."
+          pagination={pagination}
+        >
           {items.map((item) => (
             <ConversationCard
               key={item.id}
               item={item}
-              busy={
-                (takeoverMutation.isPending &&
-                  takeoverMutation.variables === item.id) ||
-                (releaseMutation.isPending && releaseMutation.variables === item.id)
-              }
-              onTakeover={() => takeoverMutation.mutate(item.id)}
-              onRelease={() => releaseMutation.mutate(item.id)}
+              busy={busyId === item.id}
+              onTakeover={() => onTakeover(item)}
+              onRelease={() => onRelease(item)}
             />
           ))}
-        </div>
-      )}
+        </MobileCardList>
+      </div>
+    </div>
+  );
+}
+
+function HistoryPane({
+  items,
+  allCount,
+  error,
+  loading,
+  view,
+  isDesktop,
+  listMode,
+  shellRef,
+  tableAreaRef,
+  bodyHeight,
+  page,
+  limit,
+  onPageChange,
+}: {
+  items: ConversationHistoryItem[];
+  allCount: number;
+  error: unknown;
+  loading: boolean;
+  view: ViewMode;
+  isDesktop: boolean;
+  listMode: boolean;
+  shellRef: RefObject<HTMLDivElement | null>;
+  tableAreaRef: RefObject<HTMLDivElement | null>;
+  bodyHeight: number;
+  page: number;
+  limit: number;
+  onPageChange: (page: number, pageSize: number) => void;
+}) {
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Não foi possível carregar o histórico"
+        description={
+          error instanceof Error ? error.message : "Tente de novo em instantes."
+        }
+      />
+    );
+  }
+
+  if (!loading && allCount === 0) {
+    return (
+      <Empty
+        className="rounded-2xl border border-food-border bg-food-surface py-16"
+        description="Ainda não há pedidos vindos do WhatsApp."
+      />
+    );
+  }
+
+  if (view === "grid") {
+    return (
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
+          <HistoryCard key={item.id} item={item} />
+        ))}
+      </div>
+    );
+  }
+
+  const pagination = serverPagination(page, limit, allCount, onPageChange);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {listMode ? (
+        <FillTable
+          shellRef={shellRef}
+          tableAreaRef={tableAreaRef}
+          pagination={pagination}
+        >
+          <Table<ConversationHistoryItem>
+            rowKey="id"
+            loading={loading}
+            dataSource={items}
+            pagination={false}
+            scroll={{ x: 720, y: bodyHeight }}
+            className={`${tableClass} ${tableGridFill}`}
+            columns={[
+              {
+                title: "Pedido",
+                dataIndex: "orderCode",
+                width: 110,
+                render: (code: string) => (
+                  <span className="font-bold">#{code}</span>
+                ),
+              },
+            {
+              title: "Cliente",
+              key: "customer",
+              render: (_, item) => (
+                <CustomerIdentity
+                  name={item.customerName?.trim() || "Cliente"}
+                  phone={formatPhoneDisplay(item.customerPhone)}
+                  avatarUrl={item.customerAvatarUrl}
+                  seed={item.customerId}
+                />
+              ),
+            },
+            {
+              title: "Status",
+              dataIndex: "orderStatus",
+              width: 140,
+              render: (status: ConversationHistoryItem["orderStatus"]) => (
+                <Tag color={STATUS_COLOR[status]}>{STATUS_LABEL[status]}</Tag>
+              ),
+            },
+              {
+                title: "Total",
+                dataIndex: "totalCents",
+                width: 120,
+                render: (cents: number) => (
+                  <span className="font-semibold tabular-nums">
+                    {formatBRL(cents)}
+                  </span>
+                ),
+              },
+              {
+                title: "Quando",
+                dataIndex: "closedAt",
+                width: 160,
+                render: (value: string) => formatDate(value),
+              },
+            ]}
+          />
+        </FillTable>
+      ) : null}
+
+      <div className={cn(listCards, isDesktop && view === "list" && "hidden")}>
+        <MobileCardList
+          loading={loading}
+          isEmpty={allCount === 0}
+          empty="Ainda não há pedidos vindos do WhatsApp."
+          pagination={pagination}
+        >
+          {items.map((item) => (
+            <HistoryCard key={item.id} item={item} />
+          ))}
+        </MobileCardList>
+      </div>
+    </div>
+  );
+}
+
+function customerAvatarSrc(item: {
+  customerAvatarUrl?: string | null;
+  customerName?: string | null;
+  customerPhone?: string;
+  customerId?: string;
+}) {
+  if (item.customerAvatarUrl?.trim()) return item.customerAvatarUrl.trim();
+  return generatedAvatar(
+    item.customerPhone || item.customerName || item.customerId || "cliente",
+  );
+}
+
+function CustomerIdentity({
+  name,
+  phone,
+  avatarUrl,
+  seed,
+}: {
+  name: string;
+  phone: string;
+  avatarUrl?: string | null;
+  seed: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <Avatar
+        size={44}
+        src={customerAvatarSrc({
+          customerAvatarUrl: avatarUrl,
+          customerName: name,
+          customerPhone: phone,
+          customerId: seed,
+        })}
+        alt=""
+        className="shrink-0 border border-food-border bg-food-chip"
+      />
+      <div className="min-w-0">
+        <Typography.Title level={5} className="!mb-0.5 !mt-0 truncate">
+          {name}
+        </Typography.Title>
+        <p className="m-0 text-sm text-food-muted tabular-nums">{phone}</p>
+      </div>
     </div>
   );
 }
@@ -176,12 +686,12 @@ function ConversationCard({
       )}
     >
       <div className="mb-3 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <Typography.Title level={5} className="!mb-0.5 !mt-0 truncate">
-            {name}
-          </Typography.Title>
-          <p className="m-0 text-sm text-food-muted tabular-nums">{phone}</p>
-        </div>
+        <CustomerIdentity
+          name={name}
+          phone={phone}
+          avatarUrl={item.customerAvatarUrl}
+          seed={item.customerId}
+        />
         <Tag
           color={human ? "purple" : "default"}
           icon={human ? <UserSwitchOutlined /> : <RobotOutlined />}
@@ -239,6 +749,37 @@ function ConversationCard({
             Assumir
           </Button>
         )}
+      </div>
+    </article>
+  );
+}
+
+function HistoryCard({ item }: { item: ConversationHistoryItem }) {
+  const name = item.customerName?.trim() || "Cliente";
+  const phone = formatPhoneDisplay(item.customerPhone);
+  return (
+    <article className={cn(entityCard, "before:bg-zinc-400")}>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <Typography.Title level={5} className="!mb-1 !mt-0 truncate">
+            Pedido #{item.orderCode}
+          </Typography.Title>
+          <CustomerIdentity
+            name={name}
+            phone={phone}
+            avatarUrl={item.customerAvatarUrl}
+            seed={item.customerId}
+          />
+        </div>
+        <Tag color={STATUS_COLOR[item.orderStatus]}>
+          {STATUS_LABEL[item.orderStatus]}
+        </Tag>
+      </div>
+      <div className="flex items-end justify-between gap-3">
+        <span className="text-sm text-food-muted">{formatDate(item.closedAt)}</span>
+        <span className="text-lg font-extrabold tabular-nums text-food-accent">
+          {formatBRL(item.totalCents)}
+        </span>
       </div>
     </article>
   );

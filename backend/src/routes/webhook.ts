@@ -31,7 +31,10 @@ type WhatsAppChange = {
         list_reply?: { id?: string; title?: string };
       };
     }>;
-    contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
+    contacts?: Array<{
+      profile?: { name?: string; picture?: string };
+      wa_id?: string;
+    }>;
   };
 };
 
@@ -79,7 +82,9 @@ webhookRouter.post("/whatsapp", (req, res) => {
     for (const change of entry.changes ?? []) {
       const messages = change.value?.messages ?? [];
       noteWebhook(change.field, messages.length);
-      const name = change.value?.contacts?.[0]?.profile?.name;
+      const profile = change.value?.contacts?.[0]?.profile;
+      const name = profile?.name;
+      const avatarUrl = profile?.picture?.trim() || undefined;
       const waId = change.value?.contacts?.[0]?.wa_id;
       for (const message of messages) {
         const replyId =
@@ -111,7 +116,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
             `WhatsApp inbound unsupported type=${message.type ?? "?"} from=${message.from}`,
           );
           enqueueByUser(queueKey, async () => {
-            await handleUnsupportedInbound({ from: to, name });
+            await handleUnsupportedInbound({ from: to, name, avatarUrl });
           }).catch((error) => {
             console.error("Falha ao avisar mensagem não suportada", error);
           });
@@ -126,6 +131,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
           await handleIncomingMessage({
             from: to,
             name,
+            avatarUrl,
             text,
             replyId,
             location,

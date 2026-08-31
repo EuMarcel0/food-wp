@@ -6,12 +6,22 @@ export function useTableGridHeight(enabled: boolean, extraKey?: unknown) {
   const [bodyHeight, setBodyHeight] = useState(400);
 
   useLayoutEffect(() => {
-    if (!enabled) return;
-    const shell = shellRef.current;
-    const area = tableAreaRef.current;
-    if (!shell || !area) return;
+    if (!enabled) {
+      if (shellRef.current) shellRef.current.style.height = "";
+      return;
+    }
+
+    let cancelled = false;
+    let frame = 0;
+    let retries = 0;
+    let observer: ResizeObserver | null = null;
 
     const measure = () => {
+      if (cancelled) return;
+      const shell = shellRef.current;
+      const area = tableAreaRef.current;
+      if (!shell || !area) return;
+
       const top = shell.getBoundingClientRect().top;
       const content = document.getElementById("conteudo");
       const padBottom = content
@@ -30,16 +40,32 @@ export function useTableGridHeight(enabled: boolean, extraKey?: unknown) {
       setBodyHeight((prev) => (Math.abs(prev - clamped) < 1 ? prev : clamped));
     };
 
-    measure();
-    const frame = window.requestAnimationFrame(measure);
-    const observer = new ResizeObserver(measure);
-    observer.observe(shell);
-    observer.observe(area);
-    window.addEventListener("resize", measure);
+    const attach = () => {
+      if (cancelled) return;
+      const shell = shellRef.current;
+      const area = tableAreaRef.current;
+      if (!shell || !area) {
+        retries += 1;
+        if (retries < 32) frame = window.requestAnimationFrame(attach);
+        return;
+      }
+
+      measure();
+      frame = window.requestAnimationFrame(measure);
+      observer = new ResizeObserver(measure);
+      observer.observe(shell);
+      observer.observe(area);
+      window.addEventListener("resize", measure);
+    };
+
+    attach();
+
     return () => {
+      cancelled = true;
       window.cancelAnimationFrame(frame);
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener("resize", measure);
+      if (shellRef.current) shellRef.current.style.height = "";
     };
   }, [enabled, extraKey]);
 

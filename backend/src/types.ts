@@ -189,6 +189,7 @@ export type Customer = {
   storeId: string;
   waPhone: string;
   name: string | null;
+  avatarUrl?: string | null;
 };
 
 export type HandoffMode = "bot" | "human";
@@ -203,6 +204,9 @@ export type Conversation = {
   handoffMode?: HandoffMode;
   handoffAt?: string | null;
   handoffBy?: string | null;
+  closedAt?: string | null;
+  lastOrderId?: string | null;
+  lastOrderCode?: string | null;
 };
 
 export type LiveConversation = {
@@ -210,12 +214,27 @@ export type LiveConversation = {
   customerId: string;
   customerName: string | null;
   customerPhone: string;
+  customerAvatarUrl?: string | null;
   state: ConversationState;
   handoffMode: HandoffMode;
   handoffAt: string | null;
   handoffBy: string | null;
   lastMessageAt: string;
   cartItemCount: number;
+  lastOrderCode?: string | null;
+};
+
+export type ConversationHistoryItem = {
+  id: string;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string;
+  customerAvatarUrl?: string | null;
+  orderId: string;
+  orderCode: string;
+  orderStatus: OrderStatus;
+  totalCents: number;
+  closedAt: string;
 };
 
 export type Order = {

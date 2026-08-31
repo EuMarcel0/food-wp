@@ -13,12 +13,27 @@ export type LiveConversation = {
   customerId: string;
   customerName: string | null;
   customerPhone: string;
+  customerAvatarUrl?: string | null;
   state: string;
   handoffMode: HandoffMode;
   handoffAt: string | null;
   handoffBy: string | null;
   lastMessageAt: string;
   cartItemCount: number;
+  lastOrderCode?: string | null;
+};
+
+export type ConversationHistoryItem = {
+  id: string;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string;
+  customerAvatarUrl?: string | null;
+  orderId: string;
+  orderCode: string;
+  orderStatus: OrderStatus;
+  totalCents: number;
+  closedAt: string;
 };
 
 export type OrderItem = {

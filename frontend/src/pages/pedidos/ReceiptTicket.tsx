@@ -5,30 +5,14 @@ import {
   cashChangeLabel,
   formatBRL,
   formatCnpj,
+  formatPhoneDisplay,
   formatReceiptDate
 } from "../../lib/format";
 import type { Order, Store } from "../../types";
 
-function formatReceiptPhone(raw?: string | null) {
-  const digits = (raw ?? "").replace(/\D/g, "");
-  if (!digits) return "";
-  const local = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
-  const ddd = local.slice(0, 2);
-  const subscriber = local.slice(2);
-  // Celular com 9º dígito: (77) 99177-6299
-  if (local.length === 11 && subscriber.startsWith("9")) {
-    return `(${ddd}) ${subscriber.slice(0, 5)}-${subscriber.slice(5)}`;
-  }
-  // Formato antigo sem o 9: (77) 9 9177-6299
-  if (local.length === 10) {
-    return `(${ddd}) 9 ${subscriber.slice(0, 4)}-${subscriber.slice(4)}`;
-  }
-  return raw?.trim() || digits;
-}
-
 function receiptCustomerLine(order: Order) {
   const name = order.customerName?.trim();
-  const phone = formatReceiptPhone(order.customerPhone);
+  const phone = formatPhoneDisplay(order.customerPhone);
   if (name && phone) return `${name} · ${phone}`;
   return name || phone || "Cliente";
 }

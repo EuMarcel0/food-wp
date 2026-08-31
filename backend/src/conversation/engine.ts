@@ -3,6 +3,7 @@ import { closedStoreMessage, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
 import {
+  closeConversationWithOrder,
   createOrder,
   findLatestOrder,
   findOrderByCode,
@@ -16,7 +17,7 @@ import {
   touchConversation,
   upsertCustomer
 } from "../data/repository.js";
-import { describeOrderStatus, formatPrepDuration } from "./status.js";
+import { formatOrderStatusMessage, isOpenOrderStatus } from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
   ADDON_GROUP_ID,
@@ -57,7 +58,32 @@ import type {
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
+const ACK_KEYS = [
+  "obrigado",
+  "obrigada",
+  "obg",
+  "brigado",
+  "brigada",
+  "valeu",
+  "vlw",
+  "thanks",
+  "thank you",
+  "ok",
+  "certo",
+  "show",
+  "perfeito",
+  "blz",
+  "beleza",
+  "tmj",
+];
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
+
+function isCustomerAck(normalized: string) {
+  const text = normalized.replace(/[!?.,]+$/g, "").trim();
+  if (!text) return false;
+  if (ACK_KEYS.includes(text)) return true;
+  return ACK_KEYS.some((key) => text === key || text.startsWith(`${key} `));
+}
 
 function isConversationIdle(lastMessageAt: string | undefined, minutes: number) {
   if (!lastMessageAt) return false;
@@ -285,7 +311,7 @@ function setDraftCrust(drafts: CartSelection[], crust: Crust) {
 
 async function askCrusts(to: string, product: Product, crusts: Crust[]) {
   const visible = crusts.slice(0, 10);
-  await sendList(to, `*${product.name}*\nEscolha a borda.`, "Ver bordas", [
+  await sendList(to, `*${product.name}*\n🧀 Escolha a borda.`, "Ver bordas", [
     {
       title: "Bordas",
       rows: visible.map(crust => ({
@@ -316,12 +342,12 @@ const CART_ACTIONS = [
   { id: "clear_cart", title: "Limpar carrinho" }
 ] as const;
 
-async function showCartPrompt(to: string, context: ConversationContext, intro = "Adicionado.") {
-  await sendButtons(to, `${intro}\n${renderCart(context)}`, [...CART_ACTIONS]);
+async function showCartPrompt(to: string, context: ConversationContext, intro = "✅ Item adicionado!") {
+  await sendButtons(to, `${intro}\n\n🛒 *Seu carrinho*\n${renderCart(context)}`, [...CART_ACTIONS]);
 }
 
 async function showCartAfterAdd(to: string, context: ConversationContext) {
-  await showCartPrompt(to, context, "Adicionado.");
+  await showCartPrompt(to, context, "✅ Item adicionado!");
 }
 
 const ORDER_FLOW_STATES = new Set<ConversationState>([
@@ -340,7 +366,7 @@ const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_change"
 ]);
 
-const RESUME_HINT = "Para continuar, use as opções desta mensagem.";
+const RESUME_HINT = "👉 Para continuar, use as opções desta mensagem.";
 
 function isOrderInProgress(state: ConversationState) {
   return ORDER_FLOW_STATES.has(state);
@@ -462,13 +488,17 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
  * Foto, áudio, documento etc.: se há pedido em andamento, mantém a etapa;
  * senão, avisa que só texto/botões são aceitos.
  */
-export async function handleUnsupportedInbound(input: { from: string; name?: string }) {
+export async function handleUnsupportedInbound(input: {
+  from: string;
+  name?: string;
+  avatarUrl?: string;
+}) {
   const store = await getStore();
   if (!isStoreOpen(store.businessHours, store.timezone)) {
     await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
     return;
   }
-  const customer = await upsertCustomer(input.from, input.name);
+  const customer = await upsertCustomer(input.from, input.name, input.avatarUrl);
   const existing = await getConversation(customer.id);
   const state: ConversationState = existing?.state ?? "welcome";
   const context = existing?.context ?? emptyContext();
@@ -478,7 +508,7 @@ export async function handleUnsupportedInbound(input: { from: string; name?: str
   }
   await sendText(
     input.from,
-    "Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\nPara continuar, responda *por texto* ou toque nas opções da última mensagem."
+    "😅 Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\nPara continuar, responda *por texto* ou toque nas opções da última mensagem."
   );
 }
 
@@ -487,7 +517,7 @@ async function askItemNote(to: string, item: CartItem) {
   await sendButtons(
     to,
     [
-      "Observação para este item?",
+      "📝 Observação para este item?",
       ...lines,
       itemPriceLine(item),
       "Ex.: sem cebola, bem assada.",
@@ -502,7 +532,7 @@ async function askItemNote(to: string, item: CartItem) {
 async function askOrderNote(to: string) {
   await sendButtons(
     to,
-    "Observação para *entrega*?\nEx.: interfone 12, não bater na porta.\nSe não quiser, toque em *Pular*.",
+    "📝 Observação para *entrega*?\nEx.: interfone 12, não bater na porta.\nSe não quiser, toque em *Pular*.",
     [{ id: "skip_note", title: "Pular" }]
   );
 }
@@ -515,7 +545,7 @@ async function askFulfillment(
   const buttons = [];
   if (store.deliveryEnabled) buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
   if (store.pickupEnabled) buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
-  await sendButtons(to, `${cartText}\nComo você prefere receber?`, buttons);
+  await sendButtons(to, `${cartText}\n\n🛵 Como você prefere receber?`, buttons);
 }
 
 async function askNeighborhoods(to: string, store: Store) {
@@ -532,7 +562,12 @@ async function askNeighborhoods(to: string, store: Store) {
       }))
     });
   }
-  await sendList(to, "Escolha o bairro da entrega. A taxa já aparece em cada opção.", "Ver bairros", sections);
+  await sendList(
+    to,
+    "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.",
+    "Ver bairros",
+    sections,
+  );
 }
 
 function findNeighborhood(incoming: string, normalized: string, zones: DeliveryNeighborhood[]) {
@@ -545,9 +580,9 @@ function findNeighborhood(incoming: string, normalized: string, zones: DeliveryN
 
 async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
   const intro = [
-    zone ? `Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
-    "Qual o endereço completo da entrega?",
-    "Pode escrever a rua e o número ou, no celular, compartilhar a localização pelo clipe."
+    zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
+    "🏠 Qual o endereço completo da entrega?",
+    "Pode digitar o endereço ou, *no celular*, compartilhar a localização atual."
   ]
     .filter(Boolean)
     .join("\n");
@@ -581,7 +616,7 @@ const PAYMENT_ROWS = [
   { id: "pay:debit", title: "Cartão débito" }
 ];
 
-async function askPayment(to: string, intro = "Como deseja pagar?") {
+async function askPayment(to: string, intro = "💳 Como deseja pagar?") {
   await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows: PAYMENT_ROWS }]);
 }
 
@@ -631,7 +666,10 @@ function parseChangeCents(text: string): number | null {
 }
 
 async function askChange(to: string, totalCents: number) {
-  await sendText(to, `Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`);
+  await sendText(
+    to,
+    `💵 Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`,
+  );
 }
 
 function orderTotalCents(store: Store, context: ConversationContext) {
@@ -649,8 +687,8 @@ async function showWelcome(to: string, storeName: string) {
   await sendButtons(
     to,
     [
-      `Olá! Bem-vindo à *${storeName}*.`,
-      "Posso te ajudar com o cardápio, um novo pedido ou o status de um pedido.",
+      `Olá! 👋 Bem-vindo à *${storeName}*.`,
+      "Posso te ajudar com o cardápio, um novo pedido ou o status de um pedido. 🍕",
       "Caso queira encerrar a conversa sem finalizar o pedido, digite *Sair*."
     ].join("\n"),
     [
@@ -661,10 +699,10 @@ async function showWelcome(to: string, storeName: string) {
   );
 }
 
-async function showMenu(to: string, intro = "Escolha um item do cardápio:") {
+async function showMenu(to: string, intro = "📋 Escolha um item do cardápio:") {
   const products = await listProducts();
   if (!products.length) {
-    await sendText(to, "O cardápio ainda não foi cadastrado.");
+    await sendText(to, "📋 O cardápio ainda não foi cadastrado.");
     return;
   }
 
@@ -794,7 +832,7 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
     }
   ]);
   if (!group.required && picked.length === 0) {
-    await sendButtons(to, "Esta etapa é opcional.", [{ id: "skip_group", title: "Pular" }]);
+    await sendButtons(to, "✨ Esta etapa é opcional.", [{ id: "skip_group", title: "Pular" }]);
   }
   return false;
 }
@@ -833,7 +871,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   ]
     .filter(Boolean)
     .join("\n");
-  await sendButtons(to, `${heading}\nQuantas unidades?\nOu digite um número.`, [
+  await sendButtons(to, `${heading}\n🔢 Quantas unidades?\nOu digite um número.`, [
     { id: "qty:1", title: "1" },
     { id: "qty:2", title: "2" },
     { id: "qty:3", title: "3" }
@@ -847,7 +885,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
   const picked = draftAddon(drafts)?.options.map(addonOptionLabel) ?? [];
   const prompt = [
     `*${product.name}*`,
-    picked.length ? `Adicionais: ${picked.join(", ")}` : "Escolha um adicional",
+    picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "🧀 Escolha um adicional",
     picked.length ? "Quer outro adicional?" : ""
   ]
     .filter(Boolean)
@@ -879,7 +917,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
 }
 
 async function confirmMoreAddons(to: string, names: string[]) {
-  await sendButtons(to, `Adicionais: ${names.join(", ")}`, [
+  await sendButtons(to, `🧀 Adicionais: ${names.join(", ")}`, [
     { id: "more_addons", title: "Mais um" },
     { id: "done_addons", title: "Pronto" }
   ]);
@@ -961,7 +999,8 @@ async function finishOrder(
     items: context.cart
   });
 
-  await persist("welcome", emptyContext());
+  // Encerra a conversa ativa: some de "Ativas" e entra no histórico via pedido.
+  await closeConversationWithOrder(customer.id, { id: order.id, code: order.code });
   const feeLine =
     fulfillment !== "delivery"
       ? "Retirada no local"
@@ -975,17 +1014,23 @@ async function finishOrder(
   await sendText(
     to,
     [
-      `Pedido *#${order.code}* confirmado!`,
+      `✅ Pedido *#${order.code}* confirmado!`,
+      "",
+      "🛒 *Resumo do pedido*",
       cartSummary,
-      feeLine,
-      `Pagamento: ${paymentLabel(paymentMethod)}`,
-      changeLine,
-      `Total: *${formatBRL(order.totalCents)}*`,
-      addressText ? `Entrega: ${addressText}` : "",
-      orderNotes ? `Obs. da entrega: ${orderNotes}` : "",
-      "Assim que o status mudar, eu te aviso por aqui."
+      "",
+      fulfillment === "delivery"
+        ? `📍 Entrega: ${addressText ?? "a combinar"}`
+        : "🏪 Retirada no local",
+      `💳 Pagamento: ${paymentLabel(paymentMethod)}`,
+      changeLine ? `💵 ${changeLine}` : null,
+      feeLine.startsWith("Taxa") || feeLine.startsWith("Entrega") ? `🛵 ${feeLine}` : null,
+      `💰 Total: *${formatBRL(order.totalCents)}*`,
+      orderNotes ? `📝 Obs.: ${orderNotes}` : null,
+      "",
+      "Assim que o status mudar, eu te aviso por aqui. 😊"
     ]
-      .filter(Boolean)
+      .filter((line): line is string => line != null)
       .join("\n")
   );
 
@@ -996,6 +1041,7 @@ async function finishOrder(
 export async function handleIncomingMessage(input: {
   from: string;
   name?: string;
+  avatarUrl?: string;
   text: string;
   replyId?: string;
   location?: {
@@ -1006,7 +1052,7 @@ export async function handleIncomingMessage(input: {
   };
 }) {
   const store = await getStore();
-  const customer = await upsertCustomer(input.from, input.name);
+  const customer = await upsertCustomer(input.from, input.name, input.avatarUrl);
   const existing = await getConversation(customer.id);
 
   // Atendente assumiu no painel: bot fica em silêncio neste chat.
@@ -1024,6 +1070,14 @@ export async function handleIncomingMessage(input: {
   const persist = (nextState: ConversationState, nextContext = context) =>
     saveConversation(customer, nextState, nextContext);
 
+  async function replyOpenOrderStatus(thanks = false) {
+    const latest = await findLatestOrder(customer.id);
+    if (!latest || !isOpenOrderStatus(latest.status)) return false;
+    await persist("welcome", emptyContext());
+    await sendText(input.from, formatOrderStatusMessage(latest, { thanks }));
+    return true;
+  }
+
   // Loja fechada: só informa horário — sem cardápio, status, botões ou qualquer fluxo.
   if (!isStoreOpen(store.businessHours, store.timezone)) {
     await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
@@ -1034,7 +1088,7 @@ export async function handleIncomingMessage(input: {
     await persist("welcome", emptyContext());
     await sendText(
       input.from,
-      "Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."
+      "👋 Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."
     );
     return;
   }
@@ -1042,6 +1096,7 @@ export async function handleIncomingMessage(input: {
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
     await persist("welcome", emptyContext());
+    if (isCustomerAck(command) && (await replyOpenOrderStatus(true))) return;
     await showWelcome(input.from, store.name);
     return;
   }
@@ -1112,7 +1167,9 @@ export async function handleIncomingMessage(input: {
     await persist("awaiting_product", context);
     await showMenu(
       input.from,
-      context.cart.length ? "Escolha o próximo item:" : "Vamos montar seu pedido. Escolha o primeiro item:"
+      context.cart.length
+        ? "📋 Escolha o próximo item:"
+        : "🍕 Vamos montar seu pedido. Escolha o primeiro item:"
     );
     return;
   }
@@ -1121,16 +1178,21 @@ export async function handleIncomingMessage(input: {
     const latest = await findLatestOrder(customer.id);
     if (latest) {
       await persist("welcome", context);
-      const lines = [`Seu último pedido *#${latest.code}* está *${describeOrderStatus(latest.status)}*.`];
-      if (latest.status === "preparing" && latest.prepMinutes) {
-        lines.push(`Tempo estimado: ${formatPrepDuration(latest.prepMinutes)}`);
-      }
-      lines.push(`Total: ${formatBRL(latest.totalCents)}.`);
-      await sendText(input.from, lines.join("\n"));
+      await sendText(input.from, formatOrderStatusMessage(latest));
       return;
     }
     await persist("awaiting_order_code", context);
-    await sendText(input.from, "Me envie o código do pedido (ex.: A7K2).");
+    await sendText(input.from, "🔎 Me envie o código do pedido (ex.: A7K2).");
+    return;
+  }
+
+  // Após status (pedido ainda aberto), "obrigado/ok" não reinicia o menu.
+  if (
+    !orderActive &&
+    !hasReply &&
+    isCustomerAck(command) &&
+    (await replyOpenOrderStatus(true))
+  ) {
     return;
   }
 
@@ -1567,7 +1629,7 @@ export async function handleIncomingMessage(input: {
     }
     context.addressText = address;
     await persist("awaiting_payment", context);
-    await askPayment(input.from, "Endereço anotado. Como deseja pagar?");
+    await askPayment(input.from, "✅ Endereço anotado. 💳 Como deseja pagar?");
     return;
   }
 
@@ -1625,12 +1687,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
     await persist("welcome", context);
-    const lines = [`Pedido *#${order.code}*: *${describeOrderStatus(order.status)}*.`];
-    if (order.status === "preparing" && order.prepMinutes) {
-      lines.push(`Tempo estimado: ${formatPrepDuration(order.prepMinutes)}`);
-    }
-    lines.push(`Total: ${formatBRL(order.totalCents)}.`);
-    await sendText(input.from, lines.join("\n"));
+    await sendText(input.from, formatOrderStatusMessage(order));
     return;
   }
 
@@ -1642,6 +1699,10 @@ export async function handleIncomingMessage(input: {
   if (context.cart.length) {
     await persist("cart", context);
     await showCartPrompt(input.from, context, RESUME_HINT);
+    return;
+  }
+
+  if (isCustomerAck(command) && (await replyOpenOrderStatus(true))) {
     return;
   }
 

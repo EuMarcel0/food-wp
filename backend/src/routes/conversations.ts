@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getConversationById,
+  listConversationHistory,
   listLiveConversations,
   setConversationHandoff,
 } from "../data/repository.js";
@@ -10,8 +11,13 @@ import { memoryStore } from "../data/memory.js";
 
 export const conversationsRouter = Router();
 
-conversationsRouter.get("/", async (_req, res) => {
+conversationsRouter.get("/", async (req, res) => {
   try {
+    const tab = String(req.query.tab ?? "active");
+    if (tab === "history") {
+      res.json(await listConversationHistory(100));
+      return;
+    }
     res.json(await listLiveConversations(24));
   } catch (error) {
     res.status(500).json({

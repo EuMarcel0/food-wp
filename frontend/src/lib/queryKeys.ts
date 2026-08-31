@@ -64,6 +64,7 @@ export const queryKeys = {
   conversations: {
     all: ["conversations"] as const,
     live: ["conversations", "live"] as const,
+    history: ["conversations", "history"] as const,
   },
 };
 

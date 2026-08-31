@@ -1339,9 +1339,23 @@ export async function getProduct(id: string) {
   return mapProduct(data as Record<string, unknown>);
 }
 
-export async function upsertCustomer(waPhone: string, name?: string | null) {
+function mapCustomer(data: Record<string, unknown>): Customer {
+  return {
+    id: String(data.id),
+    storeId: String(data.store_id),
+    waPhone: String(data.wa_phone),
+    name: data.name != null ? String(data.name) : null,
+    avatarUrl: data.avatar_url != null ? String(data.avatar_url) : null,
+  };
+}
+
+export async function upsertCustomer(
+  waPhone: string,
+  name?: string | null,
+  avatarUrl?: string | null,
+) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.upsertCustomer(waPhone, name);
+  if (!supabase) return memoryStore.upsertCustomer(waPhone, name, avatarUrl);
 
   const store = await getStore();
   const phone = waPhone.replace(/\D/g, "");
@@ -1353,29 +1367,47 @@ export async function upsertCustomer(waPhone: string, name?: string | null) {
     .maybeSingle();
 
   if (existing) {
-    if (name && !existing.name) {
-      await supabase.from("customers").update({ name }).eq("id", existing.id);
+    const patch: Record<string, unknown> = {};
+    if (name && !existing.name) patch.name = name;
+    if (avatarUrl && avatarUrl !== existing.avatar_url) patch.avatar_url = avatarUrl;
+    if (Object.keys(patch).length) {
+      const { data: updated, error: updateError } = await supabase
+        .from("customers")
+        .update(patch)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (updateError?.message?.includes("avatar_url") && patch.avatar_url) {
+        delete patch.avatar_url;
+        if (Object.keys(patch).length) {
+          await supabase.from("customers").update(patch).eq("id", existing.id);
+        }
+      } else if (updated) {
+        return mapCustomer(updated as Record<string, unknown>);
+      }
     }
-    return {
-      id: existing.id,
-      storeId: existing.store_id,
-      waPhone: existing.wa_phone,
+    return mapCustomer({
+      ...existing,
       name: name ?? existing.name,
-    } satisfies Customer;
+      avatar_url: avatarUrl ?? existing.avatar_url,
+    } as Record<string, unknown>);
   }
 
-  const { data, error } = await supabase
-    .from("customers")
-    .insert({ store_id: store.id, wa_phone: phone, name: name ?? null })
-    .select("*")
-    .single();
-  if (error || !data) return memoryStore.upsertCustomer(waPhone, name);
-  return {
-    id: data.id,
-    storeId: data.store_id,
-    waPhone: data.wa_phone,
-    name: data.name,
-  } satisfies Customer;
+  const payload: Record<string, unknown> = {
+    store_id: store.id,
+    wa_phone: phone,
+    name: name ?? null,
+    avatar_url: avatarUrl ?? null,
+  };
+  let { data, error } = await supabase.from("customers").insert(payload).select("*").single();
+  if (error?.message?.includes("avatar_url")) {
+    delete payload.avatar_url;
+    const retry = await supabase.from("customers").insert(payload).select("*").single();
+    data = retry.data;
+    error = retry.error;
+  }
+  if (error || !data) return memoryStore.upsertCustomer(waPhone, name, avatarUrl);
+  return mapCustomer(data as Record<string, unknown>);
 }
 
 function mapConversation(data: Record<string, unknown>): Conversation {
@@ -1389,6 +1421,9 @@ function mapConversation(data: Record<string, unknown>): Conversation {
     handoffMode: data.handoff_mode === "human" ? "human" : "bot",
     handoffAt: data.handoff_at ? String(data.handoff_at) : null,
     handoffBy: data.handoff_by != null ? String(data.handoff_by) : null,
+    closedAt: data.closed_at ? String(data.closed_at) : null,
+    lastOrderId: data.last_order_id != null ? String(data.last_order_id) : null,
+    lastOrderCode: data.last_order_code != null ? String(data.last_order_code) : null,
   };
 }
 
@@ -1421,8 +1456,45 @@ export async function touchConversation(customerId: string) {
   const now = new Date().toISOString();
   await supabase
     .from("conversations")
-    .update({ last_message_at: now })
+    .update({ last_message_at: now, closed_at: null })
     .eq("customer_id", customerId);
+}
+
+export async function closeConversationWithOrder(
+  customerId: string,
+  order: { id: string; code: string },
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.closeConversationWithOrder(customerId, order);
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({
+      state: "welcome",
+      context: { cart: [] },
+      handoff_mode: "bot",
+      handoff_at: null,
+      handoff_by: null,
+      closed_at: now,
+      last_order_id: order.id,
+      last_order_code: order.code,
+      last_message_at: now,
+    })
+    .eq("customer_id", customerId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (
+      error.message?.includes("closed_at") ||
+      error.message?.includes("last_order_id")
+    ) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
 export async function listLiveConversations(hours = 24) {
@@ -1432,7 +1504,8 @@ export async function listLiveConversations(hours = 24) {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, customers(id, name, wa_phone)")
+    .select("*, customers(id, name, wa_phone, avatar_url)")
+    .is("closed_at", null)
     .or(`last_message_at.gte.${since},handoff_mode.eq.human`)
     .order("last_message_at", { ascending: false })
     .limit(100);
@@ -1440,6 +1513,9 @@ export async function listLiveConversations(hours = 24) {
   if (error) {
     if (error.message?.includes("handoff_mode")) {
       throw new Error("Rode a migration 030_conversation_handoff.sql no Supabase.");
+    }
+    if (error.message?.includes("closed_at")) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
     }
     throw new Error(error.message);
   }
@@ -1452,12 +1528,46 @@ export async function listLiveConversations(hours = 24) {
       customerId: String(row.customer_id),
       customerName: customer?.name ?? null,
       customerPhone: String(customer?.wa_phone ?? ""),
+      customerAvatarUrl: customer?.avatar_url != null ? String(customer.avatar_url) : null,
       state: row.state as ConversationState,
       handoffMode: row.handoff_mode === "human" ? ("human" as const) : ("bot" as const),
       handoffAt: row.handoff_at ? String(row.handoff_at) : null,
       handoffBy: row.handoff_by != null ? String(row.handoff_by) : null,
       lastMessageAt: String(row.last_message_at ?? new Date().toISOString()),
       cartItemCount: Array.isArray(context.cart) ? context.cart.length : 0,
+      lastOrderCode: row.last_order_code != null ? String(row.last_order_code) : null,
+    };
+  });
+}
+
+/** Histórico = pedidos confirmados (conversa que virou pedido). */
+export async function listConversationHistory(limit = 100) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listConversationHistory(limit);
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select(
+      "id, code, status, total_cents, created_at, customer_id, customers(id, name, wa_phone, avatar_url)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => {
+    const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
+    return {
+      id: String(row.id),
+      customerId: String(row.customer_id ?? customer?.id ?? ""),
+      customerName: customer?.name ?? null,
+      customerPhone: String(customer?.wa_phone ?? ""),
+      customerAvatarUrl: customer?.avatar_url != null ? String(customer.avatar_url) : null,
+      orderId: String(row.id),
+      orderCode: String(row.code ?? ""),
+      orderStatus: row.status as OrderStatus,
+      totalCents: Number(row.total_cents ?? 0),
+      closedAt: String(row.created_at ?? new Date().toISOString()),
     };
   });
 }
@@ -1520,9 +1630,16 @@ export async function saveConversation(
         state,
         context,
         last_message_at: now,
+        closed_at: null,
       })
       .eq("id", current.id);
-    return { ...current, state, context, lastMessageAt: now };
+    return {
+      ...current,
+      state,
+      context,
+      lastMessageAt: now,
+      closedAt: null,
+    };
   }
 
   const { data } = await supabase

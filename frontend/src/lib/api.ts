@@ -5,6 +5,7 @@ import type {
   Addon,
   AppNotification,
   Category,
+  ConversationHistoryItem,
   Crust,
   Health,
   LiveConversation,
@@ -244,7 +245,15 @@ export const api = {
     ),
   orderStats: () => request<OrderStats>("/api/orders/stats"),
   order: (id: string, silent = false) => request<Order>(`/api/orders/${id}`, { silent }),
-  conversations: (silent = true) => request<LiveConversation[]>("/api/conversations", { silent }),
+  conversations: (tab: "active" | "history" = "active", silent = true) =>
+    request<LiveConversation[]>(withQuery("/api/conversations", { tab }), {
+      silent
+    }),
+  conversationHistory: (silent = true) =>
+    request<ConversationHistoryItem[]>(
+      withQuery("/api/conversations", { tab: "history" }),
+      { silent }
+    ),
   takeoverConversation: (id: string, by?: string) =>
     request<unknown>(`/api/conversations/${id}/takeover`, {
       method: "POST",

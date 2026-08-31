@@ -687,11 +687,12 @@ export const memoryStore = {
     return this.getProduct(id);
   },
 
-  upsertCustomer(waPhone: string, name?: string | null) {
+  upsertCustomer(waPhone: string, name?: string | null, avatarUrl?: string | null) {
     const key = phoneKey(waPhone);
     const existing = customers.get(key);
     if (existing) {
       if (name && !existing.name) existing.name = name;
+      if (avatarUrl) existing.avatarUrl = avatarUrl;
       return existing;
     }
     const customer: Customer = {
@@ -699,6 +700,7 @@ export const memoryStore = {
       storeId: store.id,
       waPhone: key,
       name: name ?? null,
+      avatarUrl: avatarUrl ?? null,
     };
     customers.set(key, customer);
     return customer;
@@ -725,7 +727,34 @@ export const memoryStore = {
   touchConversation(customerId: string) {
     const current = conversations.get(customerId);
     if (!current) return null;
-    const next = { ...current, lastMessageAt: new Date().toISOString() };
+    const next = {
+      ...current,
+      lastMessageAt: new Date().toISOString(),
+      closedAt: null,
+    };
+    conversations.set(customerId, next);
+    return next;
+  },
+
+  closeConversationWithOrder(
+    customerId: string,
+    order: { id: string; code: string },
+  ) {
+    const current = conversations.get(customerId);
+    if (!current) return null;
+    const now = new Date().toISOString();
+    const next: Conversation = {
+      ...current,
+      state: "welcome",
+      context: { cart: [] },
+      handoffMode: "bot",
+      handoffAt: null,
+      handoffBy: null,
+      closedAt: now,
+      lastOrderId: order.id,
+      lastOrderCode: order.code,
+      lastMessageAt: now,
+    };
     conversations.set(customerId, next);
     return next;
   },
@@ -733,6 +762,7 @@ export const memoryStore = {
   listLiveConversations(hours = 24) {
     const since = Date.now() - hours * 60 * 60 * 1000;
     return [...conversations.values()]
+      .filter((item) => !item.closedAt)
       .filter(
         (item) =>
           item.handoffMode === "human" ||
@@ -750,12 +780,38 @@ export const memoryStore = {
           customerId: item.customerId,
           customerName: customer?.name ?? null,
           customerPhone: customer?.waPhone ?? "",
+          customerAvatarUrl: customer?.avatarUrl ?? null,
           state: item.state,
           handoffMode: item.handoffMode === "human" ? ("human" as const) : ("bot" as const),
           handoffAt: item.handoffAt ?? null,
           handoffBy: item.handoffBy ?? null,
           lastMessageAt: item.lastMessageAt ?? new Date().toISOString(),
           cartItemCount: item.context.cart?.length ?? 0,
+          lastOrderCode: item.lastOrderCode ?? null,
+        };
+      });
+  },
+
+  listConversationHistory(limit = 100) {
+    return [...orders.values()]
+      .sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      )
+      .slice(0, limit)
+      .map((order) => {
+        const customer = [...customers.values()].find((row) => row.id === order.customerId);
+        return {
+          id: order.id,
+          customerId: order.customerId,
+          customerName: order.customerName ?? customer?.name ?? null,
+          customerPhone: order.customerPhone ?? customer?.waPhone ?? "",
+          customerAvatarUrl: customer?.avatarUrl ?? null,
+          orderId: order.id,
+          orderCode: order.code,
+          orderStatus: order.status,
+          totalCents: order.totalCents,
+          closedAt: order.createdAt,
         };
       });
   },
@@ -770,6 +826,7 @@ export const memoryStore = {
       handoffAt: mode === "human" ? now : null,
       handoffBy: mode === "human" ? by?.trim() || null : null,
       lastMessageAt: now,
+      closedAt: null,
     };
     conversations.set(current.customerId, next);
     return next;
@@ -791,6 +848,9 @@ export const memoryStore = {
       handoffMode: current?.handoffMode ?? "bot",
       handoffAt: current?.handoffAt ?? null,
       handoffBy: current?.handoffBy ?? null,
+      closedAt: null,
+      lastOrderId: current?.lastOrderId ?? null,
+      lastOrderCode: current?.lastOrderCode ?? null,
     };
     conversations.set(customer.id, conversation);
     return conversation;

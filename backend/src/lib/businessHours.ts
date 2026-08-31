@@ -211,13 +211,13 @@ export function closedStoreMessage(
   const schedule = formatBusinessHoursLines(hours);
   const allClosed = hours?.length ? hours.every((day) => day.closed) : false;
   const lines = [
-    `A *${storeName}* está fechada agora.`,
+    `😴 A *${storeName}* está fechada agora.`,
     allClosed
       ? "No momento não estamos atendendo pelo WhatsApp."
       : schedule.length
-        ? ["Horário de funcionamento:", ...schedule].join("\n")
+        ? ["🕐 Horário de funcionamento:", ...schedule].join("\n")
         : null,
-    "Quando reabrirmos, é só mandar uma mensagem.",
+    "Quando reabrirmos, é só mandar uma mensagem. 👋",
   ].filter(Boolean);
   return lines.join("\n");
 }

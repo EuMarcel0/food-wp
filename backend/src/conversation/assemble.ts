@@ -417,7 +417,7 @@ export function selectionKey(
 }
 
 export function variantPrompt(product: Product) {
-  return `*${product.name}*\nEscolha o tamanho.`;
+  return `*${product.name}*\n📏 Escolha o tamanho.`;
 }
 
 export function groupPrompt(
@@ -438,23 +438,23 @@ export function groupPrompt(
     `*${product.name}*`,
     catalogFlavors
       ? chosen.length
-        ? `Tamanho *${group.name}* — escolha o sabor`
-        : `Tamanho *${group.name}*`
-      : `Escolha: *${group.name}*`,
+        ? `📏 Tamanho *${group.name}* — escolha o sabor`
+        : `📏 Tamanho *${group.name}*`
+      : `✨ Escolha: *${group.name}*`,
     catalogFlavors
       ? chosen.length
         ? group.maxSelect > 1
-          ? `Pode marcar até ${group.maxSelect} sabores.`
-          : "Pode marcar 1 sabor."
+          ? `🍕 Pode marcar até ${group.maxSelect} sabores.`
+          : "🍕 Pode marcar 1 sabor."
         : group.maxSelect > 1
-          ? `Só este sabor ou combine até ${group.maxSelect}.`
-          : "Só este sabor ou escolha outro."
+          ? `🍕 Só este sabor ou combine até ${group.maxSelect}.`
+          : "🍕 Só este sabor ou escolha outro."
       : group.maxSelect > 1
         ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
         : group.required
           ? "Escolha 1 opção."
           : "Opcional — pode pular.",
-    chosen.length ? `Já escolheu: ${shares || chosen.join(" + ")}.` : "",
+    chosen.length ? `✅ Já escolheu: ${shares || chosen.join(" + ")}.` : "",
   ];
   return lines.filter(Boolean).join("\n");
 }
