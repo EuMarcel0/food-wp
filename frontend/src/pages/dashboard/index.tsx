@@ -81,23 +81,23 @@ const PIPELINE_TONE: Record<
 > = {
   received: {
     bar: "bg-food-accent",
-    chip: "border-food-accent/40 bg-[color-mix(in_srgb,var(--food-accent)_10%,var(--food-surface))]",
+    chip: "border-food-accent/35 bg-[color-mix(in_srgb,var(--food-accent)_12%,var(--food-surface))]",
   },
   accepted: {
     bar: "bg-blue-500",
-    chip: "border-blue-200 bg-blue-50",
+    chip: "border-blue-500/35 bg-[color-mix(in_srgb,#3b82f6_12%,var(--food-surface))]",
   },
   preparing: {
     bar: "bg-amber-500",
-    chip: "border-amber-200 bg-amber-50",
+    chip: "border-amber-500/35 bg-[color-mix(in_srgb,#f59e0b_12%,var(--food-surface))]",
   },
   ready: {
     bar: "bg-green-500",
-    chip: "border-green-200 bg-green-50",
+    chip: "border-green-500/35 bg-[color-mix(in_srgb,#22c55e_12%,var(--food-surface))]",
   },
   out_for_delivery: {
     bar: "bg-sky-500",
-    chip: "border-sky-200 bg-sky-50",
+    chip: "border-sky-500/35 bg-[color-mix(in_srgb,#0ea5e9_12%,var(--food-surface))]",
   },
 };
 
@@ -307,8 +307,9 @@ export function DashboardPage() {
             </h2>
           </div>
           <div className="grid grid-cols-2 gap-3 p-4">
-            <div className="rounded-xl border border-food-border bg-food-chip/60 px-3.5 py-3.5">
-              <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-food-muted">
+            <div className="rounded-xl border border-food-accent/35 bg-[color-mix(in_srgb,var(--food-accent)_12%,var(--food-surface))] px-3.5 py-3.5">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-food-muted">
+                <span className="size-2 rounded-full bg-food-accent" aria-hidden />
                 Entrega
               </span>
               <strong className="block text-[28px] leading-none font-extrabold tabular-nums text-food-text">
@@ -318,8 +319,9 @@ export function DashboardPage() {
                 {stats.open ? `${deliveryShare}% da fila` : "Sem pedidos abertos"}
               </p>
             </div>
-            <div className="rounded-xl border border-food-border bg-food-chip/60 px-3.5 py-3.5">
-              <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-food-muted">
+            <div className="rounded-xl border border-violet-500/35 bg-[color-mix(in_srgb,#8b5cf6_12%,var(--food-surface))] px-3.5 py-3.5">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-food-muted">
+                <span className="size-2 rounded-full bg-violet-500" aria-hidden />
                 Retirada
               </span>
               <strong className="block text-[28px] leading-none font-extrabold tabular-nums text-food-text">
@@ -338,13 +340,19 @@ export function DashboardPage() {
                   style={{ width: `${deliveryShare}%` }}
                 />
                 <div
-                  className="bg-sky-400 transition-[width]"
+                  className="bg-violet-500 transition-[width]"
                   style={{ width: `${pickupShare}%` }}
                 />
               </div>
               <div className="mt-2 flex justify-between text-[11px] font-semibold text-food-muted">
-                <span>Entrega</span>
-                <span>Retirada</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-food-accent" aria-hidden />
+                  Entrega
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-violet-500" aria-hidden />
+                  Retirada
+                </span>
               </div>
             </div>
           ) : null}
