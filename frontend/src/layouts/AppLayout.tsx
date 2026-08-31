@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AppstoreOutlined,
   CommentOutlined,
@@ -11,7 +11,7 @@ import {
   TagsOutlined,
   ThunderboltOutlined
 } from "@ant-design/icons";
-import { Button, Drawer, Grid, Layout, Menu, Tooltip, Typography, theme } from "antd";
+import { Badge, Button, Drawer, Grid, Layout, Menu, Tooltip, Typography, theme } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ConnectionStatus } from "./ConnectionStatus";
@@ -19,21 +19,15 @@ import { NotificationBell } from "../notifications/NotificationBell";
 import { NotificationProvider } from "../notifications/NotificationProvider";
 import { UserMenu } from "./UserMenu";
 import { api } from "../lib/api";
+import {
+  hasUnseenConversations,
+  markConversationsSeen,
+} from "../lib/conversationBadge";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/cn";
 import { foodMark } from "../ui";
 
 const SIDER_STORAGE_KEY = "food-wp-sider-collapsed";
-
-const items = [
-  { key: "/", icon: <ThunderboltOutlined />, label: "Painel" },
-  { key: "/pedidos", icon: <ShoppingOutlined />, label: "Pedidos" },
-  { key: "/conversas", icon: <CommentOutlined />, label: "Conversas" },
-  { key: "/cardapio", icon: <AppstoreOutlined />, label: "Cardápio" },
-  { key: "/categorias", icon: <TagsOutlined />, label: "Categorias" },
-  { key: "/adicionais", icon: <PlusCircleOutlined />, label: "Adicionais" },
-  { key: "/configuracoes", icon: <SettingOutlined />, label: "Configurações" }
-];
 
 function readSiderCollapsed() {
   try {
@@ -94,8 +88,57 @@ export function AppLayout() {
   });
   const storeName = storeQuery.data?.name;
   const storePhoto = storeQuery.data?.profilePhotoUrl;
+  const [seenTick, setSeenTick] = useState(0);
+  const liveQuery = useQuery({
+    queryKey: queryKeys.conversations.live,
+    queryFn: () => api.conversations("active", true),
+    refetchInterval: 12_000,
+  });
+  const activeIds = (liveQuery.data ?? []).map((item) => item.id);
+  const activeIdsKey = activeIds.join("|");
+  const hasUnseen = useMemo(
+    () => hasUnseenConversations(activeIds),
+    [activeIdsKey, seenTick],
+  );
+  const showConversasDot =
+    location.pathname !== "/conversas" && hasUnseen;
+
+  useEffect(() => {
+    const onSeen = () => setSeenTick((value) => value + 1);
+    window.addEventListener("food-wp-conversas-seen", onSeen);
+    return () => window.removeEventListener("food-wp-conversas-seen", onSeen);
+  }, []);
+
+  useEffect(() => {
+    if (location.pathname !== "/conversas") return;
+    markConversationsSeen(activeIds);
+  }, [location.pathname, activeIdsKey]);
+
+  const menuItems = useMemo(
+    () => [
+      { key: "/", icon: <ThunderboltOutlined />, label: "Painel" },
+      { key: "/pedidos", icon: <ShoppingOutlined />, label: "Pedidos" },
+      {
+        key: "/conversas",
+        icon: (
+          <Badge dot={showConversasDot} offset={[-1, 2]} color="#ef4444">
+            <CommentOutlined />
+          </Badge>
+        ),
+        label: "Conversas",
+      },
+      { key: "/cardapio", icon: <AppstoreOutlined />, label: "Cardápio" },
+      { key: "/categorias", icon: <TagsOutlined />, label: "Categorias" },
+      { key: "/adicionais", icon: <PlusCircleOutlined />, label: "Adicionais" },
+      { key: "/configuracoes", icon: <SettingOutlined />, label: "Configurações" },
+    ],
+    [showConversasDot],
+  );
 
   function go(path: string) {
+    if (path === "/conversas") {
+      markConversationsSeen(activeIds);
+    }
     navigate(path);
     setDrawerOpen(false);
   }
@@ -113,7 +156,13 @@ export function AppLayout() {
   }
 
   const menu = (
-    <Menu theme='dark' mode='inline' selectedKeys={[location.pathname]} items={items} onClick={item => go(item.key)} />
+    <Menu
+      theme='dark'
+      mode='inline'
+      selectedKeys={[location.pathname]}
+      items={menuItems}
+      onClick={item => go(item.key)}
+    />
   );
 
   return (

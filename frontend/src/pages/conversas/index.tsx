@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Button, Empty, Segmented, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Avatar, Button, Empty, Segmented, Table, Tabs, Tag } from "antd";
 import {
   AppstoreOutlined,
   CommentOutlined,
@@ -31,7 +31,7 @@ import { toast } from "../../lib/toast";
 import { PAGE_SIZE, serverPagination } from "../../lib/pagination";
 import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import { cn } from "../../lib/cn";
-import { entityCard, listCards, listPage, tableClass, tableGridFill } from "../../ui";
+import { listCards, listPage, tableClass, tableGridFill } from "../../ui";
 import type { ConversationHistoryItem, LiveConversation } from "../../types";
 
 const VIEW_STORAGE_KEY = "food-wp-conversations-view";
@@ -342,7 +342,7 @@ function ActivePane({
 
   if (view === "grid") {
     return (
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {items.map((item) => (
           <ConversationCard
             key={item.id}
@@ -526,7 +526,7 @@ function HistoryPane({
 
   if (view === "grid") {
     return (
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {items.map((item) => (
           <HistoryCard key={item.id} item={item} />
         ))}
@@ -634,16 +634,18 @@ function CustomerIdentity({
   phone,
   avatarUrl,
   seed,
+  size = 40,
 }: {
   name: string;
   phone: string;
   avatarUrl?: string | null;
   seed: string;
+  size?: number;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-2.5">
       <Avatar
-        size={44}
+        size={size}
         src={customerAvatarSrc({
           customerAvatarUrl: avatarUrl,
           customerName: name,
@@ -654,14 +656,19 @@ function CustomerIdentity({
         className="shrink-0 border border-food-border bg-food-chip"
       />
       <div className="min-w-0">
-        <Typography.Title level={5} className="!mb-0.5 !mt-0 truncate">
+        <p className="m-0 truncate text-[13px] font-semibold leading-tight text-food-text">
           {name}
-        </Typography.Title>
-        <p className="m-0 text-sm text-food-muted tabular-nums">{phone}</p>
+        </p>
+        <p className="m-0 truncate text-xs leading-tight text-food-muted tabular-nums">
+          {phone}
+        </p>
       </div>
     </div>
   );
 }
+
+const compactCard =
+  "relative overflow-hidden rounded-2xl border border-food-border bg-food-card px-3 py-2.5 shadow-food-soft before:absolute before:inset-y-2 before:left-0 before:w-[2px] before:rounded-full before:content-['']";
 
 function ConversationCard({
   item,
@@ -677,62 +684,57 @@ function ConversationCard({
   const human = item.handoffMode === "human";
   const name = item.customerName?.trim() || "Cliente";
   const phone = formatPhoneDisplay(item.customerPhone);
+  const cart =
+    item.cartItemCount > 0
+      ? `${item.cartItemCount} item${item.cartItemCount > 1 ? "s" : ""}`
+      : "Carrinho vazio";
 
   return (
     <article
       className={cn(
-        entityCard,
+        compactCard,
         human ? "before:bg-purple-500" : "before:bg-food-accent",
       )}
     >
-      <div className="mb-3 flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 pl-1">
         <CustomerIdentity
           name={name}
           phone={phone}
           avatarUrl={item.customerAvatarUrl}
           seed={item.customerId}
+          size={34}
         />
         <Tag
+          className="m-0 shrink-0 text-[11px] leading-none"
           color={human ? "purple" : "default"}
           icon={human ? <UserSwitchOutlined /> : <RobotOutlined />}
         >
-          {human ? "Atendente" : "Bot"}
+          {human ? "Humano" : "Bot"}
         </Tag>
       </div>
 
-      <dl className="m-0 grid gap-1.5 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt className="text-food-muted">Etapa</dt>
-          <dd className="m-0 font-semibold text-right">
-            {conversationStateLabel(item.state)}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-food-muted">Carrinho</dt>
-          <dd className="m-0 font-semibold tabular-nums">
-            {item.cartItemCount
-              ? `${item.cartItemCount} item${item.cartItemCount > 1 ? "s" : ""}`
-              : "Vazio"}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-food-muted">Última msg</dt>
-          <dd className="m-0 font-semibold tabular-nums">
-            {formatDate(item.lastMessageAt)}
-          </dd>
-        </div>
-        {human && item.handoffBy ? (
-          <div className="flex justify-between gap-3">
-            <dt className="text-food-muted">Assumido por</dt>
-            <dd className="m-0 font-semibold truncate">{item.handoffBy}</dd>
-          </div>
-        ) : null}
-      </dl>
+      <p className="mb-0 mt-2 pl-1 text-xs leading-snug text-food-muted">
+        <span className="font-medium text-food-text">
+          {conversationStateLabel(item.state)}
+        </span>
+        <span className="mx-1.5 text-food-border">·</span>
+        <span>{cart}</span>
+        <span className="mx-1.5 text-food-border">·</span>
+        <span className="tabular-nums">{formatDate(item.lastMessageAt)}</span>
+      </p>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      {human && item.handoffBy ? (
+        <p className="mb-0 mt-1 pl-1 text-[11px] text-food-muted">
+          Assumido por {item.handoffBy}
+        </p>
+      ) : null}
+
+      <div className="mt-2.5 pl-1">
         {human ? (
           <Button
+            size="small"
             type="primary"
+            className="w-full"
             icon={<RobotOutlined />}
             loading={busy}
             onClick={onRelease}
@@ -741,7 +743,9 @@ function ConversationCard({
           </Button>
         ) : (
           <Button
+            size="small"
             type="primary"
+            className="w-full"
             icon={<UserSwitchOutlined />}
             loading={busy}
             onClick={onTakeover}
@@ -758,26 +762,29 @@ function HistoryCard({ item }: { item: ConversationHistoryItem }) {
   const name = item.customerName?.trim() || "Cliente";
   const phone = formatPhoneDisplay(item.customerPhone);
   return (
-    <article className={cn(entityCard, "before:bg-zinc-400")}>
-      <div className="mb-3 flex items-start justify-between gap-2">
+    <article className={cn(compactCard, "before:bg-zinc-400")}>
+      <div className="flex items-start justify-between gap-2 pl-1">
         <div className="min-w-0">
-          <Typography.Title level={5} className="!mb-1 !mt-0 truncate">
+          <p className="m-0 mb-1.5 text-[13px] font-bold leading-tight text-food-text">
             Pedido #{item.orderCode}
-          </Typography.Title>
+          </p>
           <CustomerIdentity
             name={name}
             phone={phone}
             avatarUrl={item.customerAvatarUrl}
             seed={item.customerId}
+            size={34}
           />
         </div>
-        <Tag color={STATUS_COLOR[item.orderStatus]}>
+        <Tag className="m-0 shrink-0 text-[11px] leading-none" color={STATUS_COLOR[item.orderStatus]}>
           {STATUS_LABEL[item.orderStatus]}
         </Tag>
       </div>
-      <div className="flex items-end justify-between gap-3">
-        <span className="text-sm text-food-muted">{formatDate(item.closedAt)}</span>
-        <span className="text-lg font-extrabold tabular-nums text-food-accent">
+      <div className="mt-2 flex items-center justify-between gap-2 pl-1">
+        <span className="text-xs text-food-muted tabular-nums">
+          {formatDate(item.closedAt)}
+        </span>
+        <span className="text-sm font-extrabold tabular-nums text-food-accent">
           {formatBRL(item.totalCents)}
         </span>
       </div>

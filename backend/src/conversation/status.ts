@@ -71,9 +71,19 @@ export function formatOrderStatusMessage(order: Order, opts?: { thanks?: boolean
     lines.push("Qualquer nova interação por aqui inicia um *novo pedido*.");
   } else if (order.status !== "cancelled") {
     lines.push(`💰 Total: ${formatBRL(order.totalCents)}.`);
-    lines.push("Assim que mudar, eu te aviso por aqui.");
+    lines.push(statusFollowUp(order));
   }
   return lines.filter(Boolean).join("\n");
+}
+
+function statusFollowUp(order: Order) {
+  if (order.status === "ready" && order.fulfillment === "pickup") {
+    return "Você já pode retirar seu pedido. 🏪";
+  }
+  if (order.status === "out_for_delivery") {
+    return "O entregador saiu e está a caminho do seu endereço. 🛵";
+  }
+  return "Assim que mudar, eu te aviso por aqui.";
 }
 
 export function isAllowedOrderStatus(
