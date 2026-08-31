@@ -843,7 +843,7 @@ export const memoryStore = {
     const now = new Date().toISOString();
     const closedAt = options?.close
       ? now
-      : isOrderFlowState(state)
+      : options?.reopen || isOrderFlowState(state)
         ? null
         : (current?.closedAt ?? null);
     const conversation: Conversation = {

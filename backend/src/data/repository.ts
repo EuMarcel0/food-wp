@@ -1631,10 +1631,10 @@ export async function saveConversation(
 
   const current = await getConversation(customer.id);
   const now = new Date().toISOString();
-  // Reabre Ativas só ao entrar no fluxo de pedido; status/"vlw" mantém closed_at.
+  // Reabre Ativas no Bem-vindo ou no fluxo de pedido; status/"vlw" mantém closed_at.
   const closedAt = options?.close
     ? now
-    : isOrderFlowState(state)
+    : options?.reopen || isOrderFlowState(state)
       ? null
       : (current?.closedAt ?? null);
 

@@ -1085,8 +1085,9 @@ export async function handleIncomingMessage(input: {
 
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
-    await persist("welcome", emptyContext());
     if (isCustomerAck(command) && (await replyOpenOrderStatus(true))) return;
+    // Bem-vindo já conta como conversa ativa no painel.
+    await persist("welcome", emptyContext(), { reopen: true });
     await showWelcome(input.from, store.name);
     return;
   }
@@ -1188,7 +1189,7 @@ export async function handleIncomingMessage(input: {
 
   // Fora do pedido, texto livre volta ao menu inicial.
   if (state === "welcome" && !hasReply) {
-    await persist("welcome", context);
+    await persist("welcome", context, { reopen: true });
     await showWelcome(input.from, store.name);
     return;
   }
@@ -1696,6 +1697,6 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  await persist("welcome", context);
+  await persist("welcome", context, { reopen: true });
   await showWelcome(input.from, store.name);
 }
