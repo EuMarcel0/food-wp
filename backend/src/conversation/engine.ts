@@ -41,20 +41,22 @@ import {
   variantPrompt,
   activeGroups
 } from "./assemble.js";
-import type {
-  CartItem,
-  CartSelection,
-  ConversationContext,
-  ConversationState,
-  Crust,
-  Customer,
-  DeliveryNeighborhood,
-  Fulfillment,
-  PaymentMethod,
-  PizzaKind,
-  Product,
-  ProductOptionGroup,
-  Store
+import {
+  isOrderFlowState,
+  type CartItem,
+  type CartSelection,
+  type ConversationContext,
+  type ConversationState,
+  type Crust,
+  type Customer,
+  type DeliveryNeighborhood,
+  type Fulfillment,
+  type PaymentMethod,
+  type PizzaKind,
+  type Product,
+  type ProductOptionGroup,
+  type SaveConversationOptions,
+  type Store,
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
@@ -350,26 +352,10 @@ async function showCartAfterAdd(to: string, context: ConversationContext) {
   await showCartPrompt(to, context, "✅ Item adicionado!");
 }
 
-const ORDER_FLOW_STATES = new Set<ConversationState>([
-  "awaiting_product",
-  "awaiting_addon",
-  "awaiting_crust",
-  "awaiting_option",
-  "awaiting_quantity",
-  "awaiting_item_note",
-  "cart",
-  "awaiting_order_note",
-  "awaiting_fulfillment",
-  "awaiting_neighborhood",
-  "awaiting_address",
-  "awaiting_payment",
-  "awaiting_change"
-]);
-
 const RESUME_HINT = "👉 Para continuar, use as opções desta mensagem.";
 
 function isOrderInProgress(state: ConversationState) {
-  return ORDER_FLOW_STATES.has(state);
+  return isOrderFlowState(state);
 }
 
 /** Reenvia a última etapa do pedido (botões/lista), sem avançar o fluxo. */
@@ -1067,12 +1053,16 @@ export async function handleIncomingMessage(input: {
   const normalized = normalize(incoming);
   const command = normalized.replace(/[!?.,]+$/g, "").trim();
 
-  const persist = (nextState: ConversationState, nextContext = context) =>
-    saveConversation(customer, nextState, nextContext);
+  const persist = (
+    nextState: ConversationState,
+    nextContext = context,
+    options?: SaveConversationOptions,
+  ) => saveConversation(customer, nextState, nextContext, options);
 
   async function replyOpenOrderStatus(thanks = false) {
     const latest = await findLatestOrder(customer.id);
     if (!latest || !isOpenOrderStatus(latest.status)) return false;
+    // Não reabre Ativas: só responde o status do pedido em andamento.
     await persist("welcome", emptyContext());
     await sendText(input.from, formatOrderStatusMessage(latest, { thanks }));
     return true;
@@ -1085,7 +1075,7 @@ export async function handleIncomingMessage(input: {
   }
 
   if (CANCEL_KEYS.includes(command)) {
-    await persist("welcome", emptyContext());
+    await persist("welcome", emptyContext(), { close: true });
     await sendText(
       input.from,
       "👋 Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."

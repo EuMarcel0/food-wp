@@ -8,29 +8,31 @@ import type {
 } from "../lib/filters.js";
 import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
-import type {
-  Addon,
-  AppNotification,
-  CartItem,
-  Category,
-  Conversation,
-  ConversationContext,
-  ConversationState,
-  Crust,
-  Customer,
-  DeliveryNeighborhood,
-  Fulfillment,
-  NotificationType,
-  Order,
-  OrderItem,
-  OrderStatus,
-  PaymentMethod,
-  PizzaKind,
-  Product,
-  ProductOptionGroup,
-  Size,
-  Store,
-  StorePatch,
+import {
+  isOrderFlowState,
+  type Addon,
+  type AppNotification,
+  type CartItem,
+  type Category,
+  type Conversation,
+  type ConversationContext,
+  type ConversationState,
+  type Crust,
+  type Customer,
+  type DeliveryNeighborhood,
+  type Fulfillment,
+  type NotificationType,
+  type Order,
+  type OrderItem,
+  type OrderStatus,
+  type PaymentMethod,
+  type PizzaKind,
+  type Product,
+  type ProductOptionGroup,
+  type SaveConversationOptions,
+  type Size,
+  type Store,
+  type StorePatch,
 } from "../types.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
@@ -1454,9 +1456,10 @@ export async function touchConversation(customerId: string) {
   if (!supabase) return memoryStore.touchConversation(customerId);
 
   const now = new Date().toISOString();
+  // Só atualiza atividade — não reabre conversa encerrada (closed_at).
   await supabase
     .from("conversations")
-    .update({ last_message_at: now, closed_at: null })
+    .update({ last_message_at: now })
     .eq("customer_id", customerId);
 }
 
@@ -1617,12 +1620,20 @@ export async function saveConversation(
   customer: Customer,
   state: ConversationState,
   context: ConversationContext,
+  options?: SaveConversationOptions,
 ) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.saveConversation(customer, state, context);
+  if (!supabase) return memoryStore.saveConversation(customer, state, context, options);
 
   const current = await getConversation(customer.id);
   const now = new Date().toISOString();
+  // Reabre Ativas só ao entrar no fluxo de pedido; status/"vlw" mantém closed_at.
+  const closedAt = options?.close
+    ? now
+    : isOrderFlowState(state)
+      ? null
+      : (current?.closedAt ?? null);
+
   if (current) {
     await supabase
       .from("conversations")
@@ -1630,7 +1641,7 @@ export async function saveConversation(
         state,
         context,
         last_message_at: now,
-        closed_at: null,
+        closed_at: closedAt,
       })
       .eq("id", current.id);
     return {
@@ -1638,7 +1649,7 @@ export async function saveConversation(
       state,
       context,
       lastMessageAt: now,
-      closedAt: null,
+      closedAt,
     };
   }
 
@@ -1650,6 +1661,7 @@ export async function saveConversation(
       state,
       context,
       handoff_mode: "bot",
+      closed_at: closedAt,
     })
     .select("*")
     .single();
@@ -1663,6 +1675,7 @@ export async function saveConversation(
       context,
       last_message_at: now,
       handoff_mode: "bot",
+      closed_at: closedAt,
     }) as Record<string, unknown>,
   );
 }

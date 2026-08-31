@@ -7,28 +7,30 @@ import type {
 import { paginateItems } from "../lib/pagination.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { env } from "../config/env.js";
-import type {
-  Addon,
-  AppNotification,
-  Category,
-  Conversation,
-  ConversationContext,
-  ConversationState,
-  Crust,
-  Customer,
-  DeliveryNeighborhood,
-  Fulfillment,
-  NotificationType,
-  Order,
-  OrderStatus,
-  PaymentMethod,
-  PizzaKind,
-  Product,
-  ProductOptionGroup,
-  CartSelection,
-  Size,
-  Store,
-  StorePatch,
+import {
+  isOrderFlowState,
+  type Addon,
+  type AppNotification,
+  type Category,
+  type Conversation,
+  type ConversationContext,
+  type ConversationState,
+  type Crust,
+  type Customer,
+  type DeliveryNeighborhood,
+  type Fulfillment,
+  type NotificationType,
+  type Order,
+  type OrderStatus,
+  type PaymentMethod,
+  type PizzaKind,
+  type Product,
+  type ProductOptionGroup,
+  type CartSelection,
+  type SaveConversationOptions,
+  type Size,
+  type Store,
+  type StorePatch,
 } from "../types.js";
 
 const store: Store = {
@@ -730,7 +732,6 @@ export const memoryStore = {
     const next = {
       ...current,
       lastMessageAt: new Date().toISOString(),
-      closedAt: null,
     };
     conversations.set(customerId, next);
     return next;
@@ -836,19 +837,26 @@ export const memoryStore = {
     customer: Customer,
     state: ConversationState,
     context: ConversationContext,
+    options?: SaveConversationOptions,
   ) {
     const current = conversations.get(customer.id);
+    const now = new Date().toISOString();
+    const closedAt = options?.close
+      ? now
+      : isOrderFlowState(state)
+        ? null
+        : (current?.closedAt ?? null);
     const conversation: Conversation = {
       id: current?.id ?? `conv-${customer.id}`,
       storeId: customer.storeId,
       customerId: customer.id,
       state,
       context,
-      lastMessageAt: new Date().toISOString(),
+      lastMessageAt: now,
       handoffMode: current?.handoffMode ?? "bot",
       handoffAt: current?.handoffAt ?? null,
       handoffBy: current?.handoffBy ?? null,
-      closedAt: null,
+      closedAt,
       lastOrderId: current?.lastOrderId ?? null,
       lastOrderCode: current?.lastOrderCode ?? null,
     };

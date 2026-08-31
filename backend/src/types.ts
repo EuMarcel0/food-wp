@@ -26,6 +26,32 @@ export type ConversationState =
   | "awaiting_change"
   | "awaiting_order_code";
 
+/** Estados em que a conversa volta a aparecer em Ativas (pedido em montagem). */
+export const ORDER_FLOW_STATES = new Set<ConversationState>([
+  "awaiting_product",
+  "awaiting_addon",
+  "awaiting_crust",
+  "awaiting_option",
+  "awaiting_quantity",
+  "awaiting_item_note",
+  "cart",
+  "awaiting_order_note",
+  "awaiting_fulfillment",
+  "awaiting_neighborhood",
+  "awaiting_address",
+  "awaiting_payment",
+  "awaiting_change",
+]);
+
+export function isOrderFlowState(state: ConversationState) {
+  return ORDER_FLOW_STATES.has(state);
+}
+
+export type SaveConversationOptions = {
+  /** Encerra o atendimento (some de Ativas). */
+  close?: boolean;
+};
+
 export type ProductOption = {
   id: string;
   name: string;
