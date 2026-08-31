@@ -810,6 +810,7 @@ export const memoryStore = {
       )
       .map((item) => {
         const customer = [...customers.values()].find((row) => row.id === item.customerId);
+        const lastMessageAt = item.lastMessageAt ?? new Date().toISOString();
         return {
           id: item.id,
           customerId: item.customerId,
@@ -820,7 +821,8 @@ export const memoryStore = {
           handoffMode: item.handoffMode === "human" ? ("human" as const) : ("bot" as const),
           handoffAt: item.handoffAt ?? null,
           handoffBy: item.handoffBy ?? null,
-          lastMessageAt: item.lastMessageAt ?? new Date().toISOString(),
+          lastMessageAt,
+          activatedAt: item.activatedAt ?? lastMessageAt,
           cartItemCount: item.context.cart?.length ?? 0,
           lastOrderCode: item.lastOrderCode ?? null,
         };
@@ -862,6 +864,10 @@ export const memoryStore = {
       handoffBy: mode === "human" ? by?.trim() || null : null,
       lastMessageAt: now,
       closedAt: null,
+      activatedAt:
+        current.closedAt || !current.activatedAt
+          ? now
+          : current.activatedAt,
     };
     conversations.set(current.customerId, next);
     return next;
@@ -880,6 +886,12 @@ export const memoryStore = {
       : options?.reopen || isOrderFlowState(state)
         ? null
         : (current?.closedAt ?? null);
+    const activatedAt =
+      closedAt != null
+        ? (current?.activatedAt ?? null)
+        : current?.closedAt || !current?.activatedAt
+          ? now
+          : (current.activatedAt ?? now);
     const conversation: Conversation = {
       id: current?.id ?? `conv-${customer.id}`,
       storeId: customer.storeId,
@@ -887,6 +899,7 @@ export const memoryStore = {
       state,
       context,
       lastMessageAt: now,
+      activatedAt,
       handoffMode: current?.handoffMode ?? "bot",
       handoffAt: current?.handoffAt ?? null,
       handoffBy: current?.handoffBy ?? null,

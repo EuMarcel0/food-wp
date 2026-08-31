@@ -8,6 +8,7 @@ import {
   UnorderedListOutlined,
   UserSwitchOutlined,
 } from "@ant-design/icons";
+import { ConversationTimer } from "../../components/ConversationTimer";
 import { FillTable } from "../../components/FillTable";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -371,7 +372,7 @@ function ActivePane({
             loading={loading}
             dataSource={items}
             pagination={false}
-            scroll={{ x: 720, y: bodyHeight }}
+            scroll={{ x: 880, y: bodyHeight }}
             className={`${tableClass} ${tableGridFill}`}
             columns={[
             {
@@ -410,6 +411,14 @@ function ActivePane({
                 ) : (
                   <Tag icon={<RobotOutlined />}>Bot</Tag>
                 ),
+            },
+            {
+              title: "Tempo da conversa",
+              dataIndex: "activatedAt",
+              width: 140,
+              render: (value: string, item: LiveConversation) => (
+                <ConversationTimer activatedAt={value || item.lastMessageAt} />
+              ),
             },
             {
               title: "Última msg",
@@ -713,13 +722,18 @@ function ConversationCard({
         </Tag>
       </div>
 
-      <p className="mb-0 mt-2 pl-1 text-xs leading-snug text-food-muted">
+      <p className="mb-0 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-1 text-xs leading-snug text-food-muted">
         <span className="font-medium text-food-text">
           {conversationStateLabel(item.state)}
         </span>
-        <span className="mx-1.5 text-food-border">·</span>
+        <span className="text-food-border">·</span>
         <span>{cart}</span>
-        <span className="mx-1.5 text-food-border">·</span>
+        <span className="text-food-border">·</span>
+        <ConversationTimer
+          activatedAt={item.activatedAt || item.lastMessageAt}
+          className="text-xs"
+        />
+        <span className="text-food-border">·</span>
         <span className="tabular-nums">{formatDate(item.lastMessageAt)}</span>
       </p>
 

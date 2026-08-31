@@ -231,6 +231,8 @@ export type Conversation = {
   state: ConversationState;
   context: ConversationContext;
   lastMessageAt?: string;
+  /** Momento em que a conversa entrou em Ativas (cronômetro do painel). */
+  activatedAt?: string | null;
   handoffMode?: HandoffMode;
   handoffAt?: string | null;
   handoffBy?: string | null;
@@ -250,6 +252,8 @@ export type LiveConversation = {
   handoffAt: string | null;
   handoffBy: string | null;
   lastMessageAt: string;
+  /** Início do atendimento ativo — base do cronômetro. */
+  activatedAt: string;
   cartItemCount: number;
   lastOrderCode?: string | null;
 };

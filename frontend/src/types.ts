@@ -20,6 +20,8 @@ export type LiveConversation = {
   handoffAt: string | null;
   handoffBy: string | null;
   lastMessageAt: string;
+  /** Início do atendimento ativo — base do cronômetro. */
+  activatedAt: string;
   cartItemCount: number;
   lastOrderCode?: string | null;
 };

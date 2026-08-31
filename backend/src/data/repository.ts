@@ -1445,6 +1445,7 @@ function mapConversation(data: Record<string, unknown>): Conversation {
     state: data.state as ConversationState,
     context: (data.context ?? { cart: [] }) as ConversationContext,
     lastMessageAt: data.last_message_at ? String(data.last_message_at) : undefined,
+    activatedAt: data.activated_at ? String(data.activated_at) : null,
     handoffMode: data.handoff_mode === "human" ? "human" : "bot",
     handoffAt: data.handoff_at ? String(data.handoff_at) : null,
     handoffBy: data.handoff_by != null ? String(data.handoff_by) : null,
@@ -1452,6 +1453,17 @@ function mapConversation(data: Record<string, unknown>): Conversation {
     lastOrderId: data.last_order_id != null ? String(data.last_order_id) : null,
     lastOrderCode: data.last_order_code != null ? String(data.last_order_code) : null,
   };
+}
+
+/** Reinicia o cronômetro ao reabrir; mantém se já estava ativa. */
+function nextActivatedAt(
+  current: Conversation | null | undefined,
+  closedAt: string | null,
+  now: string,
+): string | null {
+  if (closedAt != null) return current?.activatedAt ?? null;
+  if (current?.closedAt || !current?.activatedAt) return now;
+  return current.activatedAt;
 }
 
 export async function getConversation(customerId: string) {
@@ -1551,6 +1563,7 @@ export async function listLiveConversations(hours = 24) {
   return (data ?? []).map((row) => {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
     const context = (row.context ?? { cart: [] }) as ConversationContext;
+    const lastMessageAt = String(row.last_message_at ?? new Date().toISOString());
     return {
       id: String(row.id),
       customerId: String(row.customer_id),
@@ -1561,7 +1574,8 @@ export async function listLiveConversations(hours = 24) {
       handoffMode: row.handoff_mode === "human" ? ("human" as const) : ("bot" as const),
       handoffAt: row.handoff_at ? String(row.handoff_at) : null,
       handoffBy: row.handoff_by != null ? String(row.handoff_by) : null,
-      lastMessageAt: String(row.last_message_at ?? new Date().toISOString()),
+      lastMessageAt,
+      activatedAt: String(row.activated_at ?? lastMessageAt),
       cartItemCount: Array.isArray(context.cart) ? context.cart.length : 0,
       lastOrderCode: row.last_order_code != null ? String(row.last_order_code) : null,
     };
@@ -1658,27 +1672,36 @@ export async function saveConversation(
     : options?.reopen || isOrderFlowState(state)
       ? null
       : (current?.closedAt ?? null);
+  const activatedAt = nextActivatedAt(current, closedAt, now);
 
   if (current) {
-    await supabase
+    const { error } = await supabase
       .from("conversations")
       .update({
         state,
         context,
         last_message_at: now,
         closed_at: closedAt,
+        activated_at: activatedAt,
       })
       .eq("id", current.id);
+    if (error) {
+      if (error.message?.includes("activated_at")) {
+        throw new Error("Rode a migration 035_conversation_activated_at.sql no Supabase.");
+      }
+      throw new Error(error.message);
+    }
     return {
       ...current,
       state,
       context,
       lastMessageAt: now,
+      activatedAt,
       closedAt,
     };
   }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("conversations")
     .insert({
       store_id: customer.storeId,
@@ -1687,9 +1710,16 @@ export async function saveConversation(
       context,
       handoff_mode: "bot",
       closed_at: closedAt,
+      activated_at: activatedAt,
     })
     .select("*")
     .single();
+  if (error) {
+    if (error.message?.includes("activated_at")) {
+      throw new Error("Rode a migration 035_conversation_activated_at.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
 
   return mapConversation(
     (data ?? {
@@ -1699,6 +1729,7 @@ export async function saveConversation(
       state,
       context,
       last_message_at: now,
+      activated_at: activatedAt,
       handoff_mode: "bot",
       closed_at: closedAt,
     }) as Record<string, unknown>,
