@@ -154,8 +154,8 @@ export function AppLayout() {
         )}
         <Layout className='h-full min-h-0 min-w-0 overflow-hidden'>
           <Layout.Header
-            className='flex h-15 shrink-0 items-center justify-between gap-3 px-5 leading-15 backdrop-blur-md max-lg:px-3'
-            style={{ borderBottom: `1px solid ${token.colorBorder}` }}
+            className='flex h-15 shrink-0 items-center justify-between gap-2 leading-15 backdrop-blur-md'
+            style={{ borderBottom: `1px solid ${token.colorBorder}`, paddingInline: 8 }}
           >
             <div className='flex min-w-0 items-center gap-2'>
               <Tooltip title={isMobile ? undefined : collapsed ? "Expandir menu" : "Recolher menu"}>

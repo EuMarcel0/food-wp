@@ -65,6 +65,7 @@ export const lightTheme: ThemeConfig = {
       headerBg: "#FFFFFF",
       bodyBg: "#F4F4F5",
       triggerBg: "#18181B",
+      headerPadding: "0 8px",
     },
     Menu: {
       ...sharedComponents.Menu,
@@ -101,6 +102,7 @@ export const darkTheme: ThemeConfig = {
       headerBg: "#0C0C0E",
       bodyBg: "#09090B",
       triggerBg: "#000000",
+      headerPadding: "0 8px",
     },
     Menu: {
       ...sharedComponents.Menu,
