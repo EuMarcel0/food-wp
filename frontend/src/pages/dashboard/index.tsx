@@ -67,13 +67,13 @@ function normalizeStats(raw: OrderStats | undefined): OrderStats {
   };
 }
 
-const PIPELINE: OrderStatus[] = [
+const PIPELINE = [
   "received",
   "accepted",
   "preparing",
   "ready",
   "out_for_delivery",
-];
+] as const satisfies readonly OrderStatus[];
 
 const PIPELINE_TONE: Record<
   (typeof PIPELINE)[number],
