@@ -105,22 +105,14 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
       <Dash />
 
       <section style={{ display: "block" }}>
-        <div style={{ display: "block", fontSize: 14, fontWeight: 800 }}>
-          Pedido #{order.code}
-        </div>
+        <div style={{ display: "block", fontSize: 14, fontWeight: 800 }}>Pedido #{order.code}</div>
         <div style={{ display: "block" }}>{formatReceiptDate(order.createdAt)}</div>
         <div style={{ display: "block" }}>{receiptCustomerLine(order)}</div>
-        <div style={{ display: "block" }}>
-          Tipo: {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
-        </div>
-        {payment ? <div style={{ display: "block" }}>Forma de pag.: {payment}</div> : null}
-        {neighborhood ? (
-          <div style={{ display: "block" }}>Bairro: {neighborhood}</div>
-        ) : null}
+        <div style={{ display: "block" }}>Tipo: {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}</div>
+        {payment ? <div style={{ display: "block" }}>Forma de pagamento: {payment}</div> : null}
+        {neighborhood ? <div style={{ display: "block" }}>Bairro: {neighborhood}</div> : null}
         {order.fulfillment === "delivery" && order.addressText ? (
-          <div style={{ display: "block", marginTop: 4, whiteSpace: "pre-wrap" }}>
-            {order.addressText}
-          </div>
+          <div style={{ display: "block", marginTop: 4, whiteSpace: "pre-wrap" }}>{order.addressText}</div>
         ) : null}
       </section>
 
