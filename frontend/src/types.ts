@@ -187,6 +187,8 @@ export type Health = {
 };
 
 export type OrderStats = {
+  /** Dia filtrado (YYYY-MM-DD). */
+  day?: string;
   open: number;
   total: number;
   byStatus: Record<OrderStatus, number>;

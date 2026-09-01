@@ -256,7 +256,8 @@ export const api = {
       }),
       { silent }
     ),
-  orderStats: () => request<OrderStats>("/api/orders/stats"),
+  orderStats: (day?: string) =>
+    request<OrderStats>(withQuery("/api/orders/stats", { day })),
   order: (id: string, silent = false) => request<Order>(`/api/orders/${id}`, { silent }),
   conversations: (tab: "active" | "history" = "active", silent = true) =>
     request<LiveConversation[]>(withQuery("/api/conversations", { tab }), {

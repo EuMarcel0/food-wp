@@ -26,8 +26,13 @@ const STATUSES = new Set<OrderStatus>([
 
 export const ordersRouter = Router();
 
-ordersRouter.get("/stats", async (_req, res) => {
-  res.json(await getOrderStats());
+ordersRouter.get("/stats", async (req, res) => {
+  const day = parseOptionalText(req.query.day);
+  if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: "Informe a data no formato YYYY-MM-DD." });
+    return;
+  }
+  res.json(await getOrderStats(day));
 });
 
 ordersRouter.get("/", async (req, res) => {

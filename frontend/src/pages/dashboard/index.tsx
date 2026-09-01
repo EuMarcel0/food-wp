@@ -1,5 +1,7 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { DatePicker } from "antd";
 import {
   CheckCircleFilled,
   ClockCircleOutlined,
@@ -9,6 +11,8 @@ import {
   ShopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { HeaderSkeleton, StatCardsSkeleton } from "../../components/PageSkeletons";
 import { PageHeader } from "../../components/PageHeader";
 import { api } from "../../lib/api";
@@ -47,6 +51,7 @@ function normalizeStats(raw: OrderStats | undefined): OrderStats {
     ? { ...EMPTY_BY_STATUS, ...raw.byStatus }
     : { ...EMPTY_BY_STATUS };
   return {
+    day: raw.day,
     open: Number(raw.open ?? 0),
     total: Number(raw.total ?? 0),
     byStatus,
@@ -65,6 +70,12 @@ function normalizeStats(raw: OrderStats | undefined): OrderStats {
     avgPrepMinutesToday:
       raw.avgPrepMinutesToday == null ? null : Number(raw.avgPrepMinutesToday),
   };
+}
+
+function formatDayLabel(day: string, isToday: boolean) {
+  if (isToday) return "Hoje";
+  const parsed = dayjs(day, "YYYY-MM-DD");
+  return parsed.isValid() ? parsed.format("DD/MM/YYYY") : day;
 }
 
 const PIPELINE = [
@@ -188,14 +199,19 @@ function DayMetric({
 }
 
 export function DashboardPage() {
+  const [day, setDay] = useState(() => dayjs());
+  const dayKey = day.format("YYYY-MM-DD");
+  const isSelectedToday = dayKey === dayjs().format("YYYY-MM-DD");
+
   const storeQuery = useQuery({
     queryKey: queryKeys.store,
     queryFn: api.store,
   });
   const statsQuery = useQuery({
-    queryKey: queryKeys.stats,
-    queryFn: api.orderStats,
-    refetchInterval: 30_000,
+    queryKey: queryKeys.stats(dayKey),
+    queryFn: () => api.orderStats(dayKey),
+    placeholderData: keepPreviousData,
+    refetchInterval: isSelectedToday ? 30_000 : false,
   });
   const healthQuery = useQuery({
     queryKey: queryKeys.health,
@@ -203,12 +219,22 @@ export function DashboardPage() {
     refetchInterval: 60_000,
   });
 
-  const loading = storeQuery.isPending || statsQuery.isPending;
+  const loading =
+    (storeQuery.isPending && !storeQuery.data) ||
+    (statsQuery.isPending && !statsQuery.data);
   const store = storeQuery.data;
   const stats = normalizeStats(statsQuery.data);
   const health = healthQuery.data;
   const title = store?.name ?? "Estabelecimento";
   const subtitle = `Segmento: ${store?.segment ?? "food"} · ${SUBTITLE_SUFFIX}`;
+  const dayLabel = useMemo(
+    () => formatDayLabel(stats.day ?? dayKey, isSelectedToday),
+    [stats.day, dayKey, isSelectedToday],
+  );
+
+  function onDayChange(value: Dayjs | null) {
+    setDay(value?.isValid() ? value.startOf("day") : dayjs());
+  }
 
   if (loading) {
     return (
@@ -227,11 +253,12 @@ export function DashboardPage() {
     store?.businessHours,
     store?.timezone ?? "America/Sao_Paulo",
   );
-  const openDelivery = stats.openByFulfillment.delivery;
-  const openPickup = stats.openByFulfillment.pickup;
+  const dayDelivery = stats.openByFulfillment.delivery;
+  const dayPickup = stats.openByFulfillment.pickup;
+  const dayOrders = stats.today.created;
   const deliveryShare =
-    stats.open > 0 ? Math.round((openDelivery / stats.open) * 100) : 0;
-  const pickupShare = stats.open > 0 ? 100 - deliveryShare : 0;
+    dayOrders > 0 ? Math.round((dayDelivery / dayOrders) * 100) : 0;
+  const pickupShare = dayOrders > 0 ? 100 - deliveryShare : 0;
   const urgency = urgencyTone(stats.oldestOpenMinutes, stats.open);
   const pipelineTotal = PIPELINE.reduce(
     (sum, status) => sum + (stats.byStatus[status] ?? 0),
@@ -261,6 +288,17 @@ export function DashboardPage() {
               ok={Boolean(store?.autoAcceptOrders)}
               okLabel="Aceite automático"
               badLabel="Aceite manual"
+            />
+            <DatePicker
+              allowClear={false}
+              format="DD/MM/YYYY"
+              value={day}
+              onChange={onDayChange}
+              disabledDate={(current) =>
+                Boolean(current && current.isAfter(dayjs(), "day"))
+              }
+              className="w-[148px]"
+              placeholder="Data"
             />
           </div>
         }
@@ -328,11 +366,18 @@ export function DashboardPage() {
               <ClockCircleOutlined />
               {stats.open > 0 && stats.oldestOpenMinutes != null
                 ? `Mais antigo · ${formatWait(stats.oldestOpenMinutes)}`
-                : "Fila vazia — boa hora pra organizar"}
+                : isSelectedToday
+                  ? "Fila vazia — boa hora pra organizar"
+                  : `Nenhum pedido aberto em ${dayLabel}`}
             </span>
-            {urgency === "hot" ? (
+            {urgency === "hot" && isSelectedToday ? (
               <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-[12px] font-bold text-rose-500">
                 Intervir
+              </span>
+            ) : null}
+            {!isSelectedToday ? (
+              <span className="rounded-full bg-food-chip px-2.5 py-1 text-[12px] font-semibold text-food-muted">
+                {dayLabel}
               </span>
             ) : null}
           </div>
@@ -346,11 +391,11 @@ export function DashboardPage() {
                 Ritmo do dia
               </p>
               <h2 className="m-0 mt-1 text-lg font-extrabold tracking-tight text-food-text">
-                Hoje na operação
+                {isSelectedToday ? "Hoje na operação" : `Operação · ${dayLabel}`}
               </h2>
             </div>
             <p className="m-0 text-[12px] font-medium text-food-muted">
-              {hoursToday}
+              {isSelectedToday ? hoursToday : dayLabel}
             </p>
           </div>
           <div className="flex gap-0 max-sm:flex-col">
@@ -492,10 +537,10 @@ export function DashboardPage() {
                 </span>
               </div>
               <p className="m-0 mt-4 text-[2.5rem] font-extrabold leading-none tracking-[-0.05em] tabular-nums text-food-text">
-                {openDelivery}
+                {dayDelivery}
               </p>
               <p className="m-0 mt-2 text-[12px] font-semibold text-food-accent">
-                {stats.open ? `${deliveryShare}% da fila` : "Sem abertos"}
+                {dayOrders ? `${deliveryShare}% do dia` : "Sem pedidos no dia"}
               </p>
             </div>
             <div className="bg-food-surface p-5">
@@ -508,10 +553,10 @@ export function DashboardPage() {
                 </span>
               </div>
               <p className="m-0 mt-4 text-[2.5rem] font-extrabold leading-none tracking-[-0.05em] tabular-nums text-food-text">
-                {openPickup}
+                {dayPickup}
               </p>
               <p className="m-0 mt-2 text-[12px] font-semibold text-violet-500">
-                {stats.open ? `${pickupShare}% da fila` : "Sem abertos"}
+                {dayOrders ? `${pickupShare}% do dia` : "Sem pedidos no dia"}
               </p>
             </div>
           </div>
@@ -519,11 +564,11 @@ export function DashboardPage() {
             <div className="flex h-2.5 overflow-hidden rounded-full bg-food-chip">
               <div
                 className="bg-food-accent transition-[width] duration-500"
-                style={{ width: stats.open ? `${deliveryShare}%` : "50%" }}
+                style={{ width: dayOrders ? `${deliveryShare}%` : "50%" }}
               />
               <div
                 className="bg-violet-500 transition-[width] duration-500"
-                style={{ width: stats.open ? `${pickupShare}%` : "50%" }}
+                style={{ width: dayOrders ? `${pickupShare}%` : "50%" }}
               />
             </div>
             <div className="mt-2.5 flex justify-between text-[11px] font-bold text-food-muted">

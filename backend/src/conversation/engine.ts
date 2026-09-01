@@ -194,7 +194,7 @@ function renderCartItem(item: CartItem) {
 
 function renderCart(context: ConversationContext) {
   if (!context.cart.length) return "Seu carrinho está vazio.";
-  return `${context.cart.map(renderCartItem).join("\n")}\nSubtotal: ${formatBRL(cartTotal(context))}`;
+  return `${context.cart.map(renderCartItem).join("\n\n")}\n\nSubtotal: ${formatBRL(cartTotal(context))}`;
 }
 
 function isSkipStep(incoming: string, normalized: string) {
@@ -358,7 +358,7 @@ const CART_ACTIONS = [
 ] as const;
 
 async function showCartPrompt(to: string, context: ConversationContext, intro = "✅ Item adicionado!") {
-  await sendButtons(to, `${intro}\n\n🛒 *Seu carrinho*\n${renderCart(context)}`, [...CART_ACTIONS]);
+  await sendButtons(to, `${intro}\n\n🛒 *Seu carrinho*\n\n${renderCart(context)}`, [...CART_ACTIONS]);
 }
 
 async function showCartAfterAdd(to: string, context: ConversationContext) {
@@ -458,7 +458,7 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
       await askOrderNote(to);
       return;
     case "awaiting_fulfillment":
-      await askFulfillment(to, store, `${RESUME_HINT}\n${renderCart(context)}`);
+      await askFulfillment(to, store, `${RESUME_HINT}\n\n${renderCart(context)}`);
       return;
     case "awaiting_neighborhood":
       await sendText(to, RESUME_HINT);
@@ -1017,6 +1017,7 @@ async function finishOrder(
       `✅ Pedido *#${order.code}* confirmado!`,
       "",
       "🛒 *Resumo do pedido*",
+      "",
       cartSummary,
       "",
       fulfillment === "delivery"
@@ -1025,8 +1026,9 @@ async function finishOrder(
       `💳 Pagamento: ${paymentLabel(paymentMethod)}`,
       changeLine ? `💵 ${changeLine}` : null,
       feeLine.startsWith("Taxa") || feeLine.startsWith("Entrega") ? `🛵 ${feeLine}` : null,
-      `💰 Total: *${formatBRL(order.totalCents)}*`,
       orderNotes ? `📝 Obs.: ${orderNotes}` : null,
+      "",
+      `💰 Total: *${formatBRL(order.totalCents)}*`,
       "",
       "Assim que o status mudar, eu te aviso por aqui. 😊"
     ]

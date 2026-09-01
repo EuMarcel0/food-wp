@@ -100,7 +100,7 @@ export function OrdersPage() {
     async function refresh() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
+        queryClient.invalidateQueries({ queryKey: ["orders", "stats"] }),
       ]);
     }
 
@@ -151,7 +151,7 @@ export function OrdersPage() {
       setPrepOrder(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
+        queryClient.invalidateQueries({ queryKey: ["orders", "stats"] }),
       ]);
     },
   });

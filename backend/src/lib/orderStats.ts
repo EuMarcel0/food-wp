@@ -26,6 +26,8 @@ export type OrderStatsRow = {
 };
 
 export type OrderStats = {
+  /** Dia filtrado (YYYY-MM-DD no fuso da loja). */
+  day: string;
   open: number;
   total: number;
   byStatus: Record<OrderStatus, number>;
@@ -35,13 +37,12 @@ export type OrderStats = {
     cancelled: number;
     open: number;
   };
+  /** Entrega × retirada entre todos os pedidos do dia (não só abertos). */
   openByFulfillment: {
     delivery: number;
     pickup: number;
   };
-  /** Minutos do pedido aberto mais antigo (fila). */
   oldestOpenMinutes: number | null;
-  /** Média de minutos de preparo informados nos pedidos de hoje. */
   avgPrepMinutesToday: number | null;
 };
 
@@ -66,56 +67,67 @@ export function dayKeyInTimeZone(date: Date, timeZone: string): string {
   }).format(date);
 }
 
+export function isValidDayKey(value: string | undefined | null): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+/**
+ * Estatísticas dos pedidos criados no dia `dayKey` (fuso da loja).
+ * Sem dayKey, usa o dia corrente.
+ */
 export function buildOrderStats(
   rows: OrderStatsRow[],
   timeZone = "America/Sao_Paulo",
+  dayKey?: string,
 ): OrderStats {
+  const resolvedDay = isValidDayKey(dayKey)
+    ? dayKey
+    : dayKeyInTimeZone(new Date(), timeZone);
   const byStatus = emptyByStatus();
-  const todayKey = dayKeyInTimeZone(new Date(), timeZone);
   const now = Date.now();
 
   let open = 0;
-  let todayCreated = 0;
-  let todayDelivered = 0;
-  let todayCancelled = 0;
-  let todayOpen = 0;
-  let openDelivery = 0;
-  let openPickup = 0;
+  let dayCreated = 0;
+  let dayDelivered = 0;
+  let dayCancelled = 0;
+  let dayOpen = 0;
+  let dayDelivery = 0;
+  let dayPickup = 0;
   let oldestOpenMs: number | null = null;
   let prepSum = 0;
   let prepCount = 0;
 
   for (const row of rows) {
-    const status = (
-      STATUSES.includes(row.status as OrderStatus) ? row.status : "received"
-    ) as OrderStatus;
-    byStatus[status] += 1;
-
     const createdMs = Date.parse(row.createdAt);
     const createdDay =
       Number.isFinite(createdMs)
         ? dayKeyInTimeZone(new Date(createdMs), timeZone)
         : "";
-    const isToday = createdDay === todayKey;
-    if (isToday) todayCreated += 1;
+    if (createdDay !== resolvedDay) continue;
+
+    const status = (
+      STATUSES.includes(row.status as OrderStatus) ? row.status : "received"
+    ) as OrderStatus;
+    byStatus[status] += 1;
+    dayCreated += 1;
+
+    if (row.fulfillment === "pickup") dayPickup += 1;
+    else dayDelivery += 1;
 
     const isOpen = OPEN_STATUSES.has(status);
     if (isOpen) {
       open += 1;
-      if (row.fulfillment === "pickup") openPickup += 1;
-      else openDelivery += 1;
+      dayOpen += 1;
       if (Number.isFinite(createdMs)) {
         const age = now - createdMs;
         if (oldestOpenMs === null || age > oldestOpenMs) oldestOpenMs = age;
       }
-      if (isToday) todayOpen += 1;
     }
 
-    if (isToday && status === "delivered") todayDelivered += 1;
-    if (isToday && status === "cancelled") todayCancelled += 1;
+    if (status === "delivered") dayDelivered += 1;
+    if (status === "cancelled") dayCancelled += 1;
 
     if (
-      isToday &&
       row.prepMinutes != null &&
       Number.isFinite(row.prepMinutes) &&
       Number(row.prepMinutes) > 0
@@ -126,18 +138,19 @@ export function buildOrderStats(
   }
 
   return {
+    day: resolvedDay,
     open,
-    total: rows.length,
+    total: dayCreated,
     byStatus,
     today: {
-      created: todayCreated,
-      delivered: todayDelivered,
-      cancelled: todayCancelled,
-      open: todayOpen,
+      created: dayCreated,
+      delivered: dayDelivered,
+      cancelled: dayCancelled,
+      open: dayOpen,
     },
     openByFulfillment: {
-      delivery: openDelivery,
-      pickup: openPickup,
+      delivery: dayDelivery,
+      pickup: dayPickup,
     },
     oldestOpenMinutes:
       oldestOpenMs === null ? null : Math.max(0, Math.round(oldestOpenMs / 60_000)),

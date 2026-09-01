@@ -1004,7 +1004,7 @@ export const memoryStore = {
     return paginateItems(items, page, limit);
   },
 
-  getOrderStats() {
+  getOrderStats(day?: string) {
     const store = this.getStore();
     return buildOrderStats(
       this.listOrders().map((order) => ({
@@ -1014,6 +1014,7 @@ export const memoryStore = {
         createdAt: order.createdAt,
       })),
       store.timezone || "America/Sao_Paulo",
+      day,
     );
   },
 

@@ -3,7 +3,7 @@ import type { OrderItem } from "../../types";
 
 function itemLine(item: OrderItem) {
   const notes = item.notes ? ` (obs.: ${item.notes})` : "";
-  return `${item.name}${notes} x ${item.quantity} - ${formatBRL(item.unitPriceCents)}`;
+  return `${item.quantity}x ${item.name}${notes} - ${formatBRL(item.unitPriceCents)}`;
 }
 
 export function OrderItemsLeaders({ items }: { items: OrderItem[] }) {

@@ -110,9 +110,9 @@ export function OrderCard({
               return (
               <li key={item.id ?? `${item.name}-${index}`}>
                 <span>
-                  {item.name}
+                  {`${item.quantity}x ${item.name}`}
                   {item.notes ? ` (obs.: ${item.notes})` : ""}
-                  {` x ${item.quantity} - ${formatBRL(item.unitPriceCents)}`}
+                  {` - ${formatBRL(item.unitPriceCents)}`}
                   {crust ? (
                     <div className="font-normal text-food-muted">{crust}</div>
                   ) : null}

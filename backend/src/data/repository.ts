@@ -1895,15 +1895,15 @@ export async function getOrder(id: string) {
   return mapOrder(data as Record<string, unknown>);
 }
 
-export async function getOrderStats() {
+export async function getOrderStats(day?: string) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.getOrderStats();
+  if (!supabase) return memoryStore.getOrderStats(day);
 
   const store = await getStore();
   const { data, error } = await supabase
     .from("orders")
     .select("status, fulfillment, prep_minutes, created_at");
-  if (error || !data) return memoryStore.getOrderStats();
+  if (error || !data) return memoryStore.getOrderStats(day);
 
   return buildOrderStats(
     (data as Record<string, unknown>[]).map((row) => ({
@@ -1914,6 +1914,7 @@ export async function getOrderStats() {
       createdAt: String(row.created_at ?? new Date().toISOString()),
     })),
     store.timezone || DEFAULT_TIMEZONE,
+    day,
   );
 }
 
