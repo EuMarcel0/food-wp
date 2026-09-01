@@ -111,9 +111,9 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         <div style={{ display: "block" }}>{formatReceiptDate(order.createdAt)}</div>
         <div style={{ display: "block" }}>{receiptCustomerLine(order)}</div>
         <div style={{ display: "block" }}>
-          {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
+          Tipo: {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
         </div>
-        {payment ? <div style={{ display: "block" }}>{payment}</div> : null}
+        {payment ? <div style={{ display: "block" }}>Forma de pag.: {payment}</div> : null}
         {neighborhood ? (
           <div style={{ display: "block" }}>Bairro: {neighborhood}</div>
         ) : null}
