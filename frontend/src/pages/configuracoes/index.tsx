@@ -107,9 +107,9 @@ export function SettingsPage() {
                   />
                 ) : null}
                 <p className="mb-4 text-sm leading-normal text-food-muted">
-                  Se o cliente não responder nesse prazo, a próxima mensagem dele
-                  vira o começo de uma conversa nova. O pedido em andamento é
-                  descartado.
+                  Se o cliente não responder nesse prazo, o bot encerra o
+                  atendimento, descarta o pedido em montagem e avisa no
+                  WhatsApp. A próxima mensagem dele inicia uma conversa nova.
                 </p>
                 <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
                   <FormControl name="idleTimeoutMinutes" label="Tempo limite">

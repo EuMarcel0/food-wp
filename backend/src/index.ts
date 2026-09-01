@@ -9,6 +9,7 @@ import { catalogRouter } from "./routes/catalog.js";
 import { legalRouter } from "./routes/legal.js";
 import { checkWhatsAppToken, subscribeWhatsAppApp } from "./lib/whatsapp.js";
 import { webhookStats } from "./lib/webhookStats.js";
+import { startIdleTimeoutJob } from "./jobs/idleTimeout.js";
 
 const app = express();
 
@@ -82,4 +83,5 @@ app.listen(env.port, "0.0.0.0", () => {
     `WhatsApp: ${flags.whatsappReady ? "pronto" : "dry-run (preencha o .env)"}`,
   );
   void subscribeWhatsAppApp();
+  startIdleTimeoutJob();
 });

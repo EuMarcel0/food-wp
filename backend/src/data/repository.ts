@@ -1543,6 +1543,99 @@ export async function closeConversationWithOrder(
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
+export type IdleConversationCandidate = {
+  id: string;
+  customerId: string;
+  customerPhone: string;
+  lastMessageAt: string;
+};
+
+/** Conversas abertas (Ativas) do bot ociosas além do limite — sem handoff humano. */
+export async function listIdleOpenConversations(idleMinutes: number) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listIdleOpenConversations(idleMinutes);
+
+  const cutoff = new Date(
+    Date.now() - Math.max(1, idleMinutes) * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, customer_id, last_message_at, customers(wa_phone)")
+    .is("closed_at", null)
+    .neq("handoff_mode", "human")
+    .lt("last_message_at", cutoff)
+    .order("last_message_at", { ascending: true })
+    .limit(50);
+
+  if (error) {
+    if (error.message?.includes("closed_at")) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+
+  return (data ?? [])
+    .map((row) => {
+      const customer = row.customers as { wa_phone?: string } | null;
+      const phone = customer?.wa_phone?.trim();
+      const lastMessageAt = row.last_message_at
+        ? String(row.last_message_at)
+        : "";
+      if (!phone || !lastMessageAt) return null;
+      return {
+        id: String(row.id),
+        customerId: String(row.customer_id),
+        customerPhone: phone,
+        lastMessageAt,
+      } satisfies IdleConversationCandidate;
+    })
+    .filter((item): item is IdleConversationCandidate => item != null);
+}
+
+/**
+ * Encerra por ociosidade de forma atômica.
+ * Só fecha se ainda estiver aberta e sem atividade recente (evita corrida com nova mensagem).
+ */
+export async function claimCloseIdleConversation(
+  conversationId: string,
+  idleMinutes: number,
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.claimCloseIdleConversation(conversationId, idleMinutes);
+  }
+
+  const now = new Date().toISOString();
+  const cutoff = new Date(
+    Date.now() - Math.max(1, idleMinutes) * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({
+      state: "welcome",
+      context: { cart: [] },
+      handoff_mode: "bot",
+      handoff_at: null,
+      handoff_by: null,
+      closed_at: now,
+      last_message_at: now,
+    })
+    .eq("id", conversationId)
+    .is("closed_at", null)
+    .neq("handoff_mode", "human")
+    .lt("last_message_at", cutoff)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("closed_at")) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
 export async function listLiveConversations(hours = 24) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.listLiveConversations(hours);

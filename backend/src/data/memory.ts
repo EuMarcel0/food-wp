@@ -798,6 +798,73 @@ export const memoryStore = {
     return next;
   },
 
+  listIdleOpenConversations(idleMinutes: number) {
+    const cutoff = Date.now() - Math.max(1, idleMinutes) * 60 * 1000;
+    return [...conversations.values()]
+      .filter((item) => !item.closedAt)
+      .filter((item) => item.handoffMode !== "human")
+      .filter((item) => {
+        if (!item.lastMessageAt) return false;
+        const last = Date.parse(item.lastMessageAt);
+        return Number.isFinite(last) && last < cutoff;
+      })
+      .sort(
+        (left, right) =>
+          new Date(left.lastMessageAt ?? 0).getTime() -
+          new Date(right.lastMessageAt ?? 0).getTime(),
+      )
+      .map((item) => {
+        const customer = [...customers.values()].find(
+          (row) => row.id === item.customerId,
+        );
+        const phone = customer?.waPhone?.trim();
+        if (!phone || !item.lastMessageAt) return null;
+        return {
+          id: item.id,
+          customerId: item.customerId,
+          customerPhone: phone,
+          lastMessageAt: item.lastMessageAt,
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          id: string;
+          customerId: string;
+          customerPhone: string;
+          lastMessageAt: string;
+        } => item != null,
+      );
+  },
+
+  claimCloseIdleConversation(conversationId: string, idleMinutes: number) {
+    const current = [...conversations.values()].find(
+      (item) => item.id === conversationId,
+    );
+    if (!current || current.closedAt || current.handoffMode === "human") {
+      return null;
+    }
+    if (!current.lastMessageAt) return null;
+    const last = Date.parse(current.lastMessageAt);
+    const cutoff = Date.now() - Math.max(1, idleMinutes) * 60 * 1000;
+    if (!Number.isFinite(last) || last >= cutoff) return null;
+
+    const now = new Date().toISOString();
+    const next: Conversation = {
+      ...current,
+      state: "welcome",
+      context: { cart: [] },
+      handoffMode: "bot",
+      handoffAt: null,
+      handoffBy: null,
+      closedAt: now,
+      lastMessageAt: now,
+    };
+    conversations.set(current.customerId, next);
+    return next;
+  },
+
   listLiveConversations(hours = 24) {
     const since = Date.now() - hours * 60 * 60 * 1000;
     return [...conversations.values()]
