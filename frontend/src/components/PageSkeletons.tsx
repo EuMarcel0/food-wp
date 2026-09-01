@@ -12,29 +12,37 @@ export function HeaderSkeleton() {
 
 export function StatCardsSkeleton() {
   return (
-    <div className="flex flex-col gap-5" aria-busy="true" aria-label="Carregando painel">
-      <div className="grid grid-cols-4 gap-4 max-xl:grid-cols-2 max-sm:grid-cols-1">
-        {Array.from({ length: 4 }, (_, index) => (
-          <article
-            key={index}
-            className="rounded-2xl border border-food-border bg-food-surface px-[18px] pt-[18px] pb-5 shadow-food-soft"
-          >
-            <Skeleton active title={{ width: "45%" }} paragraph={false} />
-            <Skeleton.Button active className="mt-3 !h-9 !w-28" />
-          </article>
-        ))}
+    <div className="flex flex-col gap-6" aria-busy="true" aria-label="Carregando painel">
+      <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1.85fr)] gap-4 max-xl:grid-cols-1">
+        <article className="min-h-[11rem] rounded-[22px] border border-food-border bg-food-surface p-5 shadow-food-soft">
+          <Skeleton active title={{ width: "40%" }} paragraph={{ rows: 1, width: "55%" }} />
+          <Skeleton.Button active className="mt-6 !h-14 !w-24" />
+        </article>
+        <article className="min-h-[11rem] rounded-[22px] border border-food-border bg-food-surface p-5 shadow-food-soft">
+          <Skeleton active title={{ width: "35%" }} paragraph={{ rows: 1, width: "50%" }} />
+          <div className="mt-6 flex gap-6">
+            <Skeleton.Button active className="!h-12 !w-20" />
+            <Skeleton.Button active className="!h-12 !w-20" />
+            <Skeleton.Button active className="!h-12 !w-20" />
+          </div>
+        </article>
       </div>
-      <div className="rounded-2xl border border-food-border bg-food-surface p-4 shadow-food-soft">
-        <Skeleton active title={{ width: 160 }} paragraph={{ rows: 1, width: "40%" }} />
-        <div className="mt-4 grid grid-cols-5 gap-3 max-lg:grid-cols-2">
+      <div className="overflow-hidden rounded-[22px] border border-food-border bg-food-surface shadow-food-soft">
+        <div className="border-b border-food-border px-5 py-4">
+          <Skeleton active title={{ width: 140 }} paragraph={{ rows: 1, width: "30%" }} />
+        </div>
+        <div className="grid grid-cols-5 max-lg:grid-cols-2">
           {Array.from({ length: 5 }, (_, index) => (
-            <Skeleton.Button key={index} active className="!h-20 !w-full" />
+            <div key={index} className="min-h-[8.5rem] border-r border-food-border p-4 last:border-r-0">
+              <Skeleton active title={{ width: "60%" }} paragraph={false} />
+              <Skeleton.Button active className="mt-6 !h-10 !w-16" />
+            </div>
           ))}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-        <Skeleton.Button active className="!h-48 !w-full" />
-        <Skeleton.Button active className="!h-48 !w-full" />
+        <Skeleton.Button active className="!h-56 !w-full !rounded-[22px]" />
+        <Skeleton.Button active className="!h-56 !w-full !rounded-[22px]" />
       </div>
     </div>
   );

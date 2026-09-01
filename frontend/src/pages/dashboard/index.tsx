@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Tag } from "antd";
 import {
-  CheckCircleOutlined,
+  CheckCircleFilled,
   ClockCircleOutlined,
-  CloseCircleOutlined,
+  CloseCircleFilled,
+  FireOutlined,
+  RocketOutlined,
   ShopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -18,7 +19,7 @@ import { cn } from "../../lib/cn";
 import type { OrderStats, OrderStatus } from "../../types";
 
 const SUBTITLE_SUFFIX =
-  "acompanhe a fila da cozinha e o ritmo do dia — sem valores financeiros nesta tela.";
+  "fila da cozinha e ritmo do dia — sem valores financeiros nesta tela.";
 
 const EMPTY_BY_STATUS: Record<OrderStatus, number> = {
   received: 0,
@@ -42,7 +43,6 @@ const EMPTY_STATS: OrderStats = {
 
 function normalizeStats(raw: OrderStats | undefined): OrderStats {
   if (!raw) return EMPTY_STATS;
-  // Payload antigo (só open/total/totalCents): ignora campos parciais.
   const byStatus = raw.byStatus
     ? { ...EMPTY_BY_STATUS, ...raw.byStatus }
     : { ...EMPTY_BY_STATUS };
@@ -75,29 +75,36 @@ const PIPELINE = [
   "out_for_delivery",
 ] as const satisfies readonly OrderStatus[];
 
-const PIPELINE_TONE: Record<
-  (typeof PIPELINE)[number],
-  { bar: string; chip: string }
+type PipelineKey = (typeof PIPELINE)[number];
+
+const PIPELINE_META: Record<
+  PipelineKey,
+  { bar: string; glow: string; ink: string }
 > = {
   received: {
     bar: "bg-food-accent",
-    chip: "border-food-accent/35 bg-[color-mix(in_srgb,var(--food-accent)_12%,var(--food-surface))]",
+    glow: "from-food-accent/25 via-food-accent/5 to-transparent",
+    ink: "text-food-accent",
   },
   accepted: {
     bar: "bg-blue-500",
-    chip: "border-blue-500/35 bg-[color-mix(in_srgb,#3b82f6_12%,var(--food-surface))]",
+    glow: "from-blue-500/25 via-blue-500/5 to-transparent",
+    ink: "text-blue-500",
   },
   preparing: {
     bar: "bg-amber-500",
-    chip: "border-amber-500/35 bg-[color-mix(in_srgb,#f59e0b_12%,var(--food-surface))]",
+    glow: "from-amber-500/25 via-amber-500/5 to-transparent",
+    ink: "text-amber-500",
   },
   ready: {
-    bar: "bg-green-500",
-    chip: "border-green-500/35 bg-[color-mix(in_srgb,#22c55e_12%,var(--food-surface))]",
+    bar: "bg-emerald-500",
+    glow: "from-emerald-500/25 via-emerald-500/5 to-transparent",
+    ink: "text-emerald-500",
   },
   out_for_delivery: {
     bar: "bg-sky-500",
-    chip: "border-sky-500/35 bg-[color-mix(in_srgb,#0ea5e9_12%,var(--food-surface))]",
+    glow: "from-sky-500/25 via-sky-500/5 to-transparent",
+    ink: "text-sky-500",
   },
 };
 
@@ -109,36 +116,74 @@ function formatWait(minutes: number | null) {
   return m ? `${h}h ${m}min` : `${h}h`;
 }
 
-function StatTile({
+function urgencyTone(minutes: number | null, open: number) {
+  if (!open || minutes == null) return "calm" as const;
+  if (minutes >= 45) return "hot" as const;
+  if (minutes >= 20) return "warm" as const;
+  return "calm" as const;
+}
+
+function StatusPill({
+  ok,
+  okLabel,
+  badLabel,
+}: {
+  ok: boolean;
+  okLabel: string;
+  badLabel: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide",
+        ok
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          ok ? "bg-emerald-500 animate-pulse" : "bg-amber-500",
+        )}
+      />
+      {ok ? okLabel : badLabel}
+    </span>
+  );
+}
+
+function DayMetric({
   label,
   value,
   hint,
   accent,
 }: {
   label: string;
-  value: string | number;
-  hint?: string;
-  accent?: boolean;
+  value: number;
+  hint: string;
+  accent?: "orange" | "emerald" | "rose" | "zinc";
 }) {
+  const accents = {
+    orange: "text-food-accent",
+    emerald: "text-emerald-500",
+    rose: "text-rose-500",
+    zinc: "text-food-text",
+  };
   return (
-    <article
-      className={cn(
-        "relative overflow-hidden rounded-2xl border px-[18px] pt-[18px] pb-5 shadow-food-soft",
-        accent
-          ? "border-food-accent/35 bg-[color-mix(in_srgb,var(--food-accent)_8%,var(--food-surface))] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-food-accent before:content-['']"
-          : "border-food-border bg-food-surface",
-      )}
-    >
-      <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-food-muted">
+    <div className="min-w-0 flex-1 border-l border-food-border/80 pl-4 first:border-l-0 first:pl-0 max-sm:border-l-0 max-sm:border-t max-sm:pl-0 max-sm:pt-3 first:max-sm:border-t-0 first:max-sm:pt-0">
+      <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-food-muted">
         {label}
-      </span>
-      <strong className="block text-[32px] leading-tight font-extrabold tracking-tight text-food-text tabular-nums">
+      </p>
+      <p
+        className={cn(
+          "m-0 mt-1 text-[2rem] font-extrabold leading-none tracking-[-0.04em] tabular-nums",
+          accents[accent ?? "zinc"],
+        )}
+      >
         {value}
-      </strong>
-      {hint ? (
-        <p className="m-0 mt-2 text-[12px] leading-snug text-food-muted">{hint}</p>
-      ) : null}
-    </article>
+      </p>
+      <p className="m-0 mt-1.5 text-[12px] leading-snug text-food-muted">{hint}</p>
+    </div>
   );
 }
 
@@ -158,7 +203,6 @@ export function DashboardPage() {
     refetchInterval: 60_000,
   });
 
-  // Health não bloqueia a tela; só store + stats.
   const loading = storeQuery.isPending || statsQuery.isPending;
   const store = storeQuery.data;
   const stats = normalizeStats(statsQuery.data);
@@ -188,108 +232,238 @@ export function DashboardPage() {
   const deliveryShare =
     stats.open > 0 ? Math.round((openDelivery / stats.open) * 100) : 0;
   const pickupShare = stats.open > 0 ? 100 - deliveryShare : 0;
+  const urgency = urgencyTone(stats.oldestOpenMinutes, stats.open);
+  const pipelineTotal = PIPELINE.reduce(
+    (sum, status) => sum + (stats.byStatus[status] ?? 0),
+    0,
+  );
 
   return (
-    <div className="flex min-h-full flex-col gap-5">
+    <div className="flex min-h-full flex-col gap-6">
       <PageHeader
         className="mb-0"
         kicker="Cozinha"
         title={title}
         subtitle={subtitle}
         extra={
-          <div className="flex flex-wrap items-center gap-2">
-            <Tag color={openNow ? "success" : "default"} className="m-0 px-2.5 py-0.5">
-              {openNow ? "Aberto agora" : "Fora do horário"}
-            </Tag>
-            <Tag
-              color={health?.whatsapp ? "green" : "orange"}
-              className="m-0 px-2.5 py-0.5"
-            >
-              WhatsApp {health?.whatsapp ? "ok" : "pendente"}
-            </Tag>
-            <Tag
-              color={store?.autoAcceptOrders ? "blue" : "default"}
-              className="m-0 px-2.5 py-0.5"
-            >
-              Aceite {store?.autoAcceptOrders ? "automático" : "manual"}
-            </Tag>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <StatusPill
+              ok={openNow}
+              okLabel="Aberto agora"
+              badLabel="Fora do horário"
+            />
+            <StatusPill
+              ok={Boolean(health?.whatsapp)}
+              okLabel="WhatsApp ok"
+              badLabel="WhatsApp pendente"
+            />
+            <StatusPill
+              ok={Boolean(store?.autoAcceptOrders)}
+              okLabel="Aceite automático"
+              badLabel="Aceite manual"
+            />
           </div>
         }
       />
 
-      <section className="grid grid-cols-4 gap-4 max-xl:grid-cols-2 max-sm:grid-cols-1">
-        <StatTile
-          accent
-          label="Na fila"
-          value={stats.open}
-          hint={
-            stats.oldestOpenMinutes != null && stats.open > 0
-              ? `Mais antigo há ${formatWait(stats.oldestOpenMinutes)}`
-              : "Nenhum pedido em andamento"
-          }
-        />
-        <StatTile
-          label="Novos hoje"
-          value={stats.today.created}
-          hint={`${stats.today.open} ainda na fila`}
-        />
-        <StatTile
-          label="Entregues hoje"
-          value={stats.today.delivered}
-          hint={
-            stats.avgPrepMinutesToday != null
-              ? `Preparo médio ${stats.avgPrepMinutesToday} min`
-              : "Sem tempo de preparo registrado"
-          }
-        />
-        <StatTile
-          label="Cancelados hoje"
-          value={stats.today.cancelled}
-          hint={`Horário de hoje: ${hoursToday}`}
-        />
+      {/* Passagem principal: fila em destaque + métricas do dia */}
+      <section className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1.85fr)] gap-4 max-xl:grid-cols-1">
+        <article
+          className={cn(
+            "relative overflow-hidden rounded-[22px] border p-5 shadow-food-soft",
+            "bg-food-surface",
+            urgency === "hot" &&
+              "border-rose-500/40 shadow-[0_0_0_1px_rgba(244,63,94,0.12),0_16px_40px_rgba(244,63,94,0.12)]",
+            urgency === "warm" && "border-amber-500/35",
+            urgency === "calm" && "border-food-accent/40",
+          )}
+        >
+          <div
+            className={cn(
+              "pointer-events-none absolute -top-16 -right-10 size-56 rounded-full blur-3xl",
+              urgency === "hot" && "bg-rose-500/20",
+              urgency === "warm" && "bg-amber-500/15",
+              urgency === "calm" && "bg-food-accent/20",
+            )}
+          />
+          <div className="relative flex items-start justify-between gap-3">
+            <div>
+              <p className="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-food-muted">
+                Na passagem
+              </p>
+              <h2 className="m-0 mt-1 text-lg font-extrabold tracking-tight text-food-text">
+                Pedidos na fila
+              </h2>
+            </div>
+            <span
+              className={cn(
+                "inline-flex size-10 items-center justify-center rounded-2xl",
+                urgency === "hot" && "bg-rose-500/15 text-rose-500",
+                urgency === "warm" && "bg-amber-500/15 text-amber-500",
+                urgency === "calm" && "bg-food-accent/15 text-food-accent",
+              )}
+            >
+              <FireOutlined className="text-lg" />
+            </span>
+          </div>
+          <p
+            className={cn(
+              "relative m-0 mt-4 text-[4.5rem] font-extrabold leading-none tracking-[-0.06em] tabular-nums",
+              urgency === "hot" && "text-rose-500",
+              urgency === "warm" && "text-amber-500",
+              urgency === "calm" && "text-food-text",
+            )}
+          >
+            {stats.open}
+          </p>
+          <div className="relative mt-4 flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold",
+                stats.open > 0
+                  ? "bg-food-chip text-food-text"
+                  : "bg-food-chip/70 text-food-muted",
+              )}
+            >
+              <ClockCircleOutlined />
+              {stats.open > 0 && stats.oldestOpenMinutes != null
+                ? `Mais antigo · ${formatWait(stats.oldestOpenMinutes)}`
+                : "Fila vazia — boa hora pra organizar"}
+            </span>
+            {urgency === "hot" ? (
+              <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-[12px] font-bold text-rose-500">
+                Intervir
+              </span>
+            ) : null}
+          </div>
+        </article>
+
+        <article className="relative overflow-hidden rounded-[22px] border border-food-border bg-food-surface p-5 shadow-food-soft">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-food-accent/50 to-transparent" />
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-food-accent">
+                Ritmo do dia
+              </p>
+              <h2 className="m-0 mt-1 text-lg font-extrabold tracking-tight text-food-text">
+                Hoje na operação
+              </h2>
+            </div>
+            <p className="m-0 text-[12px] font-medium text-food-muted">
+              {hoursToday}
+            </p>
+          </div>
+          <div className="flex gap-0 max-sm:flex-col">
+            <DayMetric
+              label="Novos"
+              value={stats.today.created}
+              hint={`${stats.today.open} ainda na fila`}
+              accent="orange"
+            />
+            <DayMetric
+              label="Entregues"
+              value={stats.today.delivered}
+              hint={
+                stats.avgPrepMinutesToday != null
+                  ? `Preparo médio ${stats.avgPrepMinutesToday} min`
+                  : "Sem tempo registrado"
+              }
+              accent="emerald"
+            />
+            <DayMetric
+              label="Cancelados"
+              value={stats.today.cancelled}
+              hint={
+                stats.today.cancelled
+                  ? "Vale olhar o motivo"
+                  : "Nenhum cancelamento"
+              }
+              accent={stats.today.cancelled ? "rose" : "zinc"}
+            />
+          </div>
+        </article>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft">
+      {/* Trilho da comanda — sequência real da cozinha */}
+      <section className="overflow-hidden rounded-[22px] border border-food-border bg-food-surface shadow-food-soft">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-food-border px-5 py-4">
           <div>
-            <p className="m-0 mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-food-accent">
-              Fila da cozinha
+            <p className="m-0 mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-food-accent">
+              Passagem
             </p>
-            <h2 className="m-0 text-base font-bold tracking-tight text-food-text">
+            <h2 className="m-0 text-lg font-extrabold tracking-tight text-food-text">
               Pedidos por status
             </h2>
+            <p className="m-0 mt-1 text-[12px] text-food-muted">
+              {pipelineTotal
+                ? `${pipelineTotal} na linha · da esquerda pra direita`
+                : "Nenhum pedido na linha agora"}
+            </p>
           </div>
           <Link
             to="/pedidos"
-            className="text-[13px] font-semibold text-food-accent no-underline hover:underline"
+            className="inline-flex items-center gap-1.5 rounded-full border border-food-accent/30 bg-food-accent/10 px-3 py-1.5 text-[13px] font-bold text-food-accent no-underline transition-colors hover:bg-food-accent/15"
           >
-            Abrir pedidos →
+            Abrir pedidos
+            <span aria-hidden>→</span>
           </Link>
         </div>
-        <div className="grid grid-cols-5 gap-3 p-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
-          {PIPELINE.map((status) => {
+        <div className="grid grid-cols-5 max-lg:grid-cols-2 max-sm:grid-cols-1">
+          {PIPELINE.map((status, index) => {
             const count = stats.byStatus[status] ?? 0;
-            const tone = PIPELINE_TONE[status];
+            const meta = PIPELINE_META[status];
+            const active = count > 0;
             return (
               <div
                 key={status}
                 className={cn(
-                  "relative overflow-hidden rounded-xl border px-3.5 py-3.5",
-                  tone.chip,
+                  "relative min-h-[8.5rem] border-food-border p-4 transition-colors",
+                  index < PIPELINE.length - 1 && "border-r max-lg:border-r-0",
+                  "max-lg:border-b max-sm:border-b",
+                  index >= PIPELINE.length - 1 && "max-lg:border-b-0",
+                  !active && "opacity-55",
                 )}
               >
-                <span
+                <div
                   className={cn(
-                    "absolute inset-y-0 left-0 w-[3px]",
-                    tone.bar,
+                    "pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b",
+                    meta.glow,
+                    !active && "opacity-40",
                   )}
                 />
-                <span className="mb-1.5 block pl-1 text-[11px] font-bold uppercase tracking-wider text-food-muted">
-                  {STATUS_LABEL[status]}
-                </span>
-                <strong className="block pl-1 text-[28px] leading-none font-extrabold tabular-nums text-food-text">
+                <div className="relative flex items-center justify-between gap-2">
+                  <span
+                    className={cn(
+                      "text-[11px] font-bold uppercase tracking-[0.12em]",
+                      active ? meta.ink : "text-food-muted",
+                    )}
+                  >
+                    {STATUS_LABEL[status]}
+                  </span>
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      meta.bar,
+                      active ? "opacity-100" : "opacity-30",
+                    )}
+                  />
+                </div>
+                <p
+                  className={cn(
+                    "relative m-0 mt-5 text-[2.75rem] font-extrabold leading-none tracking-[-0.05em] tabular-nums",
+                    active ? "text-food-text" : "text-food-muted",
+                  )}
+                >
                   {count}
-                </strong>
+                </p>
+                {index < PIPELINE.length - 1 ? (
+                  <span
+                    className="pointer-events-none absolute top-1/2 -right-2 z-10 hidden -translate-y-1/2 text-food-border max-lg:hidden"
+                    aria-hidden
+                  >
+                    ›
+                  </span>
+                ) : null}
               </div>
             );
           })}
@@ -297,131 +471,151 @@ export function DashboardPage() {
       </section>
 
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-        <section className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft">
+        {/* Modalidade — ticket bipartido */}
+        <section className="overflow-hidden rounded-[22px] border border-food-border bg-food-surface shadow-food-soft">
           <div className="border-b border-food-border px-5 py-4">
-            <p className="m-0 mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-food-accent">
+            <p className="m-0 mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-food-accent">
               Modalidade
             </p>
-            <h2 className="m-0 text-base font-bold tracking-tight text-food-text">
-              Entrega × retirada na fila
+            <h2 className="m-0 text-lg font-extrabold tracking-tight text-food-text">
+              Entrega × retirada
             </h2>
           </div>
-          <div className="grid grid-cols-2 gap-3 p-4">
-            <div className="rounded-xl border border-food-accent/35 bg-[color-mix(in_srgb,var(--food-accent)_12%,var(--food-surface))] px-3.5 py-3.5">
-              <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-food-muted">
-                <span className="size-2 rounded-full bg-food-accent" aria-hidden />
-                Entrega
-              </span>
-              <strong className="block text-[28px] leading-none font-extrabold tabular-nums text-food-text">
-                {openDelivery}
-              </strong>
-              <p className="m-0 mt-2 text-[12px] text-food-muted">
-                {stats.open ? `${deliveryShare}% da fila` : "Sem pedidos abertos"}
-              </p>
-            </div>
-            <div className="rounded-xl border border-violet-500/35 bg-[color-mix(in_srgb,#8b5cf6_12%,var(--food-surface))] px-3.5 py-3.5">
-              <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-food-muted">
-                <span className="size-2 rounded-full bg-violet-500" aria-hidden />
-                Retirada
-              </span>
-              <strong className="block text-[28px] leading-none font-extrabold tabular-nums text-food-text">
-                {openPickup}
-              </strong>
-              <p className="m-0 mt-2 text-[12px] text-food-muted">
-                {stats.open ? `${pickupShare}% da fila` : "Sem pedidos abertos"}
-              </p>
-            </div>
-          </div>
-          {stats.open > 0 ? (
-            <div className="px-4 pb-4">
-              <div className="flex h-2 overflow-hidden rounded-full bg-food-chip">
-                <div
-                  className="bg-food-accent transition-[width]"
-                  style={{ width: `${deliveryShare}%` }}
-                />
-                <div
-                  className="bg-violet-500 transition-[width]"
-                  style={{ width: `${pickupShare}%` }}
-                />
-              </div>
-              <div className="mt-2 flex justify-between text-[11px] font-semibold text-food-muted">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-food-accent" aria-hidden />
+          <div className="grid grid-cols-2 gap-px bg-food-border">
+            <div className="bg-food-surface p-5">
+              <div className="flex items-center gap-2">
+                <span className="grid size-8 place-items-center rounded-xl bg-food-accent/15 text-food-accent">
+                  <RocketOutlined />
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-food-muted">
                   Entrega
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-violet-500" aria-hidden />
+              </div>
+              <p className="m-0 mt-4 text-[2.5rem] font-extrabold leading-none tracking-[-0.05em] tabular-nums text-food-text">
+                {openDelivery}
+              </p>
+              <p className="m-0 mt-2 text-[12px] font-semibold text-food-accent">
+                {stats.open ? `${deliveryShare}% da fila` : "Sem abertos"}
+              </p>
+            </div>
+            <div className="bg-food-surface p-5">
+              <div className="flex items-center gap-2">
+                <span className="grid size-8 place-items-center rounded-xl bg-violet-500/15 text-violet-500">
+                  <ShopOutlined />
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-food-muted">
                   Retirada
                 </span>
               </div>
+              <p className="m-0 mt-4 text-[2.5rem] font-extrabold leading-none tracking-[-0.05em] tabular-nums text-food-text">
+                {openPickup}
+              </p>
+              <p className="m-0 mt-2 text-[12px] font-semibold text-violet-500">
+                {stats.open ? `${pickupShare}% da fila` : "Sem abertos"}
+              </p>
             </div>
-          ) : null}
+          </div>
+          <div className="px-5 py-4">
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-food-chip">
+              <div
+                className="bg-food-accent transition-[width] duration-500"
+                style={{ width: stats.open ? `${deliveryShare}%` : "50%" }}
+              />
+              <div
+                className="bg-violet-500 transition-[width] duration-500"
+                style={{ width: stats.open ? `${pickupShare}%` : "50%" }}
+              />
+            </div>
+            <div className="mt-2.5 flex justify-between text-[11px] font-bold text-food-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-food-accent" />
+                Entrega
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-violet-500" />
+                Retirada
+              </span>
+            </div>
+          </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft">
+        {/* Operação — grade de sensores */}
+        <section className="overflow-hidden rounded-[22px] border border-food-border bg-food-surface shadow-food-soft">
           <div className="border-b border-food-border px-5 py-4">
-            <p className="m-0 mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-food-accent">
+            <p className="m-0 mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-food-accent">
               Operação
             </p>
-            <h2 className="m-0 text-base font-bold tracking-tight text-food-text">
+            <h2 className="m-0 text-lg font-extrabold tracking-tight text-food-text">
               Status da loja
             </h2>
           </div>
-          <ul className="m-0 list-none space-y-0 p-0">
-            <li className="flex items-start gap-3 border-b border-food-border px-5 py-3.5">
-              <ShopOutlined className="mt-0.5 text-food-accent" />
-              <div className="min-w-0">
-                <strong className="block text-[13px] text-food-text">
-                  {openNow ? "Dentro do horário" : "Fora do horário"}
-                </strong>
-                <p className="m-0 text-[12px] text-food-muted">{hoursToday}</p>
+          <div className="grid grid-cols-2 gap-3 p-4 max-sm:grid-cols-1">
+            <div className="rounded-2xl border border-food-border bg-food-chip/50 p-3.5">
+              <div className="flex items-center gap-2 text-food-accent">
+                <ShopOutlined />
+                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-food-muted">
+                  Horário
+                </span>
               </div>
-            </li>
-            <li className="flex items-start gap-3 border-b border-food-border px-5 py-3.5">
-              {health?.whatsapp ? (
-                <CheckCircleOutlined className="mt-0.5 text-green-600" />
-              ) : (
-                <CloseCircleOutlined className="mt-0.5 text-amber-600" />
-              )}
-              <div className="min-w-0">
-                <strong className="block text-[13px] text-food-text">
-                  WhatsApp {health?.whatsapp ? "conectado" : "não configurado"}
-                </strong>
-                <p className="m-0 text-[12px] text-food-muted">
-                  Canal pelo qual o bot recebe e responde pedidos
-                </p>
+              <p className="m-0 mt-2 text-[14px] font-bold text-food-text">
+                {openNow ? "Dentro do horário" : "Fora do horário"}
+              </p>
+              <p className="m-0 mt-0.5 text-[12px] text-food-muted">{hoursToday}</p>
+            </div>
+            <div className="rounded-2xl border border-food-border bg-food-chip/50 p-3.5">
+              <div className="flex items-center gap-2">
+                {health?.whatsapp ? (
+                  <CheckCircleFilled className="text-emerald-500" />
+                ) : (
+                  <CloseCircleFilled className="text-amber-500" />
+                )}
+                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-food-muted">
+                  WhatsApp
+                </span>
               </div>
-            </li>
-            <li className="flex items-start gap-3 border-b border-food-border px-5 py-3.5">
-              <ThunderboltOutlined className="mt-0.5 text-food-accent" />
-              <div className="min-w-0">
-                <strong className="block text-[13px] text-food-text">
-                  Aceite {store?.autoAcceptOrders ? "automático" : "manual"}
-                </strong>
-                <p className="m-0 text-[12px] text-food-muted">
-                  {store?.autoAcceptOrders
-                    ? `Novos pedidos vão para Aceito (~${store.defaultAcceptMinutes} min)`
-                    : "A equipe confirma cada pedido no painel"}
-                </p>
+              <p className="m-0 mt-2 text-[14px] font-bold text-food-text">
+                {health?.whatsapp ? "Conectado" : "Não configurado"}
+              </p>
+              <p className="m-0 mt-0.5 text-[12px] text-food-muted">
+                Canal dos pedidos
+              </p>
+            </div>
+            <div className="rounded-2xl border border-food-border bg-food-chip/50 p-3.5">
+              <div className="flex items-center gap-2 text-food-accent">
+                <ThunderboltOutlined />
+                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-food-muted">
+                  Aceite
+                </span>
               </div>
-            </li>
-            <li className="flex items-start gap-3 px-5 py-3.5">
-              <ClockCircleOutlined className="mt-0.5 text-food-accent" />
-              <div className="min-w-0">
-                <strong className="block text-[13px] text-food-text">
-                  Canais ativos
-                </strong>
-                <p className="m-0 text-[12px] text-food-muted">
-                  {[
-                    store?.deliveryEnabled ? "Entrega" : null,
-                    store?.pickupEnabled ? "Retirada" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "Nenhum canal habilitado"}
-                </p>
+              <p className="m-0 mt-2 text-[14px] font-bold text-food-text">
+                {store?.autoAcceptOrders ? "Automático" : "Manual"}
+              </p>
+              <p className="m-0 mt-0.5 text-[12px] text-food-muted">
+                {store?.autoAcceptOrders
+                  ? `~${store.defaultAcceptMinutes} min`
+                  : "Confirma no painel"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-food-border bg-food-chip/50 p-3.5">
+              <div className="flex items-center gap-2 text-food-accent">
+                <ClockCircleOutlined />
+                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-food-muted">
+                  Canais
+                </span>
               </div>
-            </li>
-          </ul>
+              <p className="m-0 mt-2 text-[14px] font-bold text-food-text">
+                {[
+                  store?.deliveryEnabled ? "Entrega" : null,
+                  store?.pickupEnabled ? "Retirada" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Nenhum"}
+              </p>
+              <p className="m-0 mt-0.5 text-[12px] text-food-muted">
+                Habilitados no bot
+              </p>
+            </div>
+          </div>
         </section>
       </div>
     </div>
