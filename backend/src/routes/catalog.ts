@@ -206,6 +206,10 @@ catalogRouter.patch("/store", async (req, res) => {
     patch.autoAcceptOrders = Boolean(body.autoAcceptOrders);
   }
 
+  if (body.allowCustomerCancel !== undefined) {
+    patch.allowCustomerCancel = Boolean(body.allowCustomerCancel);
+  }
+
   if (patch.autoAcceptOrders === true) {
     const minutes =
       patch.defaultAcceptMinutes ??

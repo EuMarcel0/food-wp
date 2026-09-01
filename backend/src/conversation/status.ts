@@ -21,6 +21,17 @@ const STATUS_EMOJI: Record<OrderStatus, string> = {
   cancelled: "❌",
 };
 
+/** Status em que o cliente pode cancelar pelo WhatsApp (quando a loja permitir). */
+export const CUSTOMER_CANCEL_STATUSES: OrderStatus[] = [
+  "received",
+  "accepted",
+  "preparing",
+  "ready",
+];
+
+export const CUSTOMER_CANCEL_HINT =
+  "Caso queira cancelar este pedido, digite exatamente: *Cancelar pedido*";
+
 export function describeOrderStatus(status: OrderStatus) {
   return STATUS_LABEL[status];
 }
@@ -38,8 +49,19 @@ export function isOpenOrderStatus(status: OrderStatus) {
   return status !== "delivered" && status !== "cancelled";
 }
 
-export function formatOrderStatusMessage(order: Order, opts?: { thanks?: boolean }) {
+export function canCustomerCancelStatus(status: OrderStatus) {
+  return CUSTOMER_CANCEL_STATUSES.includes(status);
+}
+
+export function formatOrderStatusMessage(
+  order: Order,
+  opts?: { thanks?: boolean; allowCustomerCancel?: boolean },
+) {
   const thanks = opts?.thanks ? "Por nada! 😊" : null;
+  const cancelHint =
+    opts?.allowCustomerCancel && canCustomerCancelStatus(order.status)
+      ? CUSTOMER_CANCEL_HINT
+      : null;
 
   if (order.status === "accepted") {
     const eta =
@@ -53,6 +75,7 @@ export function formatOrderStatusMessage(order: Order, opts?: { thanks?: boolean
         : `👍 Seu pedido *#${order.code}* foi *aceito*!`,
       `💰 Total: ${formatBRL(order.totalCents)}.`,
       "Assim que mudar, eu te aviso por aqui.",
+      cancelHint,
     ]
       .filter(Boolean)
       .join("\n");
@@ -72,6 +95,7 @@ export function formatOrderStatusMessage(order: Order, opts?: { thanks?: boolean
   } else if (order.status !== "cancelled") {
     lines.push(`💰 Total: ${formatBRL(order.totalCents)}.`);
     lines.push(statusFollowUp(order));
+    if (cancelHint) lines.push(cancelHint);
   }
   return lines.filter(Boolean).join("\n");
 }

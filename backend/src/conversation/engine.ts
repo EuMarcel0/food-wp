@@ -15,9 +15,15 @@ import {
   listProducts,
   saveConversation,
   touchConversation,
+  updateOrderStatus,
   upsertCustomer
 } from "../data/repository.js";
-import { formatOrderStatusMessage, isOpenOrderStatus } from "./status.js";
+import {
+  canCustomerCancelStatus,
+  CUSTOMER_CANCEL_HINT,
+  formatOrderStatusMessage,
+  isOpenOrderStatus,
+} from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
   ADDON_GROUP_ID,
@@ -1030,7 +1036,8 @@ async function finishOrder(
       "",
       `💰 Total: *${formatBRL(order.totalCents)}*`,
       "",
-      "Assim que o status mudar, eu te aviso por aqui. 😊"
+      "Assim que o status mudar, eu te aviso por aqui. 😊",
+      store.allowCustomerCancel ? CUSTOMER_CANCEL_HINT : null,
     ]
       .filter((line): line is string => line != null)
       .join("\n")
@@ -1080,13 +1087,42 @@ export async function handleIncomingMessage(input: {
     if (!latest || !isOpenOrderStatus(latest.status)) return false;
     // Não reabre Ativas: só responde o status do pedido em andamento.
     await persist("welcome", emptyContext());
-    await sendText(input.from, formatOrderStatusMessage(latest, { thanks }));
+    await sendText(
+      input.from,
+      formatOrderStatusMessage(latest, {
+        thanks,
+        allowCustomerCancel: store.allowCustomerCancel,
+      }),
+    );
     return true;
   }
 
   // Loja fechada: só informa horário — sem cardápio, status, botões ou qualquer fluxo.
   if (!isStoreOpen(store.businessHours, store.timezone)) {
     await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
+    return;
+  }
+
+  // Cancelamento do pedido pelo cliente (frase exata), se a loja permitir.
+  if (store.allowCustomerCancel && command === "cancelar pedido") {
+    const latest = await findLatestOrder(customer.id);
+    if (latest && canCustomerCancelStatus(latest.status)) {
+      await updateOrderStatus(latest.id, "cancelled", "Cliente WhatsApp");
+      await persist("welcome", emptyContext(), { close: true });
+      await sendButtons(
+        input.from,
+        [
+          "Seu pedido foi cancelado e seu atendimento finalizado.",
+          'Caso queira fazer um novo pedido, clique em "Novo pedido".',
+        ].join("\n"),
+        [{ id: "order", title: "Novo pedido" }],
+      );
+      return;
+    }
+    await sendText(
+      input.from,
+      "Não há pedido em andamento que possa ser cancelado.",
+    );
     return;
   }
 
@@ -1186,7 +1222,12 @@ export async function handleIncomingMessage(input: {
     const latest = await findLatestOrder(customer.id);
     if (latest) {
       await persist("welcome", context);
-      await sendText(input.from, formatOrderStatusMessage(latest));
+      await sendText(
+        input.from,
+        formatOrderStatusMessage(latest, {
+          allowCustomerCancel: store.allowCustomerCancel,
+        }),
+      );
       return;
     }
     await persist("awaiting_order_code", context);
@@ -1695,7 +1736,12 @@ export async function handleIncomingMessage(input: {
       return;
     }
     await persist("welcome", context);
-    await sendText(input.from, formatOrderStatusMessage(order));
+    await sendText(
+      input.from,
+      formatOrderStatusMessage(order, {
+        allowCustomerCancel: store.allowCustomerCancel,
+      }),
+    );
     return;
   }
 

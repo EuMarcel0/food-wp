@@ -46,6 +46,7 @@ const store: Store = {
   idleTimeoutMinutes: 60,
   defaultAcceptMinutes: 40,
   autoAcceptOrders: false,
+  allowCustomerCancel: false,
   profilePhotoUrl: null,
   legalName: null,
   cnpj: null,
@@ -259,6 +260,9 @@ export const memoryStore = {
     }
     if (patch.autoAcceptOrders !== undefined) {
       store.autoAcceptOrders = Boolean(patch.autoAcceptOrders);
+    }
+    if (patch.allowCustomerCancel !== undefined) {
+      store.allowCustomerCancel = Boolean(patch.allowCustomerCancel);
     }
     return store;
   },

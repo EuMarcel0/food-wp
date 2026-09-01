@@ -66,6 +66,7 @@ export const api = {
     businessHours?: Store["businessHours"];
     defaultAcceptMinutes?: number;
     autoAcceptOrders?: boolean;
+    allowCustomerCancel?: boolean;
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",

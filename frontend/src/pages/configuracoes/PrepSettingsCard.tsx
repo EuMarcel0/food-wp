@@ -29,9 +29,10 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
       api.updateStore({
         defaultAcceptMinutes: Number(values.defaultAcceptMinutes),
         autoAcceptOrders: Boolean(values.autoAcceptOrders),
+        allowCustomerCancel: Boolean(values.allowCustomerCancel),
       }),
     onSuccess: async () => {
-      toast.success("Configuração de aceite salva.");
+      toast.success("Configuração de pedidos salva.");
       await queryClient.invalidateQueries({ queryKey: queryKeys.store });
     },
   });
@@ -39,13 +40,14 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
   return (
     <Card
       className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
-      title="Aceite de pedidos"
+      title="Aceite e cancelamento"
     >
       <Formik
         enableReinitialize
         initialValues={{
           defaultAcceptMinutes: store?.defaultAcceptMinutes ?? 40,
           autoAcceptOrders: store?.autoAcceptOrders ?? false,
+          allowCustomerCancel: store?.allowCustomerCancel ?? false,
         }}
         validationSchema={prepSettingsSchema}
         onSubmit={async (values, helpers) => {
@@ -111,6 +113,25 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
                 </p>
               </div>
               <FormControl name="autoAcceptOrders" compact>
+                {({ value, setValue }) => (
+                  <Switch
+                    checked={Boolean(value)}
+                    onChange={(checked) => setValue(checked)}
+                  />
+                )}
+              </FormControl>
+            </label>
+
+            <label className={cn(formToggle, "mb-4")}>
+              <div>
+                <strong>Permitir cancelamento pelo cliente</strong>
+                <p>
+                  Nas mensagens de pedido confirmado, aceito, em preparo e
+                  pronto, o bot ensina a digitar *Cancelar pedido*. O status
+                  vira Cancelado e o atendimento é encerrado.
+                </p>
+              </div>
+              <FormControl name="allowCustomerCancel" compact>
                 {({ value, setValue }) => (
                   <Switch
                     checked={Boolean(value)}

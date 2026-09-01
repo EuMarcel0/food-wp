@@ -139,6 +139,7 @@ export type Store = {
   idleTimeoutMinutes: number;
   defaultAcceptMinutes: number;
   autoAcceptOrders: boolean;
+  allowCustomerCancel: boolean;
   profilePhotoUrl: string | null;
   legalName: string | null;
   cnpj: string | null;
@@ -158,6 +159,7 @@ export type StorePatch = {
   businessHours?: BusinessHoursDay[] | null;
   defaultAcceptMinutes?: number;
   autoAcceptOrders?: boolean;
+  allowCustomerCancel?: boolean;
 };
 
 export type Addon = {

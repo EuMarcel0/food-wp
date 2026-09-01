@@ -833,4 +833,8 @@ set activated_at = coalesce(activated_at, last_message_at, now())
 where closed_at is null
   and activated_at is null;
 
+-- ========== 036_store_allow_customer_cancel ==========
+alter table public.stores
+  add column if not exists allow_customer_cancel boolean
+    not null default false;
 

@@ -260,6 +260,7 @@ export const prepSettingsSchema = Yup.object({
     .min(1, "Mínimo de 1 minuto")
     .max(480, "Máximo de 8 horas"),
   autoAcceptOrders: Yup.boolean().default(false),
+  allowCustomerCancel: Yup.boolean().default(false),
 });
 
 export const defaultDeliveryFeeSchema = Yup.object({
