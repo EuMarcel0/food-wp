@@ -125,6 +125,16 @@ export function ConversationsPage() {
     },
   });
 
+  const closeMutation = useMutation({
+    mutationFn: (id: string) => api.closeConversation(id),
+    onSuccess: async () => {
+      toast.success("Atendimento encerrado.");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations.all,
+      });
+    },
+  });
+
   function askTakeover(item: LiveConversation) {
     const name = item.customerName?.trim() || "este cliente";
     void dialog.confirm({
@@ -139,6 +149,26 @@ export function ConversationsPage() {
       cancelText: "Cancelar",
       onConfirm: async () => {
         await takeoverMutation.mutateAsync(item.id);
+      },
+    });
+  }
+
+  function askClose(item: LiveConversation) {
+    const name = item.customerName?.trim() || "este cliente";
+    void dialog.confirm({
+      title: "Encerrar atendimento",
+      description: (
+        <>
+          A conversa com <strong>{name}</strong> será finalizada. O cliente recebe
+          uma despedida no WhatsApp e some das conversas ativas — o bot só retoma
+          quando ele mandar nova mensagem.
+        </>
+      ),
+      okText: "Encerrar",
+      cancelText: "Cancelar",
+      okButtonProps: { danger: true },
+      onConfirm: async () => {
+        await closeMutation.mutateAsync(item.id);
       },
     });
   }
@@ -218,10 +248,13 @@ export function ConversationsPage() {
               ? takeoverMutation.variables
               : releaseMutation.isPending
                 ? releaseMutation.variables
-                : null
+                : closeMutation.isPending
+                  ? closeMutation.variables
+                  : null
           }
           onTakeover={askTakeover}
           onRelease={(item) => releaseMutation.mutate(item.id)}
+          onClose={askClose}
         />
       )}
     </div>

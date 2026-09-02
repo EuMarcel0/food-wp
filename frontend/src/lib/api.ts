@@ -291,6 +291,10 @@ export const api = {
     request<unknown>(`/api/conversations/${id}/release`, {
       method: "POST"
     }),
+  closeConversation: (id: string) =>
+    request<unknown>(`/api/conversations/${id}/close`, {
+      method: "POST",
+    }),
   updateOrderStatus: (id: string, status: OrderStatus, actorName?: string, prepMinutes?: number) =>
     request<Order>(`/api/orders/${id}/status`, {
       method: "PATCH",

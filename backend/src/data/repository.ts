@@ -1575,6 +1575,37 @@ export async function closeConversationWithOrder(
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
+/** Encerra conversa aberta pelo painel (atendente), sem pedido vinculado. */
+export async function closeConversationByAgent(conversationId: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.closeConversationByAgent(conversationId);
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({
+      state: "welcome",
+      context: { cart: [] },
+      handoff_mode: "bot",
+      handoff_at: null,
+      handoff_by: null,
+      closed_at: now,
+      last_message_at: now,
+    })
+    .eq("id", conversationId)
+    .is("closed_at", null)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("closed_at")) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
 export type IdleConversationCandidate = {
   id: string;
   customerId: string;

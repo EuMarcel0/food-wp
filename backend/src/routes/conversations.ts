@@ -2,6 +2,7 @@ import { Router } from "express";
 import { resumeAfterHumanHandoff } from "../conversation/engine.js";
 import {
   appendConversationMessage,
+  closeConversationByAgent,
   getConversationById,
   listConversationHistory,
   listConversationMessages,
@@ -13,6 +14,9 @@ import { sendText } from "../lib/whatsapp.js";
 import { memoryStore } from "../data/memory.js";
 
 export const conversationsRouter = Router();
+
+const AGENT_CLOSE_MESSAGE =
+  "👋 Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem.";
 
 conversationsRouter.get("/", async (req, res) => {
   try {
@@ -169,6 +173,46 @@ conversationsRouter.post("/:id/release", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao devolver ao bot.",
+    });
+  }
+});
+
+conversationsRouter.post("/:id/close", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const current = await getConversationById(id);
+    if (!current) {
+      res.status(404).json({ error: "Conversa não encontrada." });
+      return;
+    }
+    if (current.closedAt) {
+      res.status(409).json({ error: "Esta conversa já está encerrada." });
+      return;
+    }
+
+    const phone = await customerPhoneFor(current.customerId);
+    if (phone) {
+      await sendText(phone, AGENT_CLOSE_MESSAGE);
+      await appendConversationMessage({
+        conversationId: current.id,
+        customerId: current.customerId,
+        storeId: current.storeId,
+        direction: "outbound",
+        author: "bot",
+        body: AGENT_CLOSE_MESSAGE,
+      });
+    }
+
+    const updated = await closeConversationByAgent(id);
+    if (!updated) {
+      res.status(404).json({ error: "Conversa não encontrada." });
+      return;
+    }
+
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao encerrar atendimento.",
     });
   }
 });

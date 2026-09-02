@@ -867,6 +867,26 @@ export const memoryStore = {
     return next;
   },
 
+  closeConversationByAgent(conversationId: string) {
+    const current = [...conversations.values()].find(
+      (item) => item.id === conversationId,
+    );
+    if (!current || current.closedAt) return null;
+    const now = new Date().toISOString();
+    const next: Conversation = {
+      ...current,
+      state: "welcome",
+      context: { cart: [] },
+      handoffMode: "bot",
+      handoffAt: null,
+      handoffBy: null,
+      closedAt: now,
+      lastMessageAt: now,
+    };
+    conversations.set(current.customerId, next);
+    return next;
+  },
+
   listIdleOpenConversations(idleMinutes: number) {
     const cutoff = Date.now() - Math.max(1, idleMinutes) * 60 * 1000;
     return [...conversations.values()]

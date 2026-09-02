@@ -4,6 +4,7 @@ import { Alert, Avatar, Badge, Button, Empty, Input, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
   CheckOutlined,
+  CloseCircleOutlined,
   RobotOutlined,
   SendOutlined,
   UserSwitchOutlined,
@@ -59,6 +60,7 @@ export function WhatsAppInbox({
   busyId,
   onTakeover,
   onRelease,
+  onClose,
 }: {
   items: LiveConversation[];
   loading: boolean;
@@ -66,6 +68,7 @@ export function WhatsAppInbox({
   busyId: string | null;
   onTakeover: (item: LiveConversation) => void;
   onRelease: (item: LiveConversation) => void;
+  onClose: (item: LiveConversation) => void;
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -436,6 +439,15 @@ export function WhatsAppInbox({
                     Assumir
                   </Button>
                 )}
+                <Button
+                  size="small"
+                  danger
+                  icon={<CloseCircleOutlined />}
+                  loading={busyId === selected.id}
+                  onClick={() => onClose(selected)}
+                >
+                  Encerrar atendimento
+                </Button>
               </div>
             </header>
 
