@@ -404,7 +404,7 @@ export function WhatsAppInbox({
                   </div>
                   <p
                     className={cn(
-                      "mt-1 line-clamp-2 overflow-hidden text-xs leading-snug",
+                      "mt-1 truncate text-xs leading-snug",
                       unread ? "font-medium text-food-text" : "text-food-muted",
                     )}
                     title={item.lastMessagePreview || undefined}
