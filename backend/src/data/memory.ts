@@ -847,7 +847,7 @@ export const memoryStore = {
     return next;
   },
 
-  closeConversationWithOrder(
+  recordConversationOrder(
     customerId: string,
     order: { id: string; code: string },
   ) {
@@ -861,7 +861,7 @@ export const memoryStore = {
       handoffMode: "bot",
       handoffAt: null,
       handoffBy: null,
-      closedAt: now,
+      closedAt: null,
       lastOrderId: order.id,
       lastOrderCode: order.code,
       lastMessageAt: now,
@@ -957,15 +957,9 @@ export const memoryStore = {
     return next;
   },
 
-  listLiveConversations(hours = 24) {
-    const since = Date.now() - hours * 60 * 60 * 1000;
+  listLiveConversations(_hours = 24) {
     return [...conversations.values()]
       .filter((item) => !item.closedAt)
-      .filter(
-        (item) =>
-          item.handoffMode === "human" ||
-          (item.lastMessageAt && new Date(item.lastMessageAt).getTime() >= since),
-      )
       .sort(
         (left, right) =>
           new Date(right.lastMessageAt ?? 0).getTime() -
@@ -1008,25 +1002,30 @@ export const memoryStore = {
   },
 
   listConversationHistory(limit = 100) {
-    return [...orders.values()]
+    return [...conversations.values()]
+      .filter((item) => item.closedAt)
       .sort(
         (left, right) =>
-          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+          new Date(right.closedAt ?? 0).getTime() -
+          new Date(left.closedAt ?? 0).getTime(),
       )
       .slice(0, limit)
-      .map((order) => {
-        const customer = [...customers.values()].find((row) => row.id === order.customerId);
+      .map((item) => {
+        const customer = [...customers.values()].find((row) => row.id === item.customerId);
+        const order = item.lastOrderId
+          ? [...orders.values()].find((row) => row.id === item.lastOrderId)
+          : null;
         return {
-          id: order.id,
-          customerId: order.customerId,
-          customerName: order.customerName ?? customer?.name ?? null,
-          customerPhone: order.customerPhone ?? customer?.waPhone ?? "",
+          id: item.id,
+          customerId: item.customerId,
+          customerName: customer?.name ?? null,
+          customerPhone: customer?.waPhone ?? "",
           customerAvatarUrl: customer?.avatarUrl ?? null,
-          orderId: order.id,
-          orderCode: order.code,
-          orderStatus: order.status,
-          totalCents: order.totalCents,
-          closedAt: order.createdAt,
+          orderId: order?.id ?? null,
+          orderCode: order?.code ?? item.lastOrderCode ?? null,
+          orderStatus: order?.status ?? null,
+          totalCents: order?.totalCents ?? null,
+          closedAt: item.closedAt ?? new Date().toISOString(),
         };
       });
   },
@@ -1059,9 +1058,8 @@ export const memoryStore = {
   ) {
     const current = conversations.get(customer.id);
     const now = new Date().toISOString();
-    const closedAt = options?.close
-      ? now
-      : options?.reopen || isOrderFlowState(state)
+    const closedAt =
+      options?.reopen || isOrderFlowState(state)
         ? null
         : (current?.closedAt ?? null);
     const activatedAt =

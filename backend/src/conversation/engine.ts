@@ -3,7 +3,7 @@ import { closedStoreMessage, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
 import {
-  closeConversationWithOrder,
+  recordConversationOrder,
   createOrder,
   findLatestOrder,
   findOrderByCode,
@@ -1034,8 +1034,8 @@ async function finishOrder(
     items: context.cart
   });
 
-  // Encerra a conversa ativa: some de "Ativas" e entra no histórico via pedido.
-  await closeConversationWithOrder(customer.id, { id: order.id, code: order.code });
+  // Mantém a conversa ativa no painel; histórico só quando o atendente encerrar.
+  await recordConversationOrder(customer.id, { id: order.id, code: order.code });
   const feeLine =
     fulfillment !== "delivery"
       ? "Retirada no local"
@@ -1137,7 +1137,7 @@ export async function handleIncomingMessage(input: {
     const latest = await findLatestOrder(customer.id);
     if (latest && canCustomerCancelStatus(latest.status)) {
       await updateOrderStatus(latest.id, "cancelled", "Cliente WhatsApp");
-      await persist("welcome", emptyContext(), { close: true });
+      await persist("welcome", emptyContext());
       await sendButtons(
         input.from,
         [
@@ -1156,7 +1156,7 @@ export async function handleIncomingMessage(input: {
   }
 
   if (CANCEL_KEYS.includes(command)) {
-    await persist("welcome", emptyContext(), { close: true });
+    await persist("welcome", emptyContext());
     await sendText(
       input.from,
       "👋 Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."

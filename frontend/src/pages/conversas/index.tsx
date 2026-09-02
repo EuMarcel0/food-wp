@@ -327,7 +327,7 @@ function HistoryPane({
     return (
       <Empty
         className="rounded-2xl border border-food-border bg-food-surface py-16 max-lg:mx-3 max-lg:rounded-none max-lg:border-x-0"
-        description="Ainda não há pedidos vindos do WhatsApp."
+        description="Ainda não há atendimentos encerrados."
       />
     );
   }
@@ -358,9 +358,12 @@ function HistoryPane({
                 title: "Pedido",
                 dataIndex: "orderCode",
                 width: 110,
-                render: (code: string) => (
-                  <span className="font-bold">#{code}</span>
-                ),
+                render: (code: string | null) =>
+                  code ? (
+                    <span className="font-bold">#{code}</span>
+                  ) : (
+                    <span className="text-food-muted">—</span>
+                  ),
               },
               {
                 title: "Cliente",
@@ -378,17 +381,20 @@ function HistoryPane({
                 title: "Status",
                 dataIndex: "orderStatus",
                 width: 140,
-                render: (status: ConversationHistoryItem["orderStatus"]) => (
-                  <Tag color={STATUS_COLOR[status]}>{STATUS_LABEL[status]}</Tag>
-                ),
+                render: (status: ConversationHistoryItem["orderStatus"]) =>
+                  status ? (
+                    <Tag color={STATUS_COLOR[status]}>{STATUS_LABEL[status]}</Tag>
+                  ) : (
+                    <span className="text-food-muted">—</span>
+                  ),
               },
               {
                 title: "Total",
                 dataIndex: "totalCents",
                 width: 120,
-                render: (cents: number) => (
+                render: (cents: number | null) => (
                   <span className="font-semibold tabular-nums">
-                    {formatBRL(cents)}
+                    {cents != null ? formatBRL(cents) : "—"}
                   </span>
                 ),
               },
@@ -505,7 +511,7 @@ function HistoryCard({ item }: { item: ConversationHistoryItem }) {
       <div className="flex items-start justify-between gap-2 pl-1">
         <div className="min-w-0">
           <p className="m-0 mb-1.5 text-[13px] font-bold leading-tight text-food-text">
-            Pedido #{item.orderCode}
+            {item.orderCode ? `Pedido #${item.orderCode}` : "Atendimento encerrado"}
           </p>
           <CustomerIdentity
             name={name}
@@ -515,20 +521,24 @@ function HistoryCard({ item }: { item: ConversationHistoryItem }) {
             size={34}
           />
         </div>
-        <Tag
-          className="m-0 shrink-0 text-[11px] leading-none"
-          color={STATUS_COLOR[item.orderStatus]}
-        >
-          {STATUS_LABEL[item.orderStatus]}
-        </Tag>
+        {item.orderStatus ? (
+          <Tag
+            className="m-0 shrink-0 text-[11px] leading-none"
+            color={STATUS_COLOR[item.orderStatus]}
+          >
+            {STATUS_LABEL[item.orderStatus]}
+          </Tag>
+        ) : null}
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 pl-1">
         <span className="text-xs text-food-muted tabular-nums">
           {formatDate(item.closedAt)}
         </span>
-        <span className="text-sm font-extrabold tabular-nums text-food-accent">
-          {formatBRL(item.totalCents)}
-        </span>
+        {item.totalCents != null ? (
+          <span className="text-sm font-extrabold tabular-nums text-food-accent">
+            {formatBRL(item.totalCents)}
+          </span>
+        ) : null}
       </div>
     </article>
   );

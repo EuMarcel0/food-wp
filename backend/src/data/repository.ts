@@ -1570,12 +1570,12 @@ export async function touchConversation(customerId: string) {
     .eq("customer_id", customerId);
 }
 
-export async function closeConversationWithOrder(
+export async function recordConversationOrder(
   customerId: string,
   order: { id: string; code: string },
 ) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.closeConversationWithOrder(customerId, order);
+  if (!supabase) return memoryStore.recordConversationOrder(customerId, order);
 
   const now = new Date().toISOString();
   const { data, error } = await supabase
@@ -1586,7 +1586,7 @@ export async function closeConversationWithOrder(
       handoff_mode: "bot",
       handoff_at: null,
       handoff_by: null,
-      closed_at: now,
+      closed_at: null,
       last_order_id: order.id,
       last_order_code: order.code,
       last_message_at: now,
@@ -1762,16 +1762,14 @@ async function latestMessageDirectionsForConversations(ids: string[]) {
   return map;
 }
 
-export async function listLiveConversations(hours = 24) {
+export async function listLiveConversations(_hours = 24) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listLiveConversations(hours);
+  if (!supabase) return memoryStore.listLiveConversations(_hours);
 
-  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("conversations")
     .select("*, customers(id, name, wa_phone, avatar_url)")
     .is("closed_at", null)
-    .or(`last_message_at.gte.${since},handoff_mode.eq.human`)
     .order("last_message_at", { ascending: false })
     .limit(100);
 
@@ -2001,34 +1999,46 @@ export async function findConversationByCustomerPhone(waPhone: string) {
   };
 }
 
-/** Histórico = pedidos confirmados (conversa que virou pedido). */
+/** Histórico = conversas encerradas pelo atendente. */
 export async function listConversationHistory(limit = 100) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.listConversationHistory(limit);
 
   const { data, error } = await supabase
-    .from("orders")
+    .from("conversations")
     .select(
-      "id, code, status, total_cents, created_at, customer_id, customers(id, name, wa_phone, avatar_url)",
+      "id, customer_id, closed_at, last_order_id, last_order_code, customers(id, name, wa_phone, avatar_url), orders!last_order_id(id, code, status, total_cents)",
     )
-    .order("created_at", { ascending: false })
+    .not("closed_at", "is", null)
+    .order("closed_at", { ascending: false })
     .limit(limit);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message?.includes("closed_at")) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
 
   return (data ?? []).map((row) => {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
+    const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
     return {
       id: String(row.id),
       customerId: String(row.customer_id ?? customer?.id ?? ""),
       customerName: customer?.name ?? null,
       customerPhone: String(customer?.wa_phone ?? ""),
       customerAvatarUrl: customer?.avatar_url != null ? String(customer.avatar_url) : null,
-      orderId: String(row.id),
-      orderCode: String(row.code ?? ""),
-      orderStatus: row.status as OrderStatus,
-      totalCents: Number(row.total_cents ?? 0),
-      closedAt: String(row.created_at ?? new Date().toISOString()),
+      orderId: order?.id != null ? String(order.id) : null,
+      orderCode:
+        order?.code != null
+          ? String(order.code)
+          : row.last_order_code != null
+            ? String(row.last_order_code)
+            : null,
+      orderStatus: order?.status ?? null,
+      totalCents: order?.total_cents != null ? Number(order.total_cents) : null,
+      closedAt: String(row.closed_at ?? new Date().toISOString()),
     };
   });
 }
@@ -2085,10 +2095,9 @@ export async function saveConversation(
 
   const current = await getConversation(customer.id);
   const now = new Date().toISOString();
-  // Reabre Ativas no Bem-vindo ou no fluxo de pedido; status/"vlw" mantém closed_at.
-  const closedAt = options?.close
-    ? now
-    : options?.reopen || isOrderFlowState(state)
+  // Reabre Ativas no Bem-vindo ou no fluxo de pedido; encerramento só via painel.
+  const closedAt =
+    options?.reopen || isOrderFlowState(state)
       ? null
       : (current?.closedAt ?? null);
   const activatedAt = nextActivatedAt(current, closedAt, now);

@@ -126,6 +126,13 @@ export async function logInboundByPhone(
         { cart: [] },
         { reopen: true },
       );
+    } else if (conversation.closedAt) {
+      conversation = await saveConversation(
+        customer,
+        conversation.state,
+        conversation.context ?? { cart: [] },
+        { reopen: true },
+      );
     }
     await appendConversationMessage({
       conversationId: conversation.id,

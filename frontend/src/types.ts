@@ -59,10 +59,10 @@ export type ConversationHistoryItem = {
   customerName: string | null;
   customerPhone: string;
   customerAvatarUrl?: string | null;
-  orderId: string;
-  orderCode: string;
-  orderStatus: OrderStatus;
-  totalCents: number;
+  orderId: string | null;
+  orderCode: string | null;
+  orderStatus: OrderStatus | null;
+  totalCents: number | null;
   closedAt: string;
 };
 
