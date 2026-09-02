@@ -971,6 +971,8 @@ export const memoryStore = {
       .map((item) => {
         const customer = [...customers.values()].find((row) => row.id === item.customerId);
         const lastMessageAt = item.lastMessageAt ?? new Date().toISOString();
+        const messages = conversationMessages.get(item.id) ?? [];
+        const lastMessage = messages[messages.length - 1];
         return {
           id: item.id,
           customerId: item.customerId,
@@ -986,9 +988,20 @@ export const memoryStore = {
           cartItemCount: item.context.cart?.length ?? 0,
           lastOrderCode: item.lastOrderCode ?? null,
           lastMessagePreview: item.lastMessagePreview ?? null,
-          lastMessageDirection: item.lastMessageDirection ?? null,
+          lastMessageDirection:
+            item.lastMessageDirection ?? lastMessage?.direction ?? null,
         };
       });
+  },
+
+  latestMessageDirectionsForConversations(ids: string[]) {
+    const map = new Map<string, ConversationMessageDirection>();
+    for (const id of ids) {
+      const messages = conversationMessages.get(id) ?? [];
+      const last = messages[messages.length - 1];
+      if (last?.direction) map.set(id, last.direction);
+    }
+    return map;
   },
 
   listConversationHistory(limit = 100) {
@@ -1068,6 +1081,8 @@ export const memoryStore = {
       closedAt,
       lastOrderId: current?.lastOrderId ?? null,
       lastOrderCode: current?.lastOrderCode ?? null,
+      lastMessagePreview: current?.lastMessagePreview ?? null,
+      lastMessageDirection: current?.lastMessageDirection ?? null,
     };
     conversations.set(customer.id, conversation);
     return conversation;

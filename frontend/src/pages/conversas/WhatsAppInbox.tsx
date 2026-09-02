@@ -23,7 +23,7 @@ import {
   isConversationUnread,
   markConversationRead,
 } from "../../lib/conversationBadge";
-import { useConversationViewing } from "../../conversations/ConversationAlerts";
+import { useConversationViewing, CONVERSATIONS_LIVE_EVENT } from "../../conversations/ConversationAlerts";
 import type { ConversationMessage, LiveConversation } from "../../types";
 
 function relativeTime(iso: string) {
@@ -142,9 +142,13 @@ export function WhatsAppInbox({
   }, [items, readTick]);
 
   useEffect(() => {
-    const onRead = () => setReadTick((value) => value + 1);
-    window.addEventListener(CONVERSATION_READ_EVENT, onRead);
-    return () => window.removeEventListener(CONVERSATION_READ_EVENT, onRead);
+    const bump = () => setReadTick((value) => value + 1);
+    window.addEventListener(CONVERSATION_READ_EVENT, bump);
+    window.addEventListener(CONVERSATIONS_LIVE_EVENT, bump);
+    return () => {
+      window.removeEventListener(CONVERSATION_READ_EVENT, bump);
+      window.removeEventListener(CONVERSATIONS_LIVE_EVENT, bump);
+    };
   }, []);
 
   const messagesQuery = useQuery({

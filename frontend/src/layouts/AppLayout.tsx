@@ -24,7 +24,7 @@ import {
   hasUnreadConversations,
 } from "../lib/conversationBadge";
 import { queryKeys } from "../lib/queryKeys";
-import { ConversationAlertsProvider } from "../conversations/ConversationAlerts";
+import { ConversationAlertsProvider, CONVERSATIONS_LIVE_EVENT } from "../conversations/ConversationAlerts";
 import { cn } from "../lib/cn";
 import { foodMark } from "../ui";
 
@@ -107,9 +107,13 @@ export function AppLayout() {
   const showConversasDot = hasUnread;
 
   useEffect(() => {
-    const onRead = () => setSeenTick((value) => value + 1);
-    window.addEventListener(CONVERSATION_READ_EVENT, onRead);
-    return () => window.removeEventListener(CONVERSATION_READ_EVENT, onRead);
+    const bump = () => setSeenTick((value) => value + 1);
+    window.addEventListener(CONVERSATION_READ_EVENT, bump);
+    window.addEventListener(CONVERSATIONS_LIVE_EVENT, bump);
+    return () => {
+      window.removeEventListener(CONVERSATION_READ_EVENT, bump);
+      window.removeEventListener(CONVERSATIONS_LIVE_EVENT, bump);
+    };
   }, []);
 
   const menuItems = useMemo(

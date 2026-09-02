@@ -1699,6 +1699,37 @@ export async function claimCloseIdleConversation(
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
+function parseLastMessageDirection(
+  value: unknown,
+): ConversationMessageDirection | null {
+  return value === "inbound" || value === "outbound" ? value : null;
+}
+
+async function latestMessageDirectionsForConversations(ids: string[]) {
+  const map = new Map<string, ConversationMessageDirection>();
+  if (!ids.length) return map;
+
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.latestMessageDirectionsForConversations(ids);
+
+  const { data, error } = await supabase
+    .from("conversation_messages")
+    .select("conversation_id, direction, created_at")
+    .in("conversation_id", ids)
+    .order("created_at", { ascending: false })
+    .limit(Math.min(ids.length * 5, 500));
+
+  if (error || !data) return map;
+
+  for (const row of data) {
+    const conversationId = String(row.conversation_id);
+    if (map.has(conversationId)) continue;
+    const direction = parseLastMessageDirection(row.direction);
+    if (direction) map.set(conversationId, direction);
+  }
+  return map;
+}
+
 export async function listLiveConversations(hours = 24) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.listLiveConversations(hours);
@@ -1722,12 +1753,21 @@ export async function listLiveConversations(hours = 24) {
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((row) => {
+  const rows = data ?? [];
+  const missingDirectionIds = rows
+    .filter((row) => !parseLastMessageDirection(row.last_message_direction))
+    .map((row) => String(row.id));
+  const fallbackDirections = await latestMessageDirectionsForConversations(
+    missingDirectionIds,
+  );
+
+  return rows.map((row) => {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
     const context = (row.context ?? { cart: [] }) as ConversationContext;
     const lastMessageAt = String(row.last_message_at ?? new Date().toISOString());
+    const id = String(row.id);
     return {
-      id: String(row.id),
+      id,
       customerId: String(row.customer_id),
       customerName: customer?.name ?? null,
       customerPhone: String(customer?.wa_phone ?? ""),
@@ -1743,9 +1783,9 @@ export async function listLiveConversations(hours = 24) {
       lastMessagePreview:
         row.last_message_preview != null ? String(row.last_message_preview) : null,
       lastMessageDirection:
-        row.last_message_direction === "inbound" || row.last_message_direction === "outbound"
-          ? row.last_message_direction
-          : null,
+        parseLastMessageDirection(row.last_message_direction) ??
+        fallbackDirections.get(id) ??
+        null,
     };
   });
 }
@@ -1821,7 +1861,7 @@ export async function appendConversationMessage(input: {
     throw new Error(error.message);
   }
 
-  await supabase
+  const { error: convError } = await supabase
     .from("conversations")
     .update({
       last_message_at: now,
@@ -1829,6 +1869,28 @@ export async function appendConversationMessage(input: {
       last_message_direction: input.direction,
     })
     .eq("id", input.conversationId);
+
+  if (convError?.message?.includes("last_message_direction")) {
+    const { error: fallbackError } = await supabase
+      .from("conversations")
+      .update({
+        last_message_at: now,
+        last_message_preview: preview,
+      })
+      .eq("id", input.conversationId);
+    if (fallbackError) {
+      console.warn(
+        "[message-log] falha ao atualizar conversa:",
+        fallbackError.message,
+      );
+    } else {
+      console.warn(
+        "Rode a migration 038_conversation_last_message_direction.sql no Supabase.",
+      );
+    }
+  } else if (convError) {
+    console.warn("[message-log] falha ao atualizar conversa:", convError.message);
+  }
 
   return data ? mapConversationMessage(data as Record<string, unknown>) : null;
 }
