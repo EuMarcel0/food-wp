@@ -24,6 +24,19 @@ export type LiveConversation = {
   activatedAt: string;
   cartItemCount: number;
   lastOrderCode?: string | null;
+  lastMessagePreview?: string | null;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  customerId: string;
+  direction: "inbound" | "outbound";
+  author: "customer" | "bot" | "agent";
+  body: string;
+  msgType: string;
+  waMessageId?: string | null;
+  createdAt: string;
 };
 
 export type ConversationHistoryItem = {

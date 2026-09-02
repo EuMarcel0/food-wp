@@ -1,4 +1,6 @@
 import { env, flags } from "../config/env.js";
+import { logOutboundByPhone } from "./messageLog.js";
+import type { ConversationMessageAuthor } from "../types.js";
 
 const GRAPH = `https://graph.facebook.com/${env.whatsappGraphVersion}`;
 
@@ -52,9 +54,19 @@ async function sendTo(to: string, payload: Record<string, unknown>) {
   return { ok: response.ok, status: response.status, body };
 }
 
-async function send(payload: Record<string, unknown>) {
+async function send(
+  payload: Record<string, unknown>,
+  opts?: { author?: ConversationMessageAuthor; skipLog?: boolean },
+) {
+  const author = opts?.author ?? "bot";
+  const log = async () => {
+    if (opts?.skipLog) return;
+    await logOutboundByPhone(String(payload.to ?? ""), payload, author);
+  };
+
   if (!flags.whatsappReady) {
     console.info("[whatsapp:dry-run]", JSON.stringify(payload, null, 2));
+    await log();
     return { dryRun: true };
   }
 
@@ -67,6 +79,7 @@ async function send(payload: Record<string, unknown>) {
       if (to !== targets[0]) {
         console.log(`WhatsApp: enviado para formato alternativo ${to}`);
       }
+      await log();
       return JSON.parse(result.body || "{}");
     }
     lastStatus = result.status;
@@ -111,12 +124,19 @@ export async function subscribeWhatsAppApp() {
   console.log("WhatsApp: app inscrito na WABA");
 }
 
-export async function sendText(to: string, body: string) {
-  return send({
-    to,
-    type: "text",
-    text: { preview_url: false, body: normalizeBody(body) },
-  });
+export async function sendText(
+  to: string,
+  body: string,
+  opts?: { author?: ConversationMessageAuthor; skipLog?: boolean },
+) {
+  return send(
+    {
+      to,
+      type: "text",
+      text: { preview_url: false, body: normalizeBody(body) },
+    },
+    opts,
+  );
 }
 
 export async function sendButtons(to: string, body: string, buttons: Button[]) {

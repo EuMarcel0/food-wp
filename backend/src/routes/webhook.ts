@@ -5,6 +5,7 @@ import {
   handleIncomingMessage,
   handleUnsupportedInbound,
 } from "../conversation/engine.js";
+import { logInboundByPhone } from "../lib/messageLog.js";
 import { enqueueByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { noteWebhook } from "../lib/webhookStats.js";
 
@@ -116,6 +117,12 @@ webhookRouter.post("/whatsapp", (req, res) => {
             `WhatsApp inbound unsupported type=${message.type ?? "?"} from=${message.from}`,
           );
           enqueueByUser(queueKey, async () => {
+            await logInboundByPhone(
+              to,
+              `[${message.type ?? "mídia"} não suportado]`,
+              message.type ?? "unsupported",
+              { name, avatarUrl },
+            );
             await handleUnsupportedInbound({ from: to, name, avatarUrl });
           }).catch((error) => {
             console.error("Falha ao avisar mensagem não suportada", error);
@@ -127,7 +134,21 @@ webhookRouter.post("/whatsapp", (req, res) => {
           `WhatsApp inbound from=${message.from} wa_id=${waId ?? "-"} reply=${to}`,
         );
 
+        const inboundBody =
+          text ||
+          (location
+            ? `📍 Localização${location.address ? `: ${location.address}` : ""}`
+            : replyId
+              ? `[opção] ${replyId}`
+              : "");
+
         enqueueByUser(queueKey, async () => {
+          await logInboundByPhone(
+            to,
+            inboundBody,
+            location ? "location" : replyId ? "interactive" : "text",
+            { name, avatarUrl },
+          );
           await handleIncomingMessage({
             from: to,
             name,

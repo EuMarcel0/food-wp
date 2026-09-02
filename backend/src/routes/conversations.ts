@@ -1,7 +1,9 @@
 import { Router } from "express";
 import {
+  appendConversationMessage,
   getConversationById,
   listConversationHistory,
+  listConversationMessages,
   listLiveConversations,
   setConversationHandoff,
 } from "../data/repository.js";
@@ -22,6 +24,81 @@ conversationsRouter.get("/", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao listar conversas.",
+    });
+  }
+});
+
+conversationsRouter.get("/:id/messages", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const current = await getConversationById(id);
+    if (!current) {
+      res.status(404).json({ error: "Conversa não encontrada." });
+      return;
+    }
+    res.json(await listConversationMessages(id));
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao listar mensagens.",
+    });
+  }
+});
+
+conversationsRouter.post("/:id/messages", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    if (!text) {
+      res.status(400).json({ error: "Informe a mensagem." });
+      return;
+    }
+    if (text.length > 4000) {
+      res.status(400).json({ error: "Mensagem muito longa (máx. 4000)." });
+      return;
+    }
+
+    const current = await getConversationById(id);
+    if (!current) {
+      res.status(404).json({ error: "Conversa não encontrada." });
+      return;
+    }
+
+    // Resposta humana só com handoff; se ainda estiver no bot, assume automaticamente.
+    let conversation = current;
+    if (conversation.handoffMode !== "human") {
+      const by =
+        typeof req.body?.by === "string" && req.body.by.trim()
+          ? req.body.by.trim().slice(0, 80)
+          : "Atendente";
+      const updated = await setConversationHandoff(id, "human", by);
+      if (!updated) {
+        res.status(404).json({ error: "Conversa não encontrada." });
+        return;
+      }
+      conversation = updated;
+    }
+
+    const phone = await customerPhoneFor(conversation.customerId);
+    if (!phone) {
+      res.status(400).json({ error: "Telefone do cliente não encontrado." });
+      return;
+    }
+
+    await sendText(phone, text, { author: "agent", skipLog: true });
+    const saved = await appendConversationMessage({
+      conversationId: conversation.id,
+      customerId: conversation.customerId,
+      storeId: conversation.storeId,
+      direction: "outbound",
+      author: "agent",
+      body: text,
+      msgType: "text",
+    });
+
+    res.json({ conversation, message: saved });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao enviar mensagem.",
     });
   }
 });

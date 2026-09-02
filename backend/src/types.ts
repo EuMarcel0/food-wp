@@ -241,6 +241,7 @@ export type Conversation = {
   closedAt?: string | null;
   lastOrderId?: string | null;
   lastOrderCode?: string | null;
+  lastMessagePreview?: string | null;
 };
 
 export type LiveConversation = {
@@ -258,6 +259,22 @@ export type LiveConversation = {
   activatedAt: string;
   cartItemCount: number;
   lastOrderCode?: string | null;
+  lastMessagePreview?: string | null;
+};
+
+export type ConversationMessageAuthor = "customer" | "bot" | "agent";
+export type ConversationMessageDirection = "inbound" | "outbound";
+
+export type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  customerId: string;
+  direction: ConversationMessageDirection;
+  author: ConversationMessageAuthor;
+  body: string;
+  msgType: string;
+  waMessageId?: string | null;
+  createdAt: string;
 };
 
 export type ConversationHistoryItem = {

@@ -6,6 +6,7 @@ import type {
   AppNotification,
   Category,
   ConversationHistoryItem,
+  ConversationMessage,
   Crust,
   Health,
   LiveConversation,
@@ -269,6 +270,18 @@ export const api = {
       withQuery("/api/conversations", { tab: "history" }),
       { silent }
     ),
+  conversationMessages: (id: string, silent = true) =>
+    request<ConversationMessage[]>(`/api/conversations/${id}/messages`, {
+      silent,
+    }),
+  sendConversationMessage: (id: string, text: string, by?: string) =>
+    request<{
+      conversation: LiveConversation;
+      message: ConversationMessage | null;
+    }>(`/api/conversations/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, by }),
+    }),
   takeoverConversation: (id: string, by?: string) =>
     request<unknown>(`/api/conversations/${id}/takeover`, {
       method: "POST",

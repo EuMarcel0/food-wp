@@ -15,6 +15,9 @@ import {
   type Category,
   type Conversation,
   type ConversationContext,
+  type ConversationMessage,
+  type ConversationMessageAuthor,
+  type ConversationMessageDirection,
   type ConversationState,
   type Crust,
   type Customer,
@@ -219,6 +222,7 @@ const sizes: Size[] = [
 
 const customers = new Map<string, Customer>();
 const conversations = new Map<string, Conversation>();
+const conversationMessages = new Map<string, ConversationMessage[]>();
 const orders = new Map<string, Order>();
 const notifications: AppNotification[] = [];
 const notificationReads = new Set<string>();
@@ -753,6 +757,70 @@ export const memoryStore = {
     return null;
   },
 
+  findConversationByCustomerPhone(waPhone: string) {
+    const digits = phoneKey(waPhone);
+    const customer = [...customers.values()].find((row) => {
+      const phone = phoneKey(row.waPhone);
+      return (
+        phone === digits ||
+        phone.endsWith(digits.slice(-11)) ||
+        digits.endsWith(phone.slice(-11))
+      );
+    });
+    if (!customer) return null;
+    const conversation = conversations.get(customer.id);
+    if (!conversation) return null;
+    return {
+      conversation,
+      customerId: customer.id,
+      storeId: customer.storeId,
+      phone: customer.waPhone,
+    };
+  },
+
+  listConversationMessages(conversationId: string, limit = 200) {
+    const rows = conversationMessages.get(conversationId) ?? [];
+    return rows.slice(Math.max(0, rows.length - limit));
+  },
+
+  appendConversationMessage(input: {
+    conversationId: string;
+    customerId: string;
+    storeId: string;
+    direction: ConversationMessageDirection;
+    author: ConversationMessageAuthor;
+    body: string;
+    msgType?: string;
+    waMessageId?: string | null;
+    preview: string;
+    now: string;
+  }) {
+    const message: ConversationMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      conversationId: input.conversationId,
+      customerId: input.customerId,
+      direction: input.direction,
+      author: input.author,
+      body: input.body,
+      msgType: input.msgType ?? "text",
+      waMessageId: input.waMessageId ?? null,
+      createdAt: input.now,
+    };
+    const list = conversationMessages.get(input.conversationId) ?? [];
+    list.push(message);
+    conversationMessages.set(input.conversationId, list);
+
+    const current = this.getConversationById(input.conversationId);
+    if (current) {
+      conversations.set(current.customerId, {
+        ...current,
+        lastMessageAt: input.now,
+        lastMessagePreview: input.preview,
+      });
+    }
+    return message;
+  },
+
   getConversation(customerId: string) {
     return conversations.get(customerId) ?? null;
   },
@@ -896,6 +964,7 @@ export const memoryStore = {
           activatedAt: item.activatedAt ?? lastMessageAt,
           cartItemCount: item.context.cart?.length ?? 0,
           lastOrderCode: item.lastOrderCode ?? null,
+          lastMessagePreview: item.lastMessagePreview ?? null,
         };
       });
   },

@@ -17,6 +17,9 @@ import {
   type Category,
   type Conversation,
   type ConversationContext,
+  type ConversationMessage,
+  type ConversationMessageAuthor,
+  type ConversationMessageDirection,
   type ConversationState,
   type Crust,
   type Customer,
@@ -1458,7 +1461,32 @@ function mapConversation(data: Record<string, unknown>): Conversation {
     closedAt: data.closed_at ? String(data.closed_at) : null,
     lastOrderId: data.last_order_id != null ? String(data.last_order_id) : null,
     lastOrderCode: data.last_order_code != null ? String(data.last_order_code) : null,
+    lastMessagePreview:
+      data.last_message_preview != null ? String(data.last_message_preview) : null,
   };
+}
+
+function mapConversationMessage(row: Record<string, unknown>): ConversationMessage {
+  return {
+    id: String(row.id),
+    conversationId: String(row.conversation_id),
+    customerId: String(row.customer_id),
+    direction: row.direction === "inbound" ? "inbound" : "outbound",
+    author:
+      row.author === "customer"
+        ? "customer"
+        : row.author === "agent"
+          ? "agent"
+          : "bot",
+    body: String(row.body ?? ""),
+    msgType: String(row.msg_type ?? "text"),
+    waMessageId: row.wa_message_id != null ? String(row.wa_message_id) : null,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  };
+}
+
+function previewText(body: string) {
+  return body.replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
 /** Reinicia o cronômetro ao reabrir; mantém se já estava ativa. */
@@ -1677,8 +1705,131 @@ export async function listLiveConversations(hours = 24) {
       activatedAt: String(row.activated_at ?? lastMessageAt),
       cartItemCount: Array.isArray(context.cart) ? context.cart.length : 0,
       lastOrderCode: row.last_order_code != null ? String(row.last_order_code) : null,
+      lastMessagePreview:
+        row.last_message_preview != null ? String(row.last_message_preview) : null,
     };
   });
+}
+
+export async function listConversationMessages(conversationId: string, limit = 200) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listConversationMessages(conversationId, limit);
+
+  const { data, error } = await supabase
+    .from("conversation_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    if (error.message?.includes("conversation_messages")) {
+      throw new Error("Rode a migration 037_conversation_messages.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapConversationMessage(row as Record<string, unknown>));
+}
+
+export async function appendConversationMessage(input: {
+  conversationId: string;
+  customerId: string;
+  storeId: string;
+  direction: ConversationMessageDirection;
+  author: ConversationMessageAuthor;
+  body: string;
+  msgType?: string;
+  waMessageId?: string | null;
+}) {
+  const supabase = getSupabase();
+  const body = String(input.body ?? "").trim();
+  if (!body && input.msgType !== "location") return null;
+  const preview = previewText(body || "[mídia]");
+  const now = new Date().toISOString();
+
+  if (!supabase) {
+    return memoryStore.appendConversationMessage({
+      ...input,
+      body: body || "[mídia]",
+      preview,
+      now,
+    });
+  }
+
+  const { data, error } = await supabase
+    .from("conversation_messages")
+    .insert({
+      store_id: input.storeId,
+      conversation_id: input.conversationId,
+      customer_id: input.customerId,
+      direction: input.direction,
+      author: input.author,
+      body: body || "[mídia]",
+      msg_type: input.msgType ?? "text",
+      wa_message_id: input.waMessageId ?? null,
+      created_at: now,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    if (error.message?.includes("conversation_messages")) {
+      console.warn(
+        "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
+      );
+      return null;
+    }
+    throw new Error(error.message);
+  }
+
+  await supabase
+    .from("conversations")
+    .update({
+      last_message_at: now,
+      last_message_preview: preview,
+    })
+    .eq("id", input.conversationId);
+
+  return data ? mapConversationMessage(data as Record<string, unknown>) : null;
+}
+
+export async function findConversationByCustomerPhone(waPhone: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.findConversationByCustomerPhone(waPhone);
+
+  const digits = waPhone.replace(/\D/g, "");
+  const store = await getStore();
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, store_id, wa_phone")
+    .eq("store_id", store.id)
+    .limit(500);
+
+  const customer = (customers ?? []).find((row) => {
+    const phone = String(row.wa_phone ?? "").replace(/\D/g, "");
+    if (!phone) return false;
+    return (
+      phone === digits ||
+      phone.endsWith(digits.slice(-11)) ||
+      digits.endsWith(phone.slice(-11))
+    );
+  });
+
+  if (!customer) return null;
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("customer_id", customer.id)
+    .maybeSingle();
+
+  if (!conversation) return null;
+  return {
+    conversation: mapConversation(conversation as Record<string, unknown>),
+    customerId: String(customer.id),
+    storeId: String(customer.store_id),
+    phone: String(customer.wa_phone ?? ""),
+  };
 }
 
 /** Histórico = pedidos confirmados (conversa que virou pedido). */
