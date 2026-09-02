@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { resumeAfterHumanHandoff } from "../conversation/engine.js";
 import {
   appendConversationMessage,
   getConversationById,
@@ -156,10 +157,12 @@ conversationsRouter.post("/:id/release", async (req, res) => {
 
     const phone = await customerPhoneFor(updated.customerId);
     if (phone) {
-      await sendText(
+      // Usa state/context de antes do release (etapa em que o bot parou).
+      await resumeAfterHumanHandoff({
         phone,
-        "Atendimento humano encerrado. Pode continuar comigo por aqui — digite *menu* ou toque nas opções.",
-      );
+        state: current.state,
+        context: current.context,
+      });
     }
 
     res.json(updated);

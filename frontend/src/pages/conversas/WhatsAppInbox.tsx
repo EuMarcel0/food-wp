@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Avatar, Button, Empty, Input, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
+  CheckOutlined,
   RobotOutlined,
   SendOutlined,
   UserSwitchOutlined,
@@ -134,32 +135,92 @@ export function WhatsAppInbox({
   }, [messagesQuery.data, selectedId]);
 
   const sendMutation = useMutation({
-    mutationFn: (text: string) =>
-      api.sendConversationMessage(
-        selectedId!,
-        text,
-        displayName(user) || undefined,
-      ),
-    onSuccess: async () => {
-      setDraft("");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.conversations.all,
-      });
-      if (selectedId) {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.conversations.messages(selectedId),
+    mutationFn: ({
+      conversationId,
+      text,
+      tempId,
+    }: {
+      conversationId: string;
+      text: string;
+      tempId: string;
+    }) =>
+      api
+        .sendConversationMessage(
+          conversationId,
+          text,
+          displayName(user) || undefined,
+        )
+        .then((result) => ({ ...result, tempId, conversationId })),
+    onMutate: async ({ conversationId, text, tempId }) => {
+      const key = queryKeys.conversations.messages(conversationId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ConversationMessage[]>(key);
+
+      const optimistic: ConversationMessage = {
+        id: tempId,
+        conversationId,
+        customerId: selected?.customerId ?? "",
+        direction: "outbound",
+        author: "agent",
+        body: text,
+        msgType: "text",
+        createdAt: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData<ConversationMessage[]>(key, (current) => [
+        ...(current ?? []),
+        optimistic,
+      ]);
+
+      queryClient.setQueryData<LiveConversation[]>(
+        queryKeys.conversations.live,
+        (current) =>
+          (current ?? []).map((item) =>
+            item.id === conversationId
+              ? {
+                  ...item,
+                  handoffMode: "human" as const,
+                  handoffBy: displayName(user) || item.handoffBy,
+                  lastMessageAt: optimistic.createdAt,
+                  lastMessagePreview: text.slice(0, 160),
+                }
+              : item,
+          ),
+      );
+
+      return { previous, key };
+    },
+    onSuccess: async (result) => {
+      const key = queryKeys.conversations.messages(result.conversationId);
+      if (result.message) {
+        queryClient.setQueryData<ConversationMessage[]>(key, (current) => {
+          const list = current ?? [];
+          const withoutTemp = list.filter((item) => item.id !== result.tempId);
+          if (withoutTemp.some((item) => item.id === result.message!.id)) {
+            return withoutTemp;
+          }
+          return [...withoutTemp, result.message!];
         });
       }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations.live,
+      });
     },
-    onError: (err) => {
+    onError: (err, variables, context) => {
+      if (context?.previous && context.key) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
       toast.error(err instanceof Error ? err.message : "Falha ao enviar.");
     },
   });
 
   function submitMessage() {
     const text = draft.trim();
-    if (!text || !selectedId || sendMutation.isPending) return;
-    sendMutation.mutate(text);
+    if (!text || !selectedId) return;
+    const conversationId = selectedId;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setDraft("");
+    sendMutation.mutate({ conversationId, text, tempId });
   }
 
   return (
@@ -211,10 +272,10 @@ export function WhatsAppInbox({
                 type="button"
                 onClick={() => setSelectedId(item.id)}
                 className={cn(
-                  "flex w-full items-start gap-3 border-b border-food-border px-3 py-3 text-left transition",
+                  "flex w-full items-start gap-3 border-0 border-b border-l-2 border-solid border-b-black/[0.06] px-3 py-3 text-left transition dark:border-b-white/[0.08]",
                   active
-                    ? "bg-food-accent/10"
-                    : "bg-transparent hover:bg-food-surface",
+                    ? "border-l-food-accent bg-transparent bg-gradient-to-r from-food-accent/12 via-food-accent/[0.04] to-transparent dark:from-food-accent/[0.04] dark:via-food-accent/[0.015] dark:to-transparent"
+                    : "border-l-transparent bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]",
                 )}
               >
                 <Avatar
@@ -376,7 +437,6 @@ export function WhatsAppInbox({
                 <Button
                   type="primary"
                   icon={<SendOutlined />}
-                  loading={sendMutation.isPending}
                   disabled={!draft.trim()}
                   onClick={submitMessage}
                   aria-label="Enviar"
@@ -390,8 +450,23 @@ export function WhatsAppInbox({
   );
 }
 
+function MessageChecks({ pending }: { pending: boolean }) {
+  if (pending) {
+    return (
+      <CheckOutlined className="text-[11px] opacity-70" aria-label="Enviando" />
+    );
+  }
+  return (
+    <span className="relative inline-flex w-[14px]" aria-label="Enviado">
+      <CheckOutlined className="text-[11px] opacity-80" />
+      <CheckOutlined className="absolute left-[5px] text-[11px] opacity-80" />
+    </span>
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
+  const pending = message.id.startsWith("temp-");
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
@@ -400,6 +475,7 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           mine
             ? "rounded-br-md bg-[#d9fdd3] text-food-text dark:bg-[#005c4b] dark:text-white"
             : "rounded-bl-md bg-white text-food-text dark:bg-[#1f2c34] dark:text-white",
+          pending && "opacity-90",
         )}
       >
         {mine && message.author !== "customer" ? (
@@ -408,13 +484,9 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           </div>
         ) : null}
         <div className="whitespace-pre-wrap break-words">{message.body}</div>
-        <div
-          className={cn(
-            "mt-1 text-right text-[10px] opacity-60",
-            mine ? "" : "",
-          )}
-        >
-          {clock(message.createdAt)}
+        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-60">
+          <span>{clock(message.createdAt)}</span>
+          {mine ? <MessageChecks pending={pending} /> : null}
         </div>
       </div>
     </div>

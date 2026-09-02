@@ -377,16 +377,45 @@ function isOrderInProgress(state: ConversationState) {
   return isOrderFlowState(state);
 }
 
+/**
+ * Após devolver o atendimento ao bot: avisa o cliente e reenvia a etapa
+ * em que o fluxo parou (com botões/lista quando houver).
+ */
+export async function resumeAfterHumanHandoff(input: {
+  phone: string;
+  state: ConversationState;
+  context: ConversationContext;
+}) {
+  const store = await getStore();
+  await sendText(
+    input.phone,
+    "Atendimento humano encerrado. Vamos continuar de onde você parou!",
+  );
+  await resumeCurrentStep(input.phone, store, input.state, input.context, { afterHandoff: true });
+}
+
 /** Reenvia a última etapa do pedido (botões/lista), sem avançar o fluxo. */
-async function resumeCurrentStep(to: string, store: Store, state: ConversationState, context: ConversationContext) {
+async function resumeCurrentStep(
+  to: string,
+  store: Store,
+  state: ConversationState,
+  context: ConversationContext,
+  opts?: { afterHandoff?: boolean },
+) {
+  const hint = opts?.afterHandoff ? "" : RESUME_HINT;
+  const withHint = (text: string) => (hint ? `${hint}\n${text}` : text);
+  const sendHintIfNeeded = async () => {
+    if (hint) await sendText(to, hint);
+  };
+
   switch (state) {
     case "awaiting_product":
-      await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+      await showMenu(to, withHint("Escolha um item do cardápio:"));
       return;
     case "awaiting_option": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product || !isCustomizable(product)) {
-        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        await showMenu(to, withHint("Escolha um item do cardápio:"));
         return;
       }
       const drafts = context.draftSelections ?? [];
@@ -401,7 +430,7 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
             ) || current.options.map(item => item.name).join(" + ");
           await sendButtons(
             to,
-            `${RESUME_HINT}\n*${usesCatalogFlavors(openGroup) ? "Sabores" : openGroup.name}:*\n${shares}`,
+            withHint(`*${usesCatalogFlavors(openGroup) ? "Sabores" : openGroup.name}:*\n${shares}`),
             [
               { id: "more_options", title: "Mais um" },
               { id: "done_options", title: "Pronto" }
@@ -410,7 +439,7 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
           return;
         }
       }
-      await sendText(to, RESUME_HINT);
+      await sendHintIfNeeded();
       await askAssembly(to, product, context);
       return;
     }
@@ -418,7 +447,7 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       const crusts = await listCrusts();
       if (!product) {
-        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        await showMenu(to, withHint("Escolha um item do cardápio:"));
         return;
       }
       const matching = crustsForPizza(product, crusts);
@@ -426,24 +455,24 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
         await askQuantity(to, product, context.draftSelections ?? []);
         return;
       }
-      await sendText(to, RESUME_HINT);
+      await sendHintIfNeeded();
       await askCrusts(to, product, matching);
       return;
     }
     case "awaiting_addon": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product) {
-        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        await showMenu(to, withHint("Escolha um item do cardápio:"));
         return;
       }
-      await sendText(to, RESUME_HINT);
+      await sendHintIfNeeded();
       await askAddons(to, product, context.draftSelections);
       return;
     }
     case "awaiting_quantity": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product) {
-        await showMenu(to, `${RESUME_HINT}\nEscolha um item do cardápio:`);
+        await showMenu(to, withHint("Escolha um item do cardápio:"));
         return;
       }
       await askQuantity(to, product, context.draftSelections ?? []);
@@ -454,30 +483,30 @@ async function resumeCurrentStep(to: string, store: Store, state: ConversationSt
         await askItemNote(to, context.draftItem);
         return;
       }
-      await showCartPrompt(to, context, RESUME_HINT);
+      await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
       return;
     case "cart":
-      await showCartPrompt(to, context, RESUME_HINT);
+      await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
       return;
     case "awaiting_order_note":
-      await sendText(to, RESUME_HINT);
+      await sendHintIfNeeded();
       await askOrderNote(to);
       return;
     case "awaiting_fulfillment":
-      await askFulfillment(to, store, `${RESUME_HINT}\n\n${renderCart(context)}`);
+      await askFulfillment(to, store, hint ? `${hint}\n\n${renderCart(context)}` : renderCart(context));
       return;
     case "awaiting_neighborhood":
-      await sendText(to, RESUME_HINT);
+      await sendHintIfNeeded();
       await askNeighborhoods(to, store);
       return;
     case "awaiting_address": {
       const zone = (store.neighborhoods ?? []).find(item => item.id === context.neighborhoodId) ?? null;
-      await sendText(to, RESUME_HINT);
+      await sendHintIfNeeded();
       await goToAddress(to, zone);
       return;
     }
     case "awaiting_payment":
-      await askPayment(to, `${RESUME_HINT}\nComo deseja pagar?`);
+      await askPayment(to, withHint("Como deseja pagar?"));
       return;
     case "awaiting_change":
       await askChange(to, orderTotalCents(store, context));
