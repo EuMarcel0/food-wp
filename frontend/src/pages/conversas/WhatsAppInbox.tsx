@@ -580,9 +580,8 @@ function MessageChecks({ pending }: { pending: boolean }) {
 }
 
 function MessageActionsPreview({ actions }: { actions: ConversationMessageActions }) {
-  if (!actions.items.length) return null;
-
   if (actions.type === "buttons") {
+    if (!actions.items.length) return null;
     return (
       <div
         className="mt-2 space-y-1 border-t border-black/10 pt-2 dark:border-white/10"
@@ -601,33 +600,20 @@ function MessageActionsPreview({ actions }: { actions: ConversationMessageAction
     );
   }
 
+  if (!actions.listButtonLabel) return null;
+
   return (
     <div
       className="mt-2 border-t border-black/10 pt-2 dark:border-white/10"
       aria-hidden="true"
     >
-      {actions.listButtonLabel ? (
-        <div
-          className="pointer-events-none flex select-none items-center justify-center gap-1.5 rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]"
-          title="Lista enviada ao cliente (somente visualização)"
-        >
-          <UnorderedListOutlined className="text-xs" />
-          {actions.listButtonLabel}
-        </div>
-      ) : null}
-      <ul className="mt-1.5 space-y-0.5">
-        {actions.items.map((item) => (
-          <li
-            key={item.id ?? item.title}
-            className="pointer-events-none select-none rounded px-1 py-1 text-xs leading-snug opacity-80"
-          >
-            <span className="font-medium">{item.title}</span>
-            {item.description ? (
-              <span className="text-[11px] opacity-75"> · {item.description}</span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      <div
+        className="pointer-events-none flex select-none items-center justify-center gap-1.5 rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]"
+        title="Lista enviada ao cliente (somente visualização)"
+      >
+        <UnorderedListOutlined className="text-xs" />
+        {actions.listButtonLabel}
+      </div>
     </div>
   );
 }
