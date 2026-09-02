@@ -1,9 +1,8 @@
 import { useEffect, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Empty, Table, Tabs, Tag } from "antd";
+import { Alert, Avatar, Empty, Skeleton, Table, Tabs, Tag } from "antd";
 import { CommentOutlined } from "@ant-design/icons";
 import { FillTable } from "../../components/FillTable";
-import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { useDialog } from "../../dialog";
 import { useAuth } from "../../auth/AuthProvider";
@@ -20,10 +19,10 @@ import { displayName, generatedAvatar } from "../../lib/profile";
 import { queryKeys } from "../../lib/queryKeys";
 import { supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
-import { PAGE_SIZE, serverPagination } from "../../lib/pagination";
+import { useInfiniteSlice } from "../../lib/useInfiniteSlice";
 import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import { cn } from "../../lib/cn";
-import { listCards, listPage, tableClass, tableGridFill } from "../../ui";
+import { entityCard, listPage, tableClass, tableGridFill } from "../../ui";
 import type { ConversationHistoryItem, LiveConversation } from "../../types";
 import { WhatsAppInbox } from "./WhatsAppInbox";
 
@@ -36,17 +35,11 @@ export function ConversationsPage() {
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [tab, setTab] = useState<TabKey>("active");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(PAGE_SIZE);
   const listMode = tab === "history" && isDesktop;
   const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(
     listMode,
     tab,
   );
-
-  useEffect(() => {
-    setPage(1);
-  }, [tab]);
 
   const activeQuery = useQuery({
     queryKey: queryKeys.conversations.live,
@@ -177,14 +170,14 @@ export function ConversationsPage() {
   const activeItems = activeQuery.data ?? [];
   const historyItems = historyQuery.data ?? [];
   const humanCount = activeItems.filter((item) => item.handoffMode === "human").length;
-  const pagedHistory = historyItems.slice((page - 1) * limit, page * limit);
 
   return (
     <div
       className={cn(
         listPage,
         "min-h-0",
-        !isDesktop && "h-full max-lg:h-full max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
+        !isDesktop &&
+          "h-full max-lg:h-full max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
       )}
     >
       <PageHeader
@@ -200,7 +193,7 @@ export function ConversationsPage() {
         className={cn(
           "mb-0 shrink-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden",
           !isDesktop && mobileChatOpen && "max-lg:hidden",
-          !isDesktop && tab === "active" && "max-lg:[&_.ant-tabs-nav]:mb-2 max-lg:px-3",
+          !isDesktop && !mobileChatOpen && "max-lg:[&_.ant-tabs-nav]:mb-2 max-lg:px-3",
         )}
         items={[
           {
@@ -233,8 +226,7 @@ export function ConversationsPage() {
 
       {tab === "history" ? (
         <HistoryPane
-          items={isDesktop ? pagedHistory : historyItems}
-          allCount={historyItems.length}
+          items={historyItems}
           error={historyQuery.error}
           loading={historyQuery.isLoading}
           isDesktop={isDesktop}
@@ -242,12 +234,6 @@ export function ConversationsPage() {
           shellRef={shellRef}
           tableAreaRef={tableAreaRef}
           bodyHeight={bodyHeight}
-          page={page}
-          limit={limit}
-          onPageChange={(nextPage, nextSize) => {
-            setPage(nextPage);
-            setLimit(nextSize);
-          }}
         />
       ) : (
         <div
@@ -282,7 +268,6 @@ export function ConversationsPage() {
 
 function HistoryPane({
   items,
-  allCount,
   error,
   loading,
   isDesktop,
@@ -290,12 +275,8 @@ function HistoryPane({
   shellRef,
   tableAreaRef,
   bodyHeight,
-  page,
-  limit,
-  onPageChange,
 }: {
   items: ConversationHistoryItem[];
-  allCount: number;
   error: unknown;
   loading: boolean;
   isDesktop: boolean;
@@ -303,15 +284,37 @@ function HistoryPane({
   shellRef: RefObject<HTMLDivElement | null>;
   tableAreaRef: RefObject<HTMLDivElement | null>;
   bodyHeight: number;
-  page: number;
-  limit: number;
-  onPageChange: (page: number, pageSize: number) => void;
 }) {
+  const { visibleItems, hasMore, loadingMore, loadMore, sentinelRef } = useInfiniteSlice(
+    items,
+    undefined,
+    (item) => item.id,
+  );
+
+  useEffect(() => {
+    if (!listMode) return;
+    const area = tableAreaRef.current;
+    if (!area) return;
+
+    const body = area.querySelector<HTMLElement>(".ant-table-body");
+    if (!body) return;
+
+    const onScroll = () => {
+      if (body.scrollHeight - body.scrollTop - body.clientHeight < 96) {
+        loadMore();
+      }
+    };
+
+    body.addEventListener("scroll", onScroll, { passive: true });
+    return () => body.removeEventListener("scroll", onScroll);
+  }, [bodyHeight, listMode, loadMore, tableAreaRef, visibleItems.length]);
+
   if (error) {
     return (
       <Alert
         type="error"
         showIcon
+        className="mx-3 max-lg:mt-0"
         message="Não foi possível carregar o histórico"
         description={
           error instanceof Error ? error.message : "Tente de novo em instantes."
@@ -320,29 +323,33 @@ function HistoryPane({
     );
   }
 
-  if (!loading && allCount === 0) {
+  if (!loading && items.length === 0) {
     return (
       <Empty
-        className="rounded-2xl border border-food-border bg-food-surface py-16"
+        className="rounded-2xl border border-food-border bg-food-surface py-16 max-lg:mx-3 max-lg:rounded-none max-lg:border-x-0"
         description="Ainda não há pedidos vindos do WhatsApp."
       />
     );
   }
 
-  const pagination = serverPagination(page, limit, allCount, onPageChange);
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {listMode ? (
         <FillTable
           shellRef={shellRef}
           tableAreaRef={tableAreaRef}
-          pagination={pagination}
+          footer={
+            loadingMore ? (
+              <div className="border-t border-food-border px-4 py-3">
+                <Skeleton active title={false} paragraph={{ rows: 1, width: "100%" }} />
+              </div>
+            ) : null
+          }
         >
           <Table<ConversationHistoryItem>
             rowKey="id"
             loading={loading}
-            dataSource={items}
+            dataSource={visibleItems}
             pagination={false}
             scroll={{ x: 720, y: bodyHeight }}
             className={`${tableClass} ${tableGridFill}`}
@@ -396,19 +403,44 @@ function HistoryPane({
         </FillTable>
       ) : null}
 
-      <div className={cn(listCards, isDesktop && "hidden")}>
-        <MobileCardList
-          loading={loading}
-          isEmpty={allCount === 0}
-          empty="Ainda não há pedidos vindos do WhatsApp."
-          pagination={pagination}
-        >
-          {items.map((item) => (
-            <HistoryCard key={item.id} item={item} />
-          ))}
-        </MobileCardList>
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col overflow-hidden",
+          isDesktop && "hidden",
+        )}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+          {loading ? (
+            <HistoryCardsSkeleton count={5} />
+          ) : (
+            <div className="grid gap-3">
+              {visibleItems.map((item) => (
+                <HistoryCard key={item.id} item={item} />
+              ))}
+              {loadingMore ? <HistoryCardsSkeleton count={2} /> : null}
+              {hasMore ? <div ref={sentinelRef} className="h-px w-full" aria-hidden /> : null}
+              {!hasMore && visibleItems.length > 0 ? (
+                <p className="m-0 py-2 text-center text-xs text-food-muted">
+                  Fim do histórico
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function HistoryCardsSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className={entityCard}>
+          <Skeleton active title={{ width: "40%" }} paragraph={{ rows: 2, width: ["100%", "60%"] }} />
+        </div>
+      ))}
+    </>
   );
 }
 
