@@ -892,3 +892,7 @@ alter table public.conversations
   add column if not exists last_message_direction text
   check (last_message_direction is null or last_message_direction in ('inbound', 'outbound'));
 
+-- ========== 039_conversation_message_actions ==========
+alter table public.conversation_messages
+  add column if not exists actions jsonb;
+

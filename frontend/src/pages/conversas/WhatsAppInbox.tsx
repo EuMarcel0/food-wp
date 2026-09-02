@@ -7,6 +7,7 @@ import {
   CloseCircleOutlined,
   RobotOutlined,
   SendOutlined,
+  UnorderedListOutlined,
   UserSwitchOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../auth/AuthProvider";
@@ -24,7 +25,11 @@ import {
   markConversationRead,
 } from "../../lib/conversationBadge";
 import { useConversationViewing, CONVERSATIONS_LIVE_EVENT } from "../../conversations/ConversationAlerts";
-import type { ConversationMessage, LiveConversation } from "../../types";
+import type {
+  ConversationMessage,
+  ConversationMessageActions,
+  LiveConversation,
+} from "../../types";
 
 function relativeTime(iso: string) {
   const ms = Date.now() - Date.parse(iso);
@@ -574,6 +579,59 @@ function MessageChecks({ pending }: { pending: boolean }) {
   );
 }
 
+function MessageActionsPreview({ actions }: { actions: ConversationMessageActions }) {
+  if (!actions.items.length) return null;
+
+  if (actions.type === "buttons") {
+    return (
+      <div
+        className="mt-2 space-y-1 border-t border-black/10 pt-2 dark:border-white/10"
+        aria-hidden="true"
+      >
+        {actions.items.map((item) => (
+          <div
+            key={item.id ?? item.title}
+            className="pointer-events-none select-none rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium leading-tight text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]"
+            title="Opção enviada ao cliente (somente visualização)"
+          >
+            {item.title}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-2 border-t border-black/10 pt-2 dark:border-white/10"
+      aria-hidden="true"
+    >
+      {actions.listButtonLabel ? (
+        <div
+          className="pointer-events-none flex select-none items-center justify-center gap-1.5 rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]"
+          title="Lista enviada ao cliente (somente visualização)"
+        >
+          <UnorderedListOutlined className="text-xs" />
+          {actions.listButtonLabel}
+        </div>
+      ) : null}
+      <ul className="mt-1.5 space-y-0.5">
+        {actions.items.map((item) => (
+          <li
+            key={item.id ?? item.title}
+            className="pointer-events-none select-none rounded px-1 py-1 text-xs leading-snug opacity-80"
+          >
+            <span className="font-medium">{item.title}</span>
+            {item.description ? (
+              <span className="text-[11px] opacity-75"> · {item.description}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
   const pending = message.id.startsWith("temp-");
@@ -594,6 +652,7 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           </div>
         ) : null}
         <div className="whitespace-pre-wrap break-words">{message.body}</div>
+        {message.actions ? <MessageActionsPreview actions={message.actions} /> : null}
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-60">
           <span>{clock(message.createdAt)}</span>
           {mine ? <MessageChecks pending={pending} /> : null}

@@ -18,6 +18,7 @@ import {
   type Conversation,
   type ConversationContext,
   type ConversationMessage,
+  type ConversationMessageActions,
   type ConversationMessageAuthor,
   type ConversationMessageDirection,
   type ConversationState,
@@ -1470,6 +1471,36 @@ function mapConversation(data: Record<string, unknown>): Conversation {
   };
 }
 
+function mapMessageActions(value: unknown): ConversationMessageActions | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const type = raw.type === "list" ? "list" : raw.type === "buttons" ? "buttons" : null;
+  if (!type) return null;
+  const items = Array.isArray(raw.items)
+    ? raw.items
+        .map((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+          const row = item as Record<string, unknown>;
+          const title = String(row.title ?? "").trim();
+          if (!title) return null;
+          return {
+            id: row.id != null ? String(row.id) : undefined,
+            title,
+            description:
+              row.description != null ? String(row.description).trim() || undefined : undefined,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null)
+    : [];
+  if (!items.length) return null;
+  return {
+    type,
+    items,
+    listButtonLabel:
+      raw.listButtonLabel != null ? String(raw.listButtonLabel).trim() || undefined : undefined,
+  };
+}
+
 function mapConversationMessage(row: Record<string, unknown>): ConversationMessage {
   return {
     id: String(row.id),
@@ -1484,6 +1515,7 @@ function mapConversationMessage(row: Record<string, unknown>): ConversationMessa
           : "bot",
     body: String(row.body ?? ""),
     msgType: String(row.msg_type ?? "text"),
+    actions: mapMessageActions(row.actions),
     waMessageId: row.wa_message_id != null ? String(row.wa_message_id) : null,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
@@ -1818,6 +1850,7 @@ export async function appendConversationMessage(input: {
   author: ConversationMessageAuthor;
   body: string;
   msgType?: string;
+  actions?: ConversationMessageActions | null;
   waMessageId?: string | null;
 }) {
   const supabase = getSupabase();
@@ -1845,21 +1878,55 @@ export async function appendConversationMessage(input: {
       author: input.author,
       body: body || "[mídia]",
       msg_type: input.msgType ?? "text",
+      actions: input.actions ?? null,
       wa_message_id: input.waMessageId ?? null,
       created_at: now,
     })
     .select("*")
     .single();
 
+  let messageRow = data;
   if (error) {
-    if (error.message?.includes("conversation_messages")) {
+    if (error.message?.includes("actions")) {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("conversation_messages")
+        .insert({
+          store_id: input.storeId,
+          conversation_id: input.conversationId,
+          customer_id: input.customerId,
+          direction: input.direction,
+          author: input.author,
+          body: body || "[mídia]",
+          msg_type: input.msgType ?? "text",
+          wa_message_id: input.waMessageId ?? null,
+          created_at: now,
+        })
+        .select("*")
+        .single();
+      if (fallbackError) {
+        if (fallbackError.message?.includes("conversation_messages")) {
+          console.warn(
+            "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
+          );
+          return null;
+        }
+        throw new Error(fallbackError.message);
+      }
+      console.warn(
+        "Rode a migration 039_conversation_message_actions.sql no Supabase.",
+      );
+      messageRow = fallbackData;
+    } else if (error.message?.includes("conversation_messages")) {
       console.warn(
         "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
       );
       return null;
+    } else {
+      throw new Error(error.message);
     }
-    throw new Error(error.message);
   }
+
+  if (!messageRow) return null;
 
   const { error: convError } = await supabase
     .from("conversations")
@@ -1892,7 +1959,7 @@ export async function appendConversationMessage(input: {
     console.warn("[message-log] falha ao atualizar conversa:", convError.message);
   }
 
-  return data ? mapConversationMessage(data as Record<string, unknown>) : null;
+  return mapConversationMessage(messageRow as Record<string, unknown>);
 }
 
 export async function findConversationByCustomerPhone(waPhone: string) {

@@ -272,37 +272,38 @@ export function DashboardPage() {
         kicker="Cozinha"
         title={title}
         subtitle={subtitle}
-        extra={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <StatusPill
-              ok={openNow}
-              okLabel="Aberto agora"
-              badLabel="Fora do horário"
-            />
-            <StatusPill
-              ok={Boolean(health?.whatsapp)}
-              okLabel="WhatsApp ok"
-              badLabel="WhatsApp pendente"
-            />
-            <StatusPill
-              ok={Boolean(store?.autoAcceptOrders)}
-              okLabel="Aceite automático"
-              badLabel="Aceite manual"
-            />
-            <DatePicker
-              allowClear={false}
-              format="DD/MM/YYYY"
-              value={day}
-              onChange={onDayChange}
-              disabledDate={(current) =>
-                Boolean(current && current.isAfter(dayjs(), "day"))
-              }
-              className="w-[148px]"
-              placeholder="Data"
-            />
-          </div>
+        titleExtra={
+          <DatePicker
+            allowClear={false}
+            format="DD/MM/YYYY"
+            value={day}
+            onChange={onDayChange}
+            disabledDate={(current) =>
+              Boolean(current && current.isAfter(dayjs(), "day"))
+            }
+            className="w-[148px]"
+            placeholder="Data"
+          />
         }
       />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPill
+          ok={openNow}
+          okLabel="Aberto agora"
+          badLabel="Fora do horário"
+        />
+        <StatusPill
+          ok={Boolean(health?.whatsapp)}
+          okLabel="WhatsApp ok"
+          badLabel="WhatsApp pendente"
+        />
+        <StatusPill
+          ok={Boolean(store?.autoAcceptOrders)}
+          okLabel="Aceite automático"
+          badLabel="Aceite manual"
+        />
+      </div>
 
       {/* Passagem principal: fila em destaque + métricas do dia */}
       <section className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1.85fr)] gap-4 max-xl:grid-cols-1">

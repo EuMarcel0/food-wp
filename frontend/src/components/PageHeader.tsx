@@ -8,6 +8,7 @@ export function PageHeader({
   title,
   subtitle,
   extra,
+  titleExtra,
   className,
   kickerClassName,
 }: {
@@ -15,21 +16,28 @@ export function PageHeader({
   title: string;
   subtitle?: string;
   extra?: ReactNode;
+  /** Alinhado à direita na mesma linha do título (ex.: datepicker). */
+  titleExtra?: ReactNode;
   className?: string;
   kickerClassName?: string;
 }) {
   return (
     <div className={cn("flex items-start justify-between gap-4 max-sm:flex-col max-sm:items-stretch", className ?? "mb-5")}>
-      <div>
+      <div className="min-w-0 flex-1">
         {kickerLabel ? (
           <p className={cn(kicker, kickerClassName)}>{kickerLabel}</p>
         ) : null}
-        <Typography.Title
-          level={3}
-          className="min-h-[1.35em] !mt-0 !mb-1 font-extrabold tracking-tight text-pretty max-sm:!text-2xl"
-        >
-          {title}
-        </Typography.Title>
+        <div className="flex items-center justify-between gap-4">
+          <Typography.Title
+            level={3}
+            className="min-h-[1.35em] !mt-0 !mb-1 min-w-0 flex-1 font-extrabold tracking-tight text-pretty max-sm:!text-2xl"
+          >
+            {title}
+          </Typography.Title>
+          {titleExtra ? (
+            <div className="shrink-0 max-sm:self-end">{titleExtra}</div>
+          ) : null}
+        </div>
         {subtitle ? (
           <Typography.Paragraph
             type="secondary"

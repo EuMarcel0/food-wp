@@ -36,8 +36,21 @@ export type ConversationMessage = {
   author: "customer" | "bot" | "agent";
   body: string;
   msgType: string;
+  actions?: ConversationMessageActions | null;
   waMessageId?: string | null;
   createdAt: string;
+};
+
+export type ConversationMessageActionItem = {
+  id?: string;
+  title: string;
+  description?: string;
+};
+
+export type ConversationMessageActions = {
+  type: "buttons" | "list";
+  items: ConversationMessageActionItem[];
+  listButtonLabel?: string;
 };
 
 export type ConversationHistoryItem = {

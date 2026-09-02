@@ -267,6 +267,19 @@ export type LiveConversation = {
 export type ConversationMessageAuthor = "customer" | "bot" | "agent";
 export type ConversationMessageDirection = "inbound" | "outbound";
 
+export type ConversationMessageActionItem = {
+  id?: string;
+  title: string;
+  description?: string;
+};
+
+export type ConversationMessageActions = {
+  type: "buttons" | "list";
+  items: ConversationMessageActionItem[];
+  /** Rótulo do botão que abre a lista no WhatsApp. */
+  listButtonLabel?: string;
+};
+
 export type ConversationMessage = {
   id: string;
   conversationId: string;
@@ -275,6 +288,7 @@ export type ConversationMessage = {
   author: ConversationMessageAuthor;
   body: string;
   msgType: string;
+  actions?: ConversationMessageActions | null;
   waMessageId?: string | null;
   createdAt: string;
 };

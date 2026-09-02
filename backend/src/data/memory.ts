@@ -16,6 +16,7 @@ import {
   type Conversation,
   type ConversationContext,
   type ConversationMessage,
+  type ConversationMessageActions,
   type ConversationMessageAuthor,
   type ConversationMessageDirection,
   type ConversationState,
@@ -791,6 +792,7 @@ export const memoryStore = {
     author: ConversationMessageAuthor;
     body: string;
     msgType?: string;
+    actions?: ConversationMessageActions | null;
     waMessageId?: string | null;
     preview: string;
     now: string;
@@ -803,6 +805,7 @@ export const memoryStore = {
       author: input.author,
       body: input.body,
       msgType: input.msgType ?? "text",
+      actions: input.actions ?? null,
       waMessageId: input.waMessageId ?? null,
       createdAt: input.now,
     };
