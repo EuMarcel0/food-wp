@@ -1468,6 +1468,7 @@ function mapConversation(data: Record<string, unknown>): Conversation {
       data.last_message_direction === "inbound" || data.last_message_direction === "outbound"
         ? data.last_message_direction
         : null,
+    lastInboundAt: data.last_inbound_at ? String(data.last_inbound_at) : null,
   };
 }
 
@@ -1816,6 +1817,7 @@ export async function listLiveConversations(_hours = 24) {
         parseLastMessageDirection(row.last_message_direction) ??
         fallbackDirections.get(id) ??
         null,
+      lastInboundAt: row.last_inbound_at ? String(row.last_inbound_at) : null,
     };
   });
 }
@@ -1932,10 +1934,45 @@ export async function appendConversationMessage(input: {
       last_message_at: now,
       last_message_preview: preview,
       last_message_direction: input.direction,
+      ...(input.direction === "inbound" ? { last_inbound_at: now } : {}),
     })
     .eq("id", input.conversationId);
 
-  if (convError?.message?.includes("last_message_direction")) {
+  if (convError?.message?.includes("last_inbound_at")) {
+    const { error: directionFallbackError } = await supabase
+      .from("conversations")
+      .update({
+        last_message_at: now,
+        last_message_preview: preview,
+        last_message_direction: input.direction,
+      })
+      .eq("id", input.conversationId);
+    if (directionFallbackError?.message?.includes("last_message_direction")) {
+      const { error: fallbackError } = await supabase
+        .from("conversations")
+        .update({
+          last_message_at: now,
+          last_message_preview: preview,
+        })
+        .eq("id", input.conversationId);
+      if (fallbackError) {
+        console.warn(
+          "[message-log] falha ao atualizar conversa:",
+          fallbackError.message,
+        );
+      } else {
+        console.warn(
+          "Rode a migration 038_conversation_last_message_direction.sql no Supabase.",
+        );
+      }
+    } else if (directionFallbackError) {
+      console.warn("[message-log] falha ao atualizar conversa:", directionFallbackError.message);
+    } else {
+      console.warn(
+        "Rode a migration 040_conversation_last_inbound_at.sql no Supabase.",
+      );
+    }
+  } else if (convError?.message?.includes("last_message_direction")) {
     const { error: fallbackError } = await supabase
       .from("conversations")
       .update({

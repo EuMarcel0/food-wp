@@ -28,6 +28,14 @@ export function markConversationRead(conversationId: string, lastMessageAt: stri
   window.dispatchEvent(new Event(CONVERSATION_READ_EVENT));
 }
 
+function unreadProbeAt(conversation: LiveConversation) {
+  if (conversation.lastInboundAt) return conversation.lastInboundAt;
+  if (conversation.lastMessageDirection === "inbound") {
+    return conversation.lastMessageAt;
+  }
+  return null;
+}
+
 /** Primeira carga: não alerta nem marca tudo como não lido. */
 export function primeConversationReadState(conversations: LiveConversation[]) {
   if (!conversations.length) return;
@@ -35,8 +43,9 @@ export function primeConversationReadState(conversations: LiveConversation[]) {
     const state = readConversationReadAt();
     let changed = false;
     for (const conv of conversations) {
-      if (!conv.lastMessageAt || state[conv.id]) continue;
-      state[conv.id] = conv.lastMessageAt;
+      const probe = unreadProbeAt(conv) ?? conv.lastMessageAt;
+      if (!probe || state[conv.id]) continue;
+      state[conv.id] = probe;
       changed = true;
     }
     if (changed) {
@@ -48,10 +57,14 @@ export function primeConversationReadState(conversations: LiveConversation[]) {
 }
 
 export function isConversationUnread(conversation: LiveConversation) {
-  if (!conversation.lastMessageAt) return false;
-  if (conversation.lastMessageDirection !== "inbound") return false;
+  const probeAt = unreadProbeAt(conversation);
+  if (!probeAt) return false;
   const readAt = readConversationReadAt()[conversation.id] ?? "";
-  return conversation.lastMessageAt > readAt;
+  return probeAt > readAt;
+}
+
+export function conversationReadCursor(conversation: LiveConversation) {
+  return unreadProbeAt(conversation) ?? conversation.lastMessageAt;
 }
 
 export function countUnreadConversations(conversations: LiveConversation[]) {

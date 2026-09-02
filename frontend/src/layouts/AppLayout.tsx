@@ -98,7 +98,10 @@ export function AppLayout() {
   });
   const liveConversations = liveQuery.data ?? [];
   const liveKey = liveConversations
-    .map((item) => `${item.id}:${item.lastMessageAt}:${item.lastMessageDirection ?? ""}`)
+    .map(
+      (item) =>
+        `${item.id}:${item.lastMessageAt}:${item.lastInboundAt ?? ""}:${item.lastMessageDirection ?? ""}`,
+    )
     .join("|");
   const hasUnread = useMemo(
     () => hasUnreadConversations(liveConversations),

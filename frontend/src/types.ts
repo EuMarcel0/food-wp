@@ -26,6 +26,7 @@ export type LiveConversation = {
   lastOrderCode?: string | null;
   lastMessagePreview?: string | null;
   lastMessageDirection?: "inbound" | "outbound" | null;
+  lastInboundAt?: string | null;
 };
 
 export type ConversationMessage = {

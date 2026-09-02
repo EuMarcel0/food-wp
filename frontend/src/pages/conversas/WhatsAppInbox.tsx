@@ -21,6 +21,7 @@ import { toast } from "../../lib/toast";
 import { cn } from "../../lib/cn";
 import {
   CONVERSATION_READ_EVENT,
+  conversationReadCursor,
   isConversationUnread,
   markConversationRead,
 } from "../../lib/conversationBadge";
@@ -134,9 +135,11 @@ export function WhatsAppInbox({
   }, [selectedId, setViewingConversationId]);
 
   useEffect(() => {
-    if (!selected?.id || !selected.lastMessageAt) return;
-    markConversationRead(selected.id, selected.lastMessageAt);
-  }, [selected?.id, selected?.lastMessageAt]);
+    if (!selected?.id) return;
+    const cursor = conversationReadCursor(selected);
+    if (!cursor) return;
+    markConversationRead(selected.id, cursor);
+  }, [selected?.id, selected?.lastMessageAt, selected?.lastInboundAt, selected?.lastMessageDirection]);
 
   const unreadIds = useMemo(() => {
     const ids = new Set<string>();

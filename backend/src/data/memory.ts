@@ -820,6 +820,8 @@ export const memoryStore = {
         lastMessageAt: input.now,
         lastMessagePreview: input.preview,
         lastMessageDirection: input.direction,
+        lastInboundAt:
+          input.direction === "inbound" ? input.now : current.lastInboundAt ?? null,
       });
     }
     return message;
@@ -987,6 +989,7 @@ export const memoryStore = {
           lastMessagePreview: item.lastMessagePreview ?? null,
           lastMessageDirection:
             item.lastMessageDirection ?? lastMessage?.direction ?? null,
+          lastInboundAt: item.lastInboundAt ?? null,
         };
       });
   },

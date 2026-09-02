@@ -241,6 +241,8 @@ export type Conversation = {
   lastOrderCode?: string | null;
   lastMessagePreview?: string | null;
   lastMessageDirection?: ConversationMessageDirection | null;
+  /** Última mensagem do cliente — não muda quando o bot responde. */
+  lastInboundAt?: string | null;
 };
 
 export type LiveConversation = {
@@ -260,6 +262,7 @@ export type LiveConversation = {
   lastOrderCode?: string | null;
   lastMessagePreview?: string | null;
   lastMessageDirection?: ConversationMessageDirection | null;
+  lastInboundAt?: string | null;
 };
 
 export type ConversationMessageAuthor = "customer" | "bot" | "agent";

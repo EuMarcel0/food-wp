@@ -8,6 +8,8 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  CONVERSATION_READ_EVENT,
+  conversationReadCursor,
   markConversationRead,
   primeConversationReadState,
 } from "../lib/conversationBadge";
@@ -40,12 +42,12 @@ export function useConversationAlerts(
   viewingConversationId: string | null,
   realtimeEnabled: boolean,
 ) {
-  const prevAt = useRef<Map<string, string>>(new Map());
+  const prevInboundAt = useRef<Map<string, string>>(new Map());
   const primed = useRef(false);
   const conversationsKey = conversations
     .map(
       (conv) =>
-        `${conv.id}:${conv.lastMessageAt}:${conv.lastMessageDirection ?? ""}`,
+        `${conv.id}:${conv.lastMessageAt}:${conv.lastInboundAt ?? ""}:${conv.lastMessageDirection ?? ""}`,
     )
     .join("|");
 
@@ -55,7 +57,8 @@ export function useConversationAlerts(
     if (!primed.current) {
       primeConversationReadState(conversations);
       for (const conv of conversations) {
-        prevAt.current.set(conv.id, conv.lastMessageAt);
+        const probe = conversationReadCursor(conv);
+        prevInboundAt.current.set(conv.id, probe);
       }
       primed.current = true;
       return;
@@ -64,28 +67,31 @@ export function useConversationAlerts(
     // Com Supabase Realtime, o som é disparado no INSERT de mensagem.
     if (realtimeEnabled) {
       for (const conv of conversations) {
-        prevAt.current.set(conv.id, conv.lastMessageAt);
+        const probe = conversationReadCursor(conv);
+        prevInboundAt.current.set(conv.id, probe);
         if (conv.id === viewingConversationId) {
-          markConversationRead(conv.id, conv.lastMessageAt);
+          markConversationRead(conv.id, probe);
         }
       }
       return;
     }
 
     for (const conv of conversations) {
-      const prev = prevAt.current.get(conv.id) ?? "";
-      if (conv.lastMessageAt <= prev) continue;
+      const probe = conversationReadCursor(conv);
+      const prev = prevInboundAt.current.get(conv.id) ?? "";
+      if (probe <= prev) continue;
 
-      prevAt.current.set(conv.id, conv.lastMessageAt);
+      prevInboundAt.current.set(conv.id, probe);
 
       if (conv.id === viewingConversationId) {
-        markConversationRead(conv.id, conv.lastMessageAt);
+        markConversationRead(conv.id, probe);
         continue;
       }
 
-      if (conv.lastMessageDirection !== "inbound") continue;
+      if (!conv.lastInboundAt && conv.lastMessageDirection !== "inbound") continue;
 
       playNewMessageSound();
+      window.dispatchEvent(new Event(CONVERSATION_READ_EVENT));
     }
   }, [conversationsKey, realtimeEnabled, viewingConversationId]);
 }
@@ -102,13 +108,12 @@ export function ConversationAlertsProvider({
     null,
   );
   const viewingIdRef = useRef<string | null>(null);
-  const realtimeEnabled = Boolean(supabase);
 
   useEffect(() => {
     viewingIdRef.current = viewingConversationId;
   }, [viewingConversationId]);
 
-  useConversationAlerts(conversations, viewingConversationId, realtimeEnabled);
+  useConversationAlerts(conversations, viewingConversationId, Boolean(supabase));
 
   useEffect(() => {
     const client = supabase;
@@ -132,12 +137,18 @@ export function ConversationAlertsProvider({
           const row = payload.new as Record<string, unknown> | undefined;
           if (row?.direction !== "inbound") return;
 
+          playNewMessageSound();
+          window.dispatchEvent(new Event(CONVERSATION_READ_EVENT));
+
           const conversationId = row.conversation_id
             ? String(row.conversation_id)
             : "";
-          if (!conversationId || conversationId === viewingIdRef.current) return;
+          if (!conversationId || conversationId !== viewingIdRef.current) return;
 
-          playNewMessageSound();
+          const createdAt = row.created_at ? String(row.created_at) : "";
+          if (createdAt) {
+            markConversationRead(conversationId, createdAt);
+          }
         },
       )
       .on(
