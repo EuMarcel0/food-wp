@@ -131,6 +131,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_payment: "Pagamento",
   awaiting_change: "Troco",
   awaiting_order_code: "Consultando pedido",
+  awaiting_new_order: "Novo pedido?",
 };
 
 export function conversationStateLabel(state: string) {

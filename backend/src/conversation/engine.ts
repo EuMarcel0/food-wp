@@ -383,15 +383,45 @@ function isOrderInProgress(state: ConversationState) {
  */
 export async function resumeAfterHumanHandoff(input: {
   phone: string;
+  customerId: string;
   state: ConversationState;
   context: ConversationContext;
 }) {
   const store = await getStore();
+  const latest = await findLatestOrder(input.customerId);
+  const afterDelivered =
+    input.state === "welcome" &&
+    !(input.context.cart?.length ?? 0) &&
+    latest?.status === "delivered";
+
+  if (afterDelivered) {
+    const customer = await upsertCustomer(input.phone);
+    await saveConversation(customer, "awaiting_new_order", emptyContext(), { reopen: true });
+    await askNewOrderAfterHandoff(input.phone);
+    return;
+  }
+
   await sendText(
     input.phone,
     "Atendimento humano encerrado. Vamos continuar de onde você parou!",
   );
   await resumeCurrentStep(input.phone, store, input.state, input.context, { afterHandoff: true });
+}
+
+async function askNewOrderAfterHandoff(to: string) {
+  await sendButtons(
+    to,
+    [
+      "Atendimento humano encerrado. Seu último pedido já está *entregue*.",
+      "Deseja solicitar um *novo pedido*?",
+      "",
+      "Selecione uma das opções ou digite qualquer coisa.",
+    ].join("\n"),
+    [
+      { id: "handoff_new_order:yes", title: "Sim" },
+      { id: "handoff_new_order:no", title: "Não" },
+    ],
+  );
 }
 
 /** Reenvia a última etapa do pedido (botões/lista), sem avançar o fluxo. */
@@ -513,6 +543,9 @@ async function resumeCurrentStep(
       return;
     case "awaiting_order_code":
       await sendText(to, "Me envie o código do pedido (ex.: A7K2).");
+      return;
+    case "awaiting_new_order":
+      await askNewOrderAfterHandoff(to);
       return;
     default:
       await showWelcome(to, store.name);
@@ -1232,6 +1265,30 @@ export async function handleIncomingMessage(input: {
     }
     await persist("awaiting_payment", context);
     await askPayment(input.from);
+    return;
+  }
+
+  if (state === "awaiting_new_order") {
+    const yes =
+      incoming === "handoff_new_order:yes" ||
+      ["sim", "s", "yes", "quero", "order", "fazer pedido", "pedir"].includes(normalized);
+    const no = incoming === "handoff_new_order:no" || ["nao", "n", "no"].includes(normalized);
+
+    if (yes) {
+      await persist("awaiting_product", emptyContext());
+      await showMenu(input.from, "🍕 Vamos montar seu pedido. Escolha o primeiro item:");
+      return;
+    }
+    if (no) {
+      await persist("welcome", emptyContext());
+      await sendText(
+        input.from,
+        "Tudo bem! Quando quiser pedir de novo, é só mandar uma mensagem. 😊",
+      );
+      return;
+    }
+    await persist("awaiting_new_order", context);
+    await askNewOrderAfterHandoff(input.from);
     return;
   }
 

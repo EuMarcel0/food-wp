@@ -164,6 +164,7 @@ conversationsRouter.post("/:id/release", async (req, res) => {
       // Usa state/context de antes do release (etapa em que o bot parou).
       await resumeAfterHumanHandoff({
         phone,
+        customerId: current.customerId,
         state: current.state,
         context: current.context,
       });

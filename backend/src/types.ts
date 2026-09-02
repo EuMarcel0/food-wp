@@ -25,7 +25,8 @@ export type ConversationState =
   | "awaiting_address"
   | "awaiting_payment"
   | "awaiting_change"
-  | "awaiting_order_code";
+  | "awaiting_order_code"
+  | "awaiting_new_order";
 
 /** Estados em que a conversa volta a aparecer em Ativas (pedido em montagem). */
 export const ORDER_FLOW_STATES = new Set<ConversationState>([
