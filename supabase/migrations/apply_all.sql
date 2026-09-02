@@ -887,3 +887,8 @@ begin
   end if;
 end $$;
 
+-- ========== 038_conversation_last_message_direction ==========
+alter table public.conversations
+  add column if not exists last_message_direction text
+  check (last_message_direction is null or last_message_direction in ('inbound', 'outbound'));
+

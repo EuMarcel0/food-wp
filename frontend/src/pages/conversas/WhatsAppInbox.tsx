@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Button, Empty, Input, Spin, Tag } from "antd";
+import { Alert, Avatar, Badge, Button, Empty, Input, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
   CheckOutlined,
@@ -17,6 +17,12 @@ import { queryKeys } from "../../lib/queryKeys";
 import { supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
 import { cn } from "../../lib/cn";
+import {
+  CONVERSATION_READ_EVENT,
+  isConversationUnread,
+  markConversationRead,
+} from "../../lib/conversationBadge";
+import { useConversationViewing } from "../../conversations/ConversationAlerts";
 import type { ConversationMessage, LiveConversation } from "../../types";
 
 function relativeTime(iso: string) {
@@ -63,10 +69,12 @@ export function WhatsAppInbox({
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { setViewingConversationId } = useConversationViewing();
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
+  const [readTick, setReadTick] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
@@ -92,6 +100,30 @@ export function WhatsAppInbox({
   }, [filtered, selectedId, isDesktop]);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
+
+  useEffect(() => {
+    setViewingConversationId(selectedId);
+    return () => setViewingConversationId(null);
+  }, [selectedId, setViewingConversationId]);
+
+  useEffect(() => {
+    if (!selected?.id || !selected.lastMessageAt) return;
+    markConversationRead(selected.id, selected.lastMessageAt);
+  }, [selected?.id, selected?.lastMessageAt]);
+
+  const unreadIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of items) {
+      if (isConversationUnread(item)) ids.add(item.id);
+    }
+    return ids;
+  }, [items, readTick]);
+
+  useEffect(() => {
+    const onRead = () => setReadTick((value) => value + 1);
+    window.addEventListener(CONVERSATION_READ_EVENT, onRead);
+    return () => window.removeEventListener(CONVERSATION_READ_EVENT, onRead);
+  }, []);
 
   const messagesQuery = useQuery({
     queryKey: queryKeys.conversations.messages(selectedId ?? ""),
@@ -183,10 +215,13 @@ export function WhatsAppInbox({
                   handoffBy: displayName(user) || item.handoffBy,
                   lastMessageAt: optimistic.createdAt,
                   lastMessagePreview: text.slice(0, 160),
+                  lastMessageDirection: "outbound" as const,
                 }
               : item,
           ),
       );
+
+      markConversationRead(conversationId, optimistic.createdAt);
 
       return { previous, key };
     },
@@ -266,11 +301,15 @@ export function WhatsAppInbox({
           {filtered.map((item) => {
             const active = item.id === selectedId;
             const human = item.handoffMode === "human";
+            const unread = unreadIds.has(item.id);
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => {
+                  setSelectedId(item.id);
+                  markConversationRead(item.id, item.lastMessageAt);
+                }}
                 className={cn(
                   "flex w-full items-start gap-3 border-0 border-b border-l-2 border-solid border-b-black/[0.06] px-3 py-3 text-left transition dark:border-b-white/[0.08]",
                   active
@@ -278,21 +317,33 @@ export function WhatsAppInbox({
                     : "border-l-transparent bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]",
                 )}
               >
-                <Avatar
-                  size={40}
-                  src={
-                    item.customerAvatarUrl ||
-                    generatedAvatar(item.customerName || item.customerPhone)
-                  }
-                >
-                  {(item.customerName || item.customerPhone || "?").slice(0, 1).toUpperCase()}
-                </Avatar>
+                <Badge dot={unread} color="#22c55e" offset={[-2, 34]}>
+                  <Avatar
+                    size={40}
+                    src={
+                      item.customerAvatarUrl ||
+                      generatedAvatar(item.customerName || item.customerPhone)
+                    }
+                  >
+                    {(item.customerName || item.customerPhone || "?").slice(0, 1).toUpperCase()}
+                  </Avatar>
+                </Badge>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="truncate font-semibold text-food-text">
+                    <span
+                      className={cn(
+                        "truncate text-food-text",
+                        unread ? "font-bold" : "font-semibold",
+                      )}
+                    >
                       {customerLabel(item)}
                     </span>
-                    <span className="shrink-0 text-[11px] text-food-muted">
+                    <span
+                      className={cn(
+                        "shrink-0 text-[11px]",
+                        unread ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-food-muted",
+                      )}
+                    >
                       {relativeTime(item.lastMessageAt)}
                     </span>
                   </div>
@@ -308,7 +359,12 @@ export function WhatsAppInbox({
                       {conversationStateLabel(item.state)}
                     </span>
                   </div>
-                  <p className="mt-1 truncate text-xs text-food-muted">
+                  <p
+                    className={cn(
+                      "mt-1 truncate text-xs",
+                      unread ? "font-medium text-food-text" : "text-food-muted",
+                    )}
+                  >
                     {item.lastMessagePreview || "Sem mensagens ainda"}
                   </p>
                 </div>

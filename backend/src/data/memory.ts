@@ -816,6 +816,7 @@ export const memoryStore = {
         ...current,
         lastMessageAt: input.now,
         lastMessagePreview: input.preview,
+        lastMessageDirection: input.direction,
       });
     }
     return message;
@@ -965,6 +966,7 @@ export const memoryStore = {
           cartItemCount: item.context.cart?.length ?? 0,
           lastOrderCode: item.lastOrderCode ?? null,
           lastMessagePreview: item.lastMessagePreview ?? null,
+          lastMessageDirection: item.lastMessageDirection ?? null,
         };
       });
   },

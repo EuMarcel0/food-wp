@@ -20,10 +20,11 @@ import { NotificationProvider } from "../notifications/NotificationProvider";
 import { UserMenu } from "./UserMenu";
 import { api } from "../lib/api";
 import {
-  hasUnseenConversations,
-  markConversationsSeen,
+  CONVERSATION_READ_EVENT,
+  hasUnreadConversations,
 } from "../lib/conversationBadge";
 import { queryKeys } from "../lib/queryKeys";
+import { ConversationAlertsProvider } from "../conversations/ConversationAlerts";
 import { cn } from "../lib/cn";
 import { foodMark } from "../ui";
 
@@ -94,25 +95,21 @@ export function AppLayout() {
     queryFn: () => api.conversations("active", true),
     refetchInterval: 12_000,
   });
-  const activeIds = (liveQuery.data ?? []).map((item) => item.id);
-  const activeIdsKey = activeIds.join("|");
-  const hasUnseen = useMemo(
-    () => hasUnseenConversations(activeIds),
-    [activeIdsKey, seenTick],
+  const liveConversations = liveQuery.data ?? [];
+  const liveKey = liveConversations
+    .map((item) => `${item.id}:${item.lastMessageAt}:${item.lastMessageDirection ?? ""}`)
+    .join("|");
+  const hasUnread = useMemo(
+    () => hasUnreadConversations(liveConversations),
+    [liveKey, seenTick],
   );
-  const showConversasDot =
-    location.pathname !== "/conversas" && hasUnseen;
+  const showConversasDot = hasUnread;
 
   useEffect(() => {
-    const onSeen = () => setSeenTick((value) => value + 1);
-    window.addEventListener("food-wp-conversas-seen", onSeen);
-    return () => window.removeEventListener("food-wp-conversas-seen", onSeen);
+    const onRead = () => setSeenTick((value) => value + 1);
+    window.addEventListener(CONVERSATION_READ_EVENT, onRead);
+    return () => window.removeEventListener(CONVERSATION_READ_EVENT, onRead);
   }, []);
-
-  useEffect(() => {
-    if (location.pathname !== "/conversas") return;
-    markConversationsSeen(activeIds);
-  }, [location.pathname, activeIdsKey]);
 
   const menuItems = useMemo(
     () => [
@@ -136,9 +133,6 @@ export function AppLayout() {
   );
 
   function go(path: string) {
-    if (path === "/conversas") {
-      markConversationsSeen(activeIds);
-    }
     navigate(path);
     setDrawerOpen(false);
   }
@@ -167,6 +161,7 @@ export function AppLayout() {
 
   return (
     <NotificationProvider>
+      <ConversationAlertsProvider conversations={liveConversations}>
       <Layout
         className='relative min-h-0 flex-1 overflow-hidden bg-food-bg'
         style={{ height: "100%", maxHeight: "100%", flex: "1 1 0%" }}
@@ -252,6 +247,7 @@ export function AppLayout() {
           </Layout.Content>
         </Layout>
       </Layout>
+      </ConversationAlertsProvider>
     </NotificationProvider>
   );
 }

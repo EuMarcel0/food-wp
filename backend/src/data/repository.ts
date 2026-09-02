@@ -1463,6 +1463,10 @@ function mapConversation(data: Record<string, unknown>): Conversation {
     lastOrderCode: data.last_order_code != null ? String(data.last_order_code) : null,
     lastMessagePreview:
       data.last_message_preview != null ? String(data.last_message_preview) : null,
+    lastMessageDirection:
+      data.last_message_direction === "inbound" || data.last_message_direction === "outbound"
+        ? data.last_message_direction
+        : null,
   };
 }
 
@@ -1707,6 +1711,10 @@ export async function listLiveConversations(hours = 24) {
       lastOrderCode: row.last_order_code != null ? String(row.last_order_code) : null,
       lastMessagePreview:
         row.last_message_preview != null ? String(row.last_message_preview) : null,
+      lastMessageDirection:
+        row.last_message_direction === "inbound" || row.last_message_direction === "outbound"
+          ? row.last_message_direction
+          : null,
     };
   });
 }
@@ -1787,6 +1795,7 @@ export async function appendConversationMessage(input: {
     .update({
       last_message_at: now,
       last_message_preview: preview,
+      last_message_direction: input.direction,
     })
     .eq("id", input.conversationId);
 

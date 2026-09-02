@@ -1,26 +1,63 @@
-const SEEN_KEY = "food-wp-conversas-seen-ids";
+import type { LiveConversation } from "../types";
 
-export function readSeenConversationIds(): Set<string> {
+const READ_AT_KEY = "food-wp-conversas-read-at";
+export const CONVERSATION_READ_EVENT = "food-wp-conversas-read";
+
+export function readConversationReadAt(): Record<string, string> {
   try {
-    const raw = localStorage.getItem(SEEN_KEY);
-    const list = raw ? (JSON.parse(raw) as string[]) : [];
-    return new Set(Array.isArray(list) ? list : []);
+    const raw = localStorage.getItem(READ_AT_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, string>;
   } catch {
-    return new Set();
+    return {};
   }
 }
 
-export function markConversationsSeen(ids: string[]) {
+export function markConversationRead(conversationId: string, lastMessageAt: string) {
+  if (!conversationId || !lastMessageAt) return;
   try {
-    localStorage.setItem(SEEN_KEY, JSON.stringify([...new Set(ids)]));
+    const state = readConversationReadAt();
+    const prev = state[conversationId] ?? "";
+    if (lastMessageAt <= prev) return;
+    state[conversationId] = lastMessageAt;
+    localStorage.setItem(READ_AT_KEY, JSON.stringify(state));
   } catch {
     // storage bloqueado
   }
-  window.dispatchEvent(new Event("food-wp-conversas-seen"));
+  window.dispatchEvent(new Event(CONVERSATION_READ_EVENT));
 }
 
-export function hasUnseenConversations(activeIds: string[]) {
-  if (!activeIds.length) return false;
-  const seen = readSeenConversationIds();
-  return activeIds.some((id) => !seen.has(id));
+/** Primeira carga: não alerta nem marca tudo como não lido. */
+export function primeConversationReadState(conversations: LiveConversation[]) {
+  if (!conversations.length) return;
+  try {
+    const state = readConversationReadAt();
+    let changed = false;
+    for (const conv of conversations) {
+      if (!conv.lastMessageAt || state[conv.id]) continue;
+      state[conv.id] = conv.lastMessageAt;
+      changed = true;
+    }
+    if (changed) {
+      localStorage.setItem(READ_AT_KEY, JSON.stringify(state));
+    }
+  } catch {
+    // storage bloqueado
+  }
+}
+
+export function isConversationUnread(conversation: LiveConversation) {
+  if (!conversation.lastMessageAt) return false;
+  if (conversation.lastMessageDirection !== "inbound") return false;
+  const readAt = readConversationReadAt()[conversation.id] ?? "";
+  return conversation.lastMessageAt > readAt;
+}
+
+export function countUnreadConversations(conversations: LiveConversation[]) {
+  return conversations.filter(isConversationUnread).length;
+}
+
+export function hasUnreadConversations(conversations: LiveConversation[]) {
+  return countUnreadConversations(conversations) > 0;
 }

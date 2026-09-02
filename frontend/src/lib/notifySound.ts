@@ -49,6 +49,31 @@ export function playNewOrderSound() {
   second.stop(now + 0.42);
 }
 
+/** Tom mais curto e suave — nova mensagem WhatsApp. */
+export function playNewMessageSound() {
+  const audio = getContext();
+  if (!audio) return;
+  if (audio.state === "suspended") {
+    void audio.resume();
+  }
+  if (!unlocked && audio.state !== "running") return;
+
+  const now = audio.currentTime;
+  const gain = audio.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.11, now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+  gain.connect(audio.destination);
+
+  const tone = audio.createOscillator();
+  tone.type = "sine";
+  tone.frequency.setValueAtTime(740, now);
+  tone.frequency.exponentialRampToValueAtTime(980, now + 0.08);
+  tone.connect(gain);
+  tone.start(now);
+  tone.stop(now + 0.28);
+}
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext;

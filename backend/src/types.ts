@@ -242,6 +242,7 @@ export type Conversation = {
   lastOrderId?: string | null;
   lastOrderCode?: string | null;
   lastMessagePreview?: string | null;
+  lastMessageDirection?: ConversationMessageDirection | null;
 };
 
 export type LiveConversation = {
@@ -260,6 +261,7 @@ export type LiveConversation = {
   cartItemCount: number;
   lastOrderCode?: string | null;
   lastMessagePreview?: string | null;
+  lastMessageDirection?: ConversationMessageDirection | null;
 };
 
 export type ConversationMessageAuthor = "customer" | "bot" | "agent";

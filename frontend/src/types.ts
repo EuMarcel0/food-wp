@@ -25,6 +25,7 @@ export type LiveConversation = {
   cartItemCount: number;
   lastOrderCode?: string | null;
   lastMessagePreview?: string | null;
+  lastMessageDirection?: "inbound" | "outbound" | null;
 };
 
 export type ConversationMessage = {
