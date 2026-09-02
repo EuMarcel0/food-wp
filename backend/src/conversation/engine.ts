@@ -1225,8 +1225,13 @@ export async function handleIncomingMessage(input: {
       return;
     }
     context.orderNotes = notes;
-    await persist("awaiting_fulfillment", context);
-    await askFulfillment(input.from, store, renderCart(context));
+    if (!context.fulfillment) {
+      await persist("awaiting_fulfillment", context);
+      await askFulfillment(input.from, store, renderCart(context));
+      return;
+    }
+    await persist("awaiting_payment", context);
+    await askPayment(input.from);
     return;
   }
 
@@ -1636,8 +1641,8 @@ export async function handleIncomingMessage(input: {
       normalized === "fechar pedido" ||
       command === "fechar pedido"
     ) {
-      await persist("awaiting_order_note", context);
-      await askOrderNote(input.from);
+      await persist("awaiting_fulfillment", context);
+      await askFulfillment(input.from, store, renderCart(context));
       return;
     }
     if (incoming === "order" || normalized === "adicionar mais") {
@@ -1706,8 +1711,8 @@ export async function handleIncomingMessage(input: {
       return;
     }
     context.addressText = address;
-    await persist("awaiting_payment", context);
-    await askPayment(input.from, "✅ Endereço anotado. 💳 Como deseja pagar?");
+    await persist("awaiting_order_note", context);
+    await askOrderNote(input.from);
     return;
   }
 
