@@ -167,7 +167,7 @@ export function ConversationsPage() {
       ),
       okText: "Encerrar",
       cancelText: "Cancelar",
-      okButtonProps: { danger: true },
+      okDanger: true,
       onConfirm: async () => {
         await closeMutation.mutateAsync(item.id);
       },

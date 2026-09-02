@@ -263,7 +263,7 @@ export function WhatsAppInbox({
         queryKey: queryKeys.conversations.live,
       });
     },
-    onError: (err, variables, context) => {
+    onError: (err, _variables, context) => {
       if (context?.previous && context.key) {
         queryClient.setQueryData(context.key, context.previous);
       }
