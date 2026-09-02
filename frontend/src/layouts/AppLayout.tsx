@@ -81,6 +81,7 @@ export function AppLayout() {
     location.pathname === "/pedidos" ||
     location.pathname === "/conversas" ||
     (!isMobile && ["/cardapio", "/categorias", "/adicionais"].includes(location.pathname));
+  const isConversasMobile = isMobile && location.pathname === "/conversas";
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
   const storeQuery = useQuery({
@@ -230,15 +231,25 @@ export function AppLayout() {
             className={cn(
               "min-h-0 min-w-0 flex-1 scroll-mt-3 bg-food-bg",
               usesFillLayout
-                ? "flex h-full min-h-0 flex-col overflow-hidden px-4 py-3 max-lg:h-auto max-lg:overflow-auto max-lg:px-3.5"
-                : "overflow-auto px-7 py-6 pb-8 max-lg:px-3.5 max-lg:py-4 max-lg:pb-6"
+                ? cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden px-4 py-3",
+                    isConversasMobile
+                      ? "max-lg:h-full max-lg:overflow-hidden max-lg:px-0 max-lg:py-0"
+                      : "max-lg:h-auto max-lg:overflow-auto max-lg:px-3.5",
+                  )
+                : "overflow-auto px-7 py-6 pb-8 max-lg:px-3.5 max-lg:py-4 max-lg:pb-6",
             )}
             tabIndex={-1}
           >
             <div
               className={
                 usesFillLayout
-                  ? "flex h-full min-h-0 w-full flex-1 flex-col max-lg:h-auto max-lg:flex-none"
+                  ? cn(
+                      "flex h-full min-h-0 w-full flex-1 flex-col",
+                      isConversasMobile
+                        ? "max-lg:h-full max-lg:min-h-0 max-lg:flex-1"
+                        : "max-lg:h-auto max-lg:flex-none",
+                    )
                   : "mx-auto min-h-full w-full max-w-[1200px]"
               }
             >

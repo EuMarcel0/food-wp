@@ -35,6 +35,7 @@ export function ConversationsPage() {
   const queryClient = useQueryClient();
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [tab, setTab] = useState<TabKey>("active");
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const listMode = tab === "history" && isDesktop;
@@ -179,9 +180,15 @@ export function ConversationsPage() {
   const pagedHistory = historyItems.slice((page - 1) * limit, page * limit);
 
   return (
-    <div className={cn(listPage, "min-h-0")}>
+    <div
+      className={cn(
+        listPage,
+        "min-h-0",
+        !isDesktop && "h-full max-lg:h-full max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
+      )}
+    >
       <PageHeader
-        className="mb-3 shrink-0"
+        className={cn("mb-3 shrink-0 max-lg:hidden")}
         kicker="WhatsApp"
         title="Conversas"
         subtitle="Inbox do WhatsApp: atenda no chat, ou veja o histórico de pedidos."
@@ -190,7 +197,11 @@ export function ConversationsPage() {
       <Tabs
         activeKey={tab}
         onChange={(key) => setTab(key as TabKey)}
-        className="mb-0 shrink-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden"
+        className={cn(
+          "mb-0 shrink-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden",
+          !isDesktop && mobileChatOpen && "max-lg:hidden",
+          !isDesktop && tab === "active" && "max-lg:[&_.ant-tabs-nav]:mb-2 max-lg:px-3",
+        )}
         items={[
           {
             key: "active",
@@ -239,7 +250,13 @@ export function ConversationsPage() {
           }}
         />
       ) : (
-        <WhatsAppInbox
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            !isDesktop && "max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
+          )}
+        >
+          <WhatsAppInbox
           items={activeItems}
           error={activeQuery.error}
           loading={activeQuery.isLoading}
@@ -255,7 +272,9 @@ export function ConversationsPage() {
           onTakeover={askTakeover}
           onRelease={(item) => releaseMutation.mutate(item.id)}
           onClose={askClose}
+          onMobileChatOpenChange={setMobileChatOpen}
         />
+        </div>
       )}
     </div>
   );

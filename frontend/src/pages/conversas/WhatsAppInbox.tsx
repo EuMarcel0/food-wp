@@ -61,6 +61,7 @@ export function WhatsAppInbox({
   onTakeover,
   onRelease,
   onClose,
+  onMobileChatOpenChange,
 }: {
   items: LiveConversation[];
   loading: boolean;
@@ -69,6 +70,7 @@ export function WhatsAppInbox({
   onTakeover: (item: LiveConversation) => void;
   onRelease: (item: LiveConversation) => void;
   onClose: (item: LiveConversation) => void;
+  onMobileChatOpenChange?: (open: boolean) => void;
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -101,6 +103,23 @@ export function WhatsAppInbox({
       setSelectedId(filtered[0].id);
     }
   }, [filtered, selectedId, isDesktop]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      onMobileChatOpenChange?.(false);
+      return;
+    }
+    onMobileChatOpenChange?.(Boolean(selectedId));
+  }, [isDesktop, onMobileChatOpenChange, selectedId]);
+
+  useEffect(() => {
+    if (isDesktop || !selectedId) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [isDesktop, selectedId]);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -262,16 +281,25 @@ export function WhatsAppInbox({
   }
 
   return (
-    <div className="grid min-h-[70vh] flex-1 overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft lg:grid-cols-[340px_minmax(0,1fr)]">
+    <div
+      className={cn(
+        "min-h-0 flex-1 overflow-hidden bg-food-surface",
+        isDesktop
+          ? "grid min-h-[70vh] grid-cols-[340px_minmax(0,1fr)] rounded-2xl border border-food-border shadow-food-soft"
+          : "flex h-full flex-col",
+      )}
+    >
       <aside
         className={cn(
-          "min-h-0 flex-col border-food-border bg-food-card lg:flex lg:border-r",
-          selectedId ? "hidden lg:flex" : "flex",
+          "flex min-h-0 flex-col border-food-border bg-food-card lg:border-r",
+          selectedId ? "hidden lg:flex" : "flex flex-1",
         )}
       >
-        <div className="shrink-0 space-y-2 border-b border-food-border p-3">
+        <div className="shrink-0 space-y-2 border-b border-food-border p-3 max-lg:px-3">
           <div className="flex items-center justify-between gap-2">
-            <strong className="text-sm text-food-text">WhatsApp</strong>
+            <strong className="text-sm text-food-text">
+              {isDesktop ? "WhatsApp" : "Conversas"}
+            </strong>
             <Tag className="!m-0" color="success">
               {items.length} ativas
             </Tag>
@@ -331,11 +359,11 @@ export function WhatsAppInbox({
                     {(item.customerName || item.customerPhone || "?").slice(0, 1).toUpperCase()}
                   </Avatar>
                 </Badge>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div className="flex min-w-0 items-start justify-between gap-2">
                     <span
                       className={cn(
-                        "truncate text-food-text",
+                        "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-food-text",
                         unread ? "font-bold" : "font-semibold",
                       )}
                     >
@@ -364,9 +392,10 @@ export function WhatsAppInbox({
                   </div>
                   <p
                     className={cn(
-                      "mt-1 truncate text-xs",
+                      "mt-1 line-clamp-2 overflow-hidden text-xs leading-snug",
                       unread ? "font-medium text-food-text" : "text-food-muted",
                     )}
+                    title={item.lastMessagePreview || undefined}
                   >
                     {item.lastMessagePreview || "Sem mensagens ainda"}
                   </p>
@@ -379,9 +408,10 @@ export function WhatsAppInbox({
 
       <section
         className={cn(
-          "min-h-0 flex-col bg-[#efeae2] dark:bg-[#0b141a]",
+          "flex min-h-0 flex-col bg-[#efeae2] dark:bg-[#0b141a]",
           selectedId || isDesktop ? "flex" : "hidden",
           !selectedId && "hidden lg:flex",
+          !isDesktop && selectedId && "h-full max-lg:flex-1",
         )}
       >
         {!selected ? (
@@ -390,44 +420,49 @@ export function WhatsAppInbox({
           </div>
         ) : (
           <>
-            <header className="flex shrink-0 items-center gap-3 border-b border-food-border bg-food-card px-3 py-2.5">
-              <Button
-                type="text"
-                className="lg:!hidden"
-                icon={<ArrowLeftOutlined />}
-                onClick={() => setSelectedId(null)}
-                aria-label="Voltar à lista"
-              />
-              <Avatar
-                size={40}
-                src={
-                  selected.customerAvatarUrl ||
-                  generatedAvatar(selected.customerName || selected.customerPhone)
-                }
-              >
-                {(selected.customerName || selected.customerPhone || "?")
-                  .slice(0, 1)
-                  .toUpperCase()}
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold text-food-text">
-                  {customerLabel(selected)}
-                </div>
-                <div className="truncate text-xs text-food-muted">
-                  {formatPhoneDisplay(selected.customerPhone)}
-                  {selected.handoffMode === "human" && selected.handoffBy
-                    ? ` · ${selected.handoffBy}`
-                    : ""}
+            <header className="flex shrink-0 flex-col gap-2 border-b border-food-border bg-food-card py-2.5 max-lg:gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:px-3 lg:py-2.5">
+              <div className="flex min-w-0 items-center gap-2 px-3 lg:flex-1 lg:px-0">
+                <Button
+                  type="text"
+                  className="shrink-0 lg:!hidden"
+                  icon={<ArrowLeftOutlined />}
+                  onClick={() => setSelectedId(null)}
+                  aria-label="Voltar à lista"
+                />
+                <Avatar
+                  size={40}
+                  className="shrink-0"
+                  src={
+                    selected.customerAvatarUrl ||
+                    generatedAvatar(selected.customerName || selected.customerPhone)
+                  }
+                >
+                  {(selected.customerName || selected.customerPhone || "?")
+                    .slice(0, 1)
+                    .toUpperCase()}
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold text-food-text">
+                    {customerLabel(selected)}
+                  </div>
+                  <div className="truncate text-xs text-food-muted">
+                    {formatPhoneDisplay(selected.customerPhone)}
+                    {selected.handoffMode === "human" && selected.handoffBy
+                      ? ` · ${selected.handoffBy}`
+                      : ""}
+                  </div>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0 sm:gap-2">
                 {selected.handoffMode === "human" ? (
                   <Button
                     size="small"
                     loading={busyId === selected.id}
                     onClick={() => onRelease(selected)}
+                    className="max-lg:!px-2 max-lg:!text-xs"
                   >
-                    Devolver ao bot
+                    <span className="hidden sm:inline">Devolver ao bot</span>
+                    <span className="sm:hidden">Devolver</span>
                   </Button>
                 ) : (
                   <Button
@@ -435,6 +470,7 @@ export function WhatsAppInbox({
                     size="small"
                     loading={busyId === selected.id}
                     onClick={() => onTakeover(selected)}
+                    className="max-lg:!px-2 max-lg:!text-xs"
                   >
                     Assumir
                   </Button>
@@ -445,15 +481,17 @@ export function WhatsAppInbox({
                   icon={<CloseCircleOutlined />}
                   loading={busyId === selected.id}
                   onClick={() => onClose(selected)}
+                  className="max-lg:!px-2 max-lg:!text-xs"
                 >
-                  Encerrar atendimento
+                  <span className="hidden sm:inline">Encerrar atendimento</span>
+                  <span className="sm:hidden">Encerrar</span>
                 </Button>
               </div>
             </header>
 
             <div
               ref={threadRef}
-              className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4 sm:px-5"
+              className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
             >
               {messagesQuery.isLoading ? (
                 <div className="flex justify-center py-10">
@@ -482,7 +520,7 @@ export function WhatsAppInbox({
               ))}
             </div>
 
-            <footer className="shrink-0 border-t border-food-border bg-food-card p-3">
+            <footer className="shrink-0 border-t border-food-border bg-food-card p-3 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {selected.handoffMode !== "human" ? (
                 <p className="mb-2 text-xs text-food-muted">
                   O bot está atendendo. Ao enviar uma mensagem, o atendimento é
