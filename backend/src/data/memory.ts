@@ -779,9 +779,42 @@ export const memoryStore = {
     };
   },
 
-  listConversationMessages(conversationId: string, limit = 200) {
-    const rows = conversationMessages.get(conversationId) ?? [];
-    return rows.slice(Math.max(0, rows.length - limit));
+  listConversationMessages(
+    conversationId: string,
+    options: {
+      limit?: number;
+      beforeAt?: string | null;
+      beforeId?: string | null;
+    } = {},
+  ) {
+    const limit = Math.min(100, Math.max(1, Math.trunc(options.limit ?? 40) || 40));
+    const beforeAt = options.beforeAt?.trim() || null;
+    const beforeId = options.beforeId?.trim() || null;
+    const all = conversationMessages.get(conversationId) ?? [];
+    const older = beforeAt
+      ? all.filter((message) => {
+          if (message.createdAt < beforeAt) return true;
+          if (
+            beforeId &&
+            message.createdAt === beforeAt &&
+            message.id < beforeId
+          ) {
+            return true;
+          }
+          return false;
+        })
+      : all;
+    const hasMore = older.length > limit;
+    const items = older.slice(Math.max(0, older.length - limit));
+    const oldest = items[0] ?? null;
+    return {
+      items,
+      hasMore,
+      nextBefore:
+        hasMore && oldest
+          ? { createdAt: oldest.createdAt, id: oldest.id }
+          : null,
+    };
   },
 
   appendConversationMessage(input: {

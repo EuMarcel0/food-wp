@@ -41,7 +41,19 @@ conversationsRouter.get("/:id/messages", async (req, res) => {
       res.status(404).json({ error: "Conversa não encontrada." });
       return;
     }
-    res.json(await listConversationMessages(id));
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 40;
+    const beforeAt =
+      typeof req.query.beforeAt === "string" ? req.query.beforeAt : null;
+    const beforeId =
+      typeof req.query.beforeId === "string" ? req.query.beforeId : null;
+    res.json(
+      await listConversationMessages(id, {
+        limit,
+        beforeAt,
+        beforeId,
+      }),
+    );
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao listar mensagens.",

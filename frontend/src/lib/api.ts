@@ -7,6 +7,7 @@ import type {
   Category,
   ConversationHistoryItem,
   ConversationMessage,
+  ConversationMessagesPage,
   Crust,
   Health,
   LiveConversation,
@@ -270,10 +271,25 @@ export const api = {
       withQuery("/api/conversations", { tab: "history" }),
       { silent }
     ),
-  conversationMessages: (id: string, silent = true) =>
-    request<ConversationMessage[]>(`/api/conversations/${id}/messages`, {
-      silent,
-    }),
+  conversationMessages: (
+    id: string,
+    options: {
+      silent?: boolean;
+      limit?: number;
+      beforeAt?: string;
+      beforeId?: string;
+    } = {},
+  ) => {
+    const { silent = true, limit = 40, beforeAt, beforeId } = options;
+    return request<ConversationMessagesPage>(
+      withQuery(`/api/conversations/${id}/messages`, {
+        limit,
+        beforeAt,
+        beforeId,
+      }),
+      { silent },
+    );
+  },
   sendConversationMessage: (id: string, text: string, by?: string) =>
     request<{
       conversation: LiveConversation;

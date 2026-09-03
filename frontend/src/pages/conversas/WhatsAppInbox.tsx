@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import { Alert, Avatar, Badge, Button, Empty, Input, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
@@ -29,9 +34,15 @@ import {
 import { useConversationViewing, CONVERSATIONS_LIVE_EVENT } from "../../conversations/ConversationAlerts";
 import type {
   ConversationMessage,
+  ConversationMessagesPage,
   ConversationMessageActions,
   LiveConversation,
 } from "../../types";
+
+const MESSAGE_PAGE_SIZE = 40;
+
+type MessagesCursor = { createdAt: string; id: string } | null;
+type MessagesInfinite = InfiniteData<ConversationMessagesPage, MessagesCursor>;
 
 function relativeTime(iso: string) {
   const ms = Date.now() - Date.parse(iso);
@@ -110,6 +121,9 @@ export function WhatsAppInbox({
   const [draft, setDraft] = useState("");
   const [readTick, setReadTick] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const loadingOlderRef = useRef(false);
+  const lastSelectedIdRef = useRef<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -178,12 +192,31 @@ export function WhatsAppInbox({
     };
   }, []);
 
-  const messagesQuery = useQuery({
+  const messagesQuery = useInfiniteQuery({
     queryKey: queryKeys.conversations.messages(selectedId ?? ""),
-    queryFn: () => api.conversationMessages(selectedId!),
+    queryFn: ({ pageParam }) =>
+      api.conversationMessages(selectedId!, {
+        limit: MESSAGE_PAGE_SIZE,
+        beforeAt: pageParam?.createdAt,
+        beforeId: pageParam?.id,
+      }),
+    initialPageParam: null as MessagesCursor,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextBefore ? lastPage.nextBefore : undefined,
     enabled: Boolean(selectedId),
-    refetchInterval: supabase ? false : 4000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: 8000,
   });
+
+  const messages = useMemo(() => {
+    const pages = messagesQuery.data?.pages;
+    if (!pages?.length) return [] as ConversationMessage[];
+    return pages
+      .slice()
+      .reverse()
+      .flatMap((page) => page.items);
+  }, [messagesQuery.data]);
 
   useEffect(() => {
     const client = supabase;
@@ -214,10 +247,64 @@ export function WhatsAppInbox({
   }, [queryClient, selectedId]);
 
   useEffect(() => {
+    if (!selectedId || !selected?.lastMessageAt) return;
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.conversations.messages(selectedId),
+    });
+  }, [queryClient, selectedId, selected?.lastMessageAt, selected?.lastMessagePreview]);
+
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || !selectedId) return;
+
+    const switched = lastSelectedIdRef.current !== selectedId;
+    lastSelectedIdRef.current = selectedId;
+    if (switched) {
+      stickToBottomRef.current = true;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+
+    if (stickToBottomRef.current && !loadingOlderRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, selectedId]);
+
+  async function loadOlderMessages() {
+    const el = threadRef.current;
+    if (
+      !el ||
+      !messagesQuery.hasNextPage ||
+      messagesQuery.isFetchingNextPage ||
+      loadingOlderRef.current
+    ) {
+      return;
+    }
+
+    loadingOlderRef.current = true;
+    const prevHeight = el.scrollHeight;
+    const prevTop = el.scrollTop;
+    try {
+      await messagesQuery.fetchNextPage();
+      requestAnimationFrame(() => {
+        const node = threadRef.current;
+        if (!node) return;
+        node.scrollTop = node.scrollHeight - prevHeight + prevTop;
+      });
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }
+
+  function onThreadScroll() {
     const el = threadRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messagesQuery.data, selectedId]);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 96;
+    if (el.scrollTop < 72) {
+      void loadOlderMessages();
+    }
+  }
 
   const sendMutation = useMutation({
     mutationFn: ({
@@ -239,7 +326,7 @@ export function WhatsAppInbox({
     onMutate: async ({ conversationId, text, tempId }) => {
       const key = queryKeys.conversations.messages(conversationId);
       await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<ConversationMessage[]>(key);
+      const previous = queryClient.getQueryData<MessagesInfinite>(key);
 
       const optimistic: ConversationMessage = {
         id: tempId,
@@ -252,10 +339,26 @@ export function WhatsAppInbox({
         createdAt: new Date().toISOString(),
       };
 
-      queryClient.setQueryData<ConversationMessage[]>(key, (current) => [
-        ...(current ?? []),
-        optimistic,
-      ]);
+      queryClient.setQueryData<MessagesInfinite>(key, (current) => {
+        if (!current?.pages.length) {
+          return {
+            pages: [
+              {
+                items: [optimistic],
+                hasMore: false,
+                nextBefore: null,
+              },
+            ],
+            pageParams: [null],
+          };
+        }
+        const pages = current.pages.map((page, index) =>
+          index === 0
+            ? { ...page, items: [...page.items, optimistic] }
+            : page,
+        );
+        return { ...current, pages };
+      });
 
       queryClient.setQueryData<LiveConversation[]>(
         queryKeys.conversations.live,
@@ -275,19 +378,37 @@ export function WhatsAppInbox({
       );
 
       markConversationRead(conversationId, optimistic.createdAt);
+      stickToBottomRef.current = true;
 
       return { previous, key };
     },
     onSuccess: async (result) => {
       const key = queryKeys.conversations.messages(result.conversationId);
       if (result.message) {
-        queryClient.setQueryData<ConversationMessage[]>(key, (current) => {
-          const list = current ?? [];
-          const withoutTemp = list.filter((item) => item.id !== result.tempId);
-          if (withoutTemp.some((item) => item.id === result.message!.id)) {
-            return withoutTemp;
+        queryClient.setQueryData<MessagesInfinite>(key, (current) => {
+          if (!current?.pages.length) {
+            return {
+              pages: [
+                {
+                  items: [result.message!],
+                  hasMore: false,
+                  nextBefore: null,
+                },
+              ],
+              pageParams: [null],
+            };
           }
-          return [...withoutTemp, result.message!];
+          const pages = current.pages.map((page, index) => {
+            if (index !== 0) return page;
+            const withoutTemp = page.items.filter(
+              (item) => item.id !== result.tempId,
+            );
+            if (withoutTemp.some((item) => item.id === result.message!.id)) {
+              return { ...page, items: withoutTemp };
+            }
+            return { ...page, items: [...withoutTemp, result.message!] };
+          });
+          return { ...current, pages };
         });
       }
       await queryClient.invalidateQueries({
@@ -528,8 +649,19 @@ export function WhatsAppInbox({
 
             <div
               ref={threadRef}
+              onScroll={onThreadScroll}
               className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
             >
+              {messagesQuery.isFetchingNextPage ? (
+                <div className="flex justify-center py-2">
+                  <Spin size="small" />
+                </div>
+              ) : null}
+              {messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage ? (
+                <div className="py-1 text-center text-[11px] text-food-muted">
+                  Role para cima para ver mensagens anteriores
+                </div>
+              ) : null}
               {messagesQuery.isLoading ? (
                 <div className="flex justify-center py-10">
                   <Spin />
@@ -546,13 +678,13 @@ export function WhatsAppInbox({
                   }
                 />
               ) : null}
-              {!messagesQuery.isLoading && !(messagesQuery.data ?? []).length ? (
+              {!messagesQuery.isLoading && !messages.length ? (
                 <Empty
                   className="py-10"
                   description="Ainda sem mensagens neste chat. Novas mensagens aparecem aqui."
                 />
               ) : null}
-              {(messagesQuery.data ?? []).map((message) => (
+              {messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}
             </div>

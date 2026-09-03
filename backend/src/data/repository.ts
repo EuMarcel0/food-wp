@@ -1824,16 +1824,45 @@ export async function listLiveConversations(_hours = 24) {
   });
 }
 
-export async function listConversationMessages(conversationId: string, limit = 200) {
+export async function listConversationMessages(
+  conversationId: string,
+  options: {
+    limit?: number;
+    beforeAt?: string | null;
+    beforeId?: string | null;
+  } = {},
+) {
+  const limit = Math.min(100, Math.max(1, Math.trunc(options.limit ?? 40) || 40));
+  const beforeAt = options.beforeAt?.trim() || null;
+  const beforeId = options.beforeId?.trim() || null;
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listConversationMessages(conversationId, limit);
+  if (!supabase) {
+    return memoryStore.listConversationMessages(conversationId, {
+      limit,
+      beforeAt,
+      beforeId,
+    });
+  }
 
-  const { data, error } = await supabase
+  // Mais recentes primeiro; depois invertimos para ordem cronológica.
+  // `before` busca mensagens mais antigas que o cursor (infinite scroll para cima).
+  let query = supabase
     .from("conversation_messages")
     .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true })
-    .limit(limit);
+    .eq("conversation_id", conversationId);
+
+  if (beforeAt && beforeId) {
+    query = query.or(
+      `created_at.lt."${beforeAt}",and(created_at.eq."${beforeAt}",id.lt.${beforeId})`,
+    );
+  } else if (beforeAt) {
+    query = query.lt("created_at", beforeAt);
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
 
   if (error) {
     if (error.message?.includes("conversation_messages")) {
@@ -1841,7 +1870,22 @@ export async function listConversationMessages(conversationId: string, limit = 2
     }
     throw new Error(error.message);
   }
-  return (data ?? []).map((row) => mapConversationMessage(row as Record<string, unknown>));
+
+  const rows = data ?? [];
+  const hasMore = rows.length > limit;
+  const pageRows = (hasMore ? rows.slice(0, limit) : rows).slice().reverse();
+  const items = pageRows.map((row) =>
+    mapConversationMessage(row as Record<string, unknown>),
+  );
+  const oldest = items[0] ?? null;
+
+  return {
+    items,
+    hasMore,
+    nextBefore: hasMore && oldest
+      ? { createdAt: oldest.createdAt, id: oldest.id }
+      : null,
+  };
 }
 
 export async function saveChatMedia(input: {

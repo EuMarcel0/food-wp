@@ -297,6 +297,12 @@ export type ConversationMessage = {
   createdAt: string;
 };
 
+export type ConversationMessagesPage = {
+  items: ConversationMessage[];
+  hasMore: boolean;
+  nextBefore: { createdAt: string; id: string } | null;
+};
+
 export type ConversationHistoryItem = {
   id: string;
   customerId: string;
