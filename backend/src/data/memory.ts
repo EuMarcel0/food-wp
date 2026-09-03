@@ -793,6 +793,8 @@ export const memoryStore = {
     body: string;
     msgType?: string;
     actions?: ConversationMessageActions | null;
+    mediaUrl?: string | null;
+    mediaMime?: string | null;
     waMessageId?: string | null;
     preview: string;
     now: string;
@@ -806,6 +808,8 @@ export const memoryStore = {
       body: input.body,
       msgType: input.msgType ?? "text",
       actions: input.actions ?? null,
+      mediaUrl: input.mediaUrl ?? null,
+      mediaMime: input.mediaMime ?? null,
       waMessageId: input.waMessageId ?? null,
       createdAt: input.now,
     };

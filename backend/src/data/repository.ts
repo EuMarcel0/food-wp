@@ -1517,6 +1517,8 @@ function mapConversationMessage(row: Record<string, unknown>): ConversationMessa
     body: String(row.body ?? ""),
     msgType: String(row.msg_type ?? "text"),
     actions: mapMessageActions(row.actions),
+    mediaUrl: row.media_url != null ? String(row.media_url) : null,
+    mediaMime: row.media_mime != null ? String(row.media_mime) : null,
     waMessageId: row.wa_message_id != null ? String(row.wa_message_id) : null,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
@@ -1842,6 +1844,34 @@ export async function listConversationMessages(conversationId: string, limit = 2
   return (data ?? []).map((row) => mapConversationMessage(row as Record<string, unknown>));
 }
 
+export async function saveChatMedia(input: {
+  storeId: string;
+  conversationId: string;
+  bytes: Buffer;
+  mime: string;
+  fileName: string;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return `data:${input.mime};base64,${input.bytes.toString("base64")}`;
+  }
+  const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${input.storeId}/${input.conversationId}/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage.from("chat-media").upload(path, input.bytes, {
+    upsert: false,
+    contentType: input.mime,
+  });
+  if (error) {
+    throw new Error(
+      error.message.includes("chat-media") || error.message.includes("Bucket")
+        ? "Rode a migration 041_conversation_message_media.sql no Supabase."
+        : error.message,
+    );
+  }
+  const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export async function appendConversationMessage(input: {
   conversationId: string;
   customerId: string;
@@ -1851,43 +1881,96 @@ export async function appendConversationMessage(input: {
   body: string;
   msgType?: string;
   actions?: ConversationMessageActions | null;
+  mediaUrl?: string | null;
+  mediaMime?: string | null;
   waMessageId?: string | null;
 }) {
   const supabase = getSupabase();
   const body = String(input.body ?? "").trim();
-  if (!body && input.msgType !== "location") return null;
-  const preview = previewText(body || "[mídia]");
+  const msgType = input.msgType ?? "text";
+  const hasMedia = Boolean(input.mediaUrl);
+  if (!body && msgType !== "location" && !hasMedia) return null;
+  const preview = previewText(
+    body || (msgType === "audio" ? "🎤 Áudio" : hasMedia ? "[mídia]" : "[mídia]"),
+  );
   const now = new Date().toISOString();
 
   if (!supabase) {
     return memoryStore.appendConversationMessage({
       ...input,
-      body: body || "[mídia]",
+      body: body || (msgType === "audio" ? "🎤 Áudio" : "[mídia]"),
       preview,
       now,
     });
   }
 
+  const insertPayload: Record<string, unknown> = {
+    store_id: input.storeId,
+    conversation_id: input.conversationId,
+    customer_id: input.customerId,
+    direction: input.direction,
+    author: input.author,
+    body: body || (msgType === "audio" ? "🎤 Áudio" : "[mídia]"),
+    msg_type: msgType,
+    actions: input.actions ?? null,
+    media_url: input.mediaUrl ?? null,
+    media_mime: input.mediaMime ?? null,
+    wa_message_id: input.waMessageId ?? null,
+    created_at: now,
+  };
+
   const { data, error } = await supabase
     .from("conversation_messages")
-    .insert({
-      store_id: input.storeId,
-      conversation_id: input.conversationId,
-      customer_id: input.customerId,
-      direction: input.direction,
-      author: input.author,
-      body: body || "[mídia]",
-      msg_type: input.msgType ?? "text",
-      actions: input.actions ?? null,
-      wa_message_id: input.waMessageId ?? null,
-      created_at: now,
-    })
+    .insert(insertPayload)
     .select("*")
     .single();
 
   let messageRow = data;
   if (error) {
-    if (error.message?.includes("actions")) {
+    if (error.message?.includes("media_url") || error.message?.includes("media_mime")) {
+      delete insertPayload.media_url;
+      delete insertPayload.media_mime;
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("conversation_messages")
+        .insert(insertPayload)
+        .select("*")
+        .single();
+      if (fallbackError) {
+        if (fallbackError.message?.includes("actions")) {
+          delete insertPayload.actions;
+          const { data: plain, error: plainError } = await supabase
+            .from("conversation_messages")
+            .insert(insertPayload)
+            .select("*")
+            .single();
+          if (plainError) {
+            if (plainError.message?.includes("conversation_messages")) {
+              console.warn(
+                "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
+              );
+              return null;
+            }
+            throw new Error(plainError.message);
+          }
+          console.warn(
+            "Rode a migration 041_conversation_message_media.sql no Supabase.",
+          );
+          messageRow = plain;
+        } else if (fallbackError.message?.includes("conversation_messages")) {
+          console.warn(
+            "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
+          );
+          return null;
+        } else {
+          throw new Error(fallbackError.message);
+        }
+      } else {
+        console.warn(
+          "Rode a migration 041_conversation_message_media.sql no Supabase.",
+        );
+        messageRow = fallbackData;
+      }
+    } else if (error.message?.includes("actions")) {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from("conversation_messages")
         .insert({
@@ -1896,26 +1979,62 @@ export async function appendConversationMessage(input: {
           customer_id: input.customerId,
           direction: input.direction,
           author: input.author,
-          body: body || "[mídia]",
-          msg_type: input.msgType ?? "text",
+          body: body || (msgType === "audio" ? "🎤 Áudio" : "[mídia]"),
+          msg_type: msgType,
+          media_url: input.mediaUrl ?? null,
+          media_mime: input.mediaMime ?? null,
           wa_message_id: input.waMessageId ?? null,
           created_at: now,
         })
         .select("*")
         .single();
       if (fallbackError) {
-        if (fallbackError.message?.includes("conversation_messages")) {
+        if (
+          fallbackError.message?.includes("media_url") ||
+          fallbackError.message?.includes("media_mime")
+        ) {
+          const { data: plain, error: plainError } = await supabase
+            .from("conversation_messages")
+            .insert({
+              store_id: input.storeId,
+              conversation_id: input.conversationId,
+              customer_id: input.customerId,
+              direction: input.direction,
+              author: input.author,
+              body: body || (msgType === "audio" ? "🎤 Áudio" : "[mídia]"),
+              msg_type: msgType,
+              wa_message_id: input.waMessageId ?? null,
+              created_at: now,
+            })
+            .select("*")
+            .single();
+          if (plainError) {
+            if (plainError.message?.includes("conversation_messages")) {
+              console.warn(
+                "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
+              );
+              return null;
+            }
+            throw new Error(plainError.message);
+          }
+          console.warn(
+            "Rode as migrations 039 e 041 no Supabase (actions + media).",
+          );
+          messageRow = plain;
+        } else if (fallbackError.message?.includes("conversation_messages")) {
           console.warn(
             "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",
           );
           return null;
+        } else {
+          throw new Error(fallbackError.message);
         }
-        throw new Error(fallbackError.message);
+      } else {
+        console.warn(
+          "Rode a migration 039_conversation_message_actions.sql no Supabase.",
+        );
+        messageRow = fallbackData;
       }
-      console.warn(
-        "Rode a migration 039_conversation_message_actions.sql no Supabase.",
-      );
-      messageRow = fallbackData;
     } else if (error.message?.includes("conversation_messages")) {
       console.warn(
         "Mensagem não salva: rode a migration 037_conversation_messages.sql no Supabase.",

@@ -577,6 +577,10 @@ export async function handleUnsupportedInbound(input: {
   }
   const customer = await upsertCustomer(input.from, input.name, input.avatarUrl);
   const existing = await getConversation(customer.id);
+  if (existing?.handoffMode === "human") {
+    await touchConversation(customer.id);
+    return;
+  }
   const state: ConversationState = existing?.state ?? "welcome";
   const context = existing?.context ?? emptyContext();
   if (isOrderInProgress(state) || state === "awaiting_order_code") {

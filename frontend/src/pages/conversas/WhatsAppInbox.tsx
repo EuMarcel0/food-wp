@@ -649,6 +649,7 @@ function MessageActionsPreview({ actions }: { actions: ConversationMessageAction
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
   const pending = message.id.startsWith("temp-");
+  const isAudio = message.msgType === "audio" && Boolean(message.mediaUrl);
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
@@ -665,7 +666,22 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             {message.author === "agent" ? "Atendente" : "Bot"}
           </div>
         ) : null}
-        <div className="whitespace-pre-wrap break-words">{message.body}</div>
+        {isAudio ? (
+          <div className="space-y-1.5">
+            <div className="text-xs opacity-70">🎤 Áudio</div>
+            <audio
+              controls
+              preload="metadata"
+              src={message.mediaUrl!}
+              className="block max-w-full"
+              style={{ minWidth: 220, height: 36 }}
+            >
+              Seu navegador não reproduz áudio.
+            </audio>
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap break-words">{message.body}</div>
+        )}
         {message.actions ? <MessageActionsPreview actions={message.actions} /> : null}
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-60">
           <span>{clock(message.createdAt)}</span>

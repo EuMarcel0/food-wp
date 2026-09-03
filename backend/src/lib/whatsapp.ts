@@ -286,3 +286,60 @@ export async function updateWhatsAppBusinessProfile(input: {
   }
   return { skipped: false as const };
 }
+
+export type WhatsAppMediaDownload = {
+  bytes: Buffer;
+  mime: string;
+  fileName: string;
+};
+
+/** Baixa mídia (áudio/imagem/…) pelo media id do webhook. */
+export async function downloadWhatsAppMedia(
+  mediaId: string,
+): Promise<WhatsAppMediaDownload> {
+  if (!flags.whatsappReady) {
+    throw new Error("WhatsApp não configurado.");
+  }
+  const id = mediaId.trim();
+  if (!id) throw new Error("Media id vazio.");
+
+  const metaResponse = await fetch(`${GRAPH}/${id}`, {
+    headers: { Authorization: `Bearer ${env.whatsappToken}` },
+  });
+  const metaBody = await metaResponse.text();
+  if (!metaResponse.ok) {
+    throw new Error(
+      graphError(metaResponse.status, metaBody, "Falha ao obter URL da mídia."),
+    );
+  }
+  const meta = JSON.parse(metaBody) as {
+    url?: string;
+    mime_type?: string;
+  };
+  if (!meta.url) throw new Error("WhatsApp não devolveu a URL da mídia.");
+
+  const fileResponse = await fetch(meta.url, {
+    headers: { Authorization: `Bearer ${env.whatsappToken}` },
+  });
+  if (!fileResponse.ok) {
+    throw new Error(`Falha ao baixar mídia (${fileResponse.status}).`);
+  }
+  const mime =
+    meta.mime_type?.trim() ||
+    fileResponse.headers.get("content-type")?.split(";")[0]?.trim() ||
+    "audio/ogg";
+  const bytes = Buffer.from(await fileResponse.arrayBuffer());
+  const ext =
+    mime.includes("mpeg") || mime.includes("mp3")
+      ? "mp3"
+      : mime.includes("mp4") || mime.includes("m4a")
+        ? "m4a"
+        : mime.includes("amr")
+          ? "amr"
+          : "ogg";
+  return {
+    bytes,
+    mime,
+    fileName: `${id}.${ext}`,
+  };
+}

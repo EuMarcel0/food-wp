@@ -291,6 +291,8 @@ export type ConversationMessage = {
   body: string;
   msgType: string;
   actions?: ConversationMessageActions | null;
+  mediaUrl?: string | null;
+  mediaMime?: string | null;
   waMessageId?: string | null;
   createdAt: string;
 };

@@ -113,10 +113,12 @@ export async function logInboundByPhone(
   body: string,
   msgType = "text",
   profile?: { name?: string; avatarUrl?: string },
+  media?: { url?: string | null; mime?: string | null; waMessageId?: string | null },
 ) {
   try {
     const text = body.trim();
-    if (!text) return;
+    const hasMedia = Boolean(media?.url);
+    if (!text && !hasMedia) return;
     const customer = await upsertCustomer(from, profile?.name, profile?.avatarUrl);
     let conversation = await getConversation(customer.id);
     if (!conversation) {
@@ -140,8 +142,11 @@ export async function logInboundByPhone(
       storeId: customer.storeId,
       direction: "inbound",
       author: "customer",
-      body: text,
+      body: text || (msgType === "audio" ? "🎤 Áudio" : "[mídia]"),
       msgType,
+      mediaUrl: media?.url ?? null,
+      mediaMime: media?.mime ?? null,
+      waMessageId: media?.waMessageId ?? null,
     });
   } catch (error) {
     console.warn(
