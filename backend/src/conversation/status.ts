@@ -1,4 +1,3 @@
-import { formatBRL } from "../lib/money.js";
 import type { Fulfillment, Order, OrderStatus } from "../types.js";
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -9,16 +8,6 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   out_for_delivery: "Saiu para entrega",
   delivered: "Entregue",
   cancelled: "Cancelado",
-};
-
-const STATUS_EMOJI: Record<OrderStatus, string> = {
-  received: "📥",
-  accepted: "👍",
-  preparing: "👨‍🍳",
-  ready: "✅",
-  out_for_delivery: "🛵",
-  delivered: "🎉",
-  cancelled: "❌",
 };
 
 /** Status em que o cliente pode cancelar pelo WhatsApp (quando a loja permitir). */
@@ -45,6 +34,18 @@ export function formatPrepDuration(minutes: number) {
   return `${hours} h ${rest} min`;
 }
 
+function formatPrepMinutesPhrase(minutes: number) {
+  const value = Math.max(1, Math.round(minutes));
+  if (value === 1) return "1 minuto";
+  if (value < 60) return `${value} minutos`;
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
+  const hourPart = hours === 1 ? "1 hora" : `${hours} horas`;
+  if (!rest) return hourPart;
+  const minPart = rest === 1 ? "1 minuto" : `${rest} minutos`;
+  return `${hourPart} e ${minPart}`;
+}
+
 export function isOpenOrderStatus(status: OrderStatus) {
   return status !== "delivered" && status !== "cancelled";
 }
@@ -57,57 +58,78 @@ export function formatOrderStatusMessage(
   order: Order,
   opts?: { thanks?: boolean; allowCustomerCancel?: boolean },
 ) {
-  const thanks = opts?.thanks ? "Por nada! 😊" : null;
   const cancelHint =
     opts?.allowCustomerCancel && canCustomerCancelStatus(order.status)
       ? CUSTOMER_CANCEL_HINT
       : null;
 
-  if (order.status === "accepted") {
-    const eta =
-      order.prepMinutes && order.prepMinutes > 0
-        ? formatPrepDuration(order.prepMinutes)
-        : null;
-    return [
-      thanks,
-      eta
-        ? `👍 Seu pedido *#${order.code}* foi aceito e levará em média *${eta}* para ficar pronto.`
-        : `👍 Seu pedido *#${order.code}* foi *aceito*!`,
-      `💰 Total: ${formatBRL(order.totalCents)}.`,
-      "Assim que mudar, eu te aviso por aqui.",
-      cancelHint,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  const emoji = STATUS_EMOJI[order.status] ?? "📦";
-  const lines = [
-    thanks,
-    `${emoji} Pedido *#${order.code}*: agora está *${describeOrderStatus(order.status)}*.`,
-  ];
-  if (order.status === "preparing" && order.prepMinutes) {
-    lines.push(`⏱️ Tempo estimado: ${formatPrepDuration(order.prepMinutes)}`);
-  }
-  if (order.status === "delivered") {
-    lines.push("Obrigado pela preferência! Esperamos você de novo. 🍕");
-    lines.push("Qualquer nova interação por aqui inicia um *novo pedido*.");
-  } else if (order.status !== "cancelled") {
-    lines.push(`💰 Total: ${formatBRL(order.totalCents)}.`);
-    lines.push(statusFollowUp(order));
-    if (cancelHint) lines.push(cancelHint);
-  }
-  return lines.filter(Boolean).join("\n");
+  return [
+    opts?.thanks ? "Por nada! 😊" : null,
+    opts?.thanks ? "" : null,
+    ...statusMessageLines(order),
+    cancelHint,
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n")
+    .trim();
 }
 
-function statusFollowUp(order: Order) {
-  if (order.status === "ready" && order.fulfillment === "pickup") {
-    return "Você já pode retirar seu pedido. 🏪";
+function statusMessageLines(order: Order): string[] {
+  const code = `*#${order.code}*`;
+  const pickup = order.fulfillment === "pickup";
+
+  switch (order.status) {
+    case "received":
+      return [
+        `📥 Pedido ${code} recebido!`,
+        "",
+        "Avisaremos você por aqui quando houver uma nova atualização. 😊",
+      ];
+    case "accepted":
+      return [
+        `👍 Pedido ${code} foi aceito!`,
+        "",
+        "Já estamos cuidando do seu pedido. Avisaremos você por aqui quando houver uma nova atualização. 😊",
+      ];
+    case "preparing": {
+      const lines = [`👨‍🍳 Pedido ${code} em preparo!`, ""];
+      if (order.prepMinutes && order.prepMinutes > 0) {
+        lines.push(
+          `⏱️ Previsão: aproximadamente ${formatPrepMinutesPhrase(order.prepMinutes)}.`,
+          "",
+        );
+      }
+      lines.push("Avisaremos você por aqui quando houver uma nova atualização. 😊");
+      return lines;
+    }
+    case "ready":
+      if (pickup) {
+        return [
+          `✅ Pedido ${code} está pronto!`,
+          "",
+          "Pode vir retirar no local. Estamos te esperando. 🏪",
+        ];
+      }
+      return [
+        `✅ Pedido ${code} está pronto!`,
+        "",
+        "Estamos finalizando os últimos detalhes para a entrega. 🍕",
+      ];
+    case "out_for_delivery":
+      return [
+        `🛵 Pedido ${code} saiu para entrega!`,
+        "",
+        "O entregador já está a caminho do seu endereço. 😊",
+      ];
+    case "delivered":
+      return [
+        pickup ? `🎉 Pedido ${code} foi retirado!` : `🎉 Pedido ${code} foi entregue!`,
+        "",
+        "Obrigado pela preferência! Esperamos você de novo. 🍕",
+      ];
+    case "cancelled":
+      return [`❌ Pedido ${code} foi cancelado.`];
   }
-  if (order.status === "out_for_delivery") {
-    return "O entregador saiu e está a caminho do seu endereço. 🛵";
-  }
-  return "Assim que mudar, eu te aviso por aqui.";
 }
 
 export function isAllowedOrderStatus(
