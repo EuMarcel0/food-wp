@@ -170,7 +170,7 @@ function itemHeading(
   item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity" | "unitPriceCents">,
   opts?: { withQuantity?: boolean; withUnitPrice?: boolean }
 ) {
-  // Nome montável: "Pizza F - Família — 1/2 Cangaceiro + 1/2 Calabresa"
+  // Nome montável: "Pizza F - Família — 1/2 Cangaceiro + 1/2 Calabresa "
   const raw = item.name.trim();
   const sep = " — ";
   const sepAt = raw.indexOf(sep);
@@ -412,35 +412,24 @@ export async function resumeAfterHumanHandoff(input: {
 async function askNewOrderPrompt(to: string, intro?: string) {
   await sendButtons(
     to,
-    [
-      intro,
-      intro ? "" : null,
-      "Deseja fazer um *novo pedido*?",
-    ]
+    [intro, intro ? "" : null, "Deseja fazer um *novo pedido*?"]
       .filter((line): line is string => line != null)
       .join("\n"),
     [
       { id: NEW_ORDER_YES, title: "✅ Sim" },
-      { id: NEW_ORDER_NO, title: "❌ Não" },
-    ],
+      { id: NEW_ORDER_NO, title: "❌ Não" }
+    ]
   );
 }
 
 async function askNewOrderAfterHandoff(to: string) {
-  await askNewOrderPrompt(
-    to,
-    "Atendimento humano encerrado. Seu último pedido já está *entregue*.",
-  );
+  await askNewOrderPrompt(to, "Atendimento humano encerrado. Seu último pedido já está *entregue*.");
 }
 
 async function declineNewOrder(to: string, timezone: string) {
   await sendText(
     to,
-    [
-      "😊 Agradecemos pela preferência!",
-      "Esperamos você novamente. 🍕",
-      dayPeriodWish(timezone),
-    ].join("\n"),
+    ["😊 Agradecemos pela preferência!", "Esperamos você novamente. 🍕", dayPeriodWish(timezone)].join("\n")
   );
 }
 
@@ -1273,9 +1262,7 @@ export async function handleIncomingMessage(input: {
       incoming === "handoff_new_order:yes" ||
       ["sim", "s", "yes", "quero", "order", "fazer pedido", "pedir"].includes(normalized);
     const no =
-      incoming === NEW_ORDER_NO ||
-      incoming === "handoff_new_order:no" ||
-      ["nao", "n", "no"].includes(normalized);
+      incoming === NEW_ORDER_NO || incoming === "handoff_new_order:no" || ["nao", "n", "no"].includes(normalized);
 
     if (yes) {
       await persist("awaiting_product", emptyContext());
