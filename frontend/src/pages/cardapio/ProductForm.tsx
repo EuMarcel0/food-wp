@@ -177,7 +177,7 @@ export function ProductForm({
               />
             ) : null}
             <div className="grid min-h-0 flex-1 overflow-hidden max-lg:grid-cols-1 max-lg:overflow-auto min-[992px]:grid-cols-[minmax(280px,0.4fr)_minmax(0,1fr)]">
-              <section className="min-h-0 overflow-auto overscroll-contain border-food-border bg-food-chip/55 px-6 pt-5 pb-6 max-lg:min-h-auto max-lg:overflow-visible max-lg:border-r-0 max-lg:border-b min-[992px]:border-r">
+              <section className="min-h-0 overflow-auto overscroll-contain border-food-border bg-food-chip/55 px-6 pt-5 pb-6 max-lg:min-h-auto max-lg:overflow-visible max-lg:border-r-0 max-lg:border-b max-lg:px-4 min-[992px]:border-r">
                 <p className={formKicker}>Ficha</p>
                 <h3 className={formHeading}>O que aparece no cardápio</h3>
                 <p className={formHint}>
@@ -376,7 +376,7 @@ export function ProductForm({
               </section>
               <section
                 className={cn(
-                  "relative flex min-h-0 min-w-0 flex-col overflow-hidden px-6 pt-5 pb-6 max-lg:min-h-[50vh]",
+                  "relative flex min-h-0 min-w-0 flex-col overflow-hidden px-6 pt-5 pb-6 max-lg:min-h-[50vh] max-lg:px-4",
                   values.customizable &&
                     "before:absolute before:inset-y-0 before:left-0 before:z-0 before:w-[3px] before:bg-food-accent before:content-['']",
                 )}

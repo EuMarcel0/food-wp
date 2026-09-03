@@ -187,42 +187,51 @@ export function ConversationsPage() {
         subtitle="Inbox do WhatsApp: atenda no chat, ou veja o histórico de pedidos."
       />
 
-      <Tabs
-        activeKey={tab}
-        onChange={(key) => setTab(key as TabKey)}
+      <div
         className={cn(
-          "mb-0 shrink-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden",
+          "shrink-0",
           !isDesktop && mobileChatOpen && "max-lg:hidden",
-          !isDesktop && !mobileChatOpen && "max-lg:[&_.ant-tabs-nav]:mb-2 max-lg:px-3",
+          !isDesktop && !mobileChatOpen && "max-lg:px-3 max-lg:pt-2",
         )}
-        items={[
-          {
-            key: "active",
-            label: (
-              <span className="inline-flex items-center gap-1.5">
-                WhatsApp
-                <Tag className="!m-0" icon={<CommentOutlined />}>
-                  {activeItems.length}
-                </Tag>
-                {humanCount ? (
-                  <Tag className="!m-0" color="purple">
-                    {humanCount} humano
+      >
+        <Tabs
+          activeKey={tab}
+          onChange={(key) => setTab(key as TabKey)}
+          className={cn(
+            "mb-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden",
+            !isDesktop &&
+              !mobileChatOpen &&
+              "max-lg:[&_.ant-tabs-nav]:mb-2 max-lg:[&_.ant-tabs-tab]:!ms-0 max-lg:[&_.ant-tabs-tab+.ant-tabs-tab]:!ms-5",
+          )}
+          items={[
+            {
+              key: "active",
+              label: (
+                <span className="inline-flex max-w-full items-center gap-1.5">
+                  WhatsApp
+                  <Tag className="!m-0" icon={<CommentOutlined />}>
+                    {activeItems.length}
                   </Tag>
-                ) : null}
-              </span>
-            ),
-          },
-          {
-            key: "history",
-            label: (
-              <span className="inline-flex items-center gap-1.5">
-                Histórico
-                <Tag className="!m-0">{historyItems.length}</Tag>
-              </span>
-            ),
-          },
-        ]}
-      />
+                  {humanCount ? (
+                    <Tag className="!m-0 max-lg:hidden" color="purple">
+                      {humanCount} humano
+                    </Tag>
+                  ) : null}
+                </span>
+              ),
+            },
+            {
+              key: "history",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  Histórico
+                  <Tag className="!m-0">{historyItems.length}</Tag>
+                </span>
+              ),
+            },
+          ]}
+        />
+      </div>
 
       {tab === "history" ? (
         <HistoryPane

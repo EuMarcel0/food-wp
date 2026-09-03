@@ -12,15 +12,20 @@ import { PizzaSizeIcon, pizzaVisualScale } from "./PizzaSizeIcon";
 function SizeCardsSkeleton({ count = 3 }: { count?: number }) {
   const cards = Math.min(6, Math.max(2, count));
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
       {Array.from({ length: cards }, (_, index) => (
         <article
           key={index}
           className="min-w-0 overflow-hidden rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
         >
-          <div className="flex items-center gap-3">
-            <Skeleton.Avatar active size={56} shape="square" className="!rounded-xl" />
-            <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton.Avatar
+              active
+              size={48}
+              shape="square"
+              className="!size-12 !shrink-0 !rounded-xl sm:!size-14"
+            />
+            <div className="min-w-0 flex-1 overflow-hidden">
               <Skeleton
                 active
                 title={{ width: "55%", style: { margin: 0, height: 14 } }}
@@ -31,7 +36,7 @@ function SizeCardsSkeleton({ count = 3 }: { count?: number }) {
                 }}
               />
             </div>
-            <Skeleton.Button active size="small" className="!w-14" />
+            <Skeleton.Button active size="small" className="!w-14 shrink-0" />
           </div>
         </article>
       ))}
@@ -156,7 +161,7 @@ export function OptionGroupsEditor({
       ) : null}
 
       {pickerOpen && activeSizes.length ? (
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-2 content-start items-stretch gap-2.5 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 pb-1">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start items-stretch gap-2.5 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 pb-1 min-[420px]:grid-cols-2">
           {activeSizes.map((size) => {
             const checked = selected.has(size.id);
             const scale = pizzaVisualScale(size, activeSizes);
@@ -187,7 +192,7 @@ export function OptionGroupsEditor({
                   <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
                     {size.name}
                   </strong>
-                  <span className="mt-0.5 block text-xs leading-snug text-food-muted">
+                  <span className="mt-0.5 block break-words text-xs leading-snug text-food-muted">
                     {formatReais(size.price)}
                     {" · "}
                     {size.maxSelect === 1
@@ -213,7 +218,7 @@ export function OptionGroupsEditor({
       ) : null}
 
       {!pickerOpen && selected.size > 0 ? (
-        <div className="grid min-w-0 grid-cols-2 content-start gap-2 overflow-x-hidden">
+        <div className="grid min-w-0 grid-cols-1 content-start gap-2 overflow-x-hidden sm:grid-cols-2">
           {activeSizes
             .filter((size) => selected.has(size.id))
             .map((size) => (
@@ -221,18 +226,18 @@ export function OptionGroupsEditor({
                 key={size.id}
                 className="min-w-0 overflow-hidden rounded-[14px] border border-food-border bg-food-chip px-3 py-2.5"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
                   <PizzaSizeIcon
                     scale={pizzaVisualScale(size, activeSizes)}
                     active
-                    frame={56}
+                    frame={48}
                     className="shrink-0 rounded-xl"
                   />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <strong className="block truncate text-sm font-bold tracking-tight text-food-text">
                       {size.name}
                     </strong>
-                    <div className="text-xs text-food-muted">
+                    <div className="break-words text-xs leading-snug text-food-muted">
                       {formatReais(size.price)}
                       {" · "}
                       {size.maxSelect === 1
@@ -243,6 +248,7 @@ export function OptionGroupsEditor({
                   <Button
                     type="link"
                     size="small"
+                    className="!h-auto shrink-0 !px-1.5"
                     onClick={() => setPickerOpen(true)}
                   >
                     Alterar
