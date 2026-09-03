@@ -14,7 +14,7 @@ import {
   isAutoAcceptNotification,
   printAfterAutoAccept,
 } from "../lib/autoPrint";
-import { playNewOrderSound, unlockNotifySound } from "../lib/notifySound";
+import { bindNotifySoundUnlock, playNewOrderSound } from "../lib/notifySound";
 import { supabase } from "../lib/supabase";
 import type { AppNotification } from "../types";
 
@@ -79,11 +79,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     load().catch(() => setItems([]));
   }, [load]);
 
-  useEffect(() => {
-    const unlock = () => unlockNotifySound();
-    window.addEventListener("pointerdown", unlock, { once: true });
-    return () => window.removeEventListener("pointerdown", unlock);
-  }, []);
+  useEffect(() => bindNotifySoundUnlock(), []);
 
   useEffect(() => {
     const client = supabase;

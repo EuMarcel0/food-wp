@@ -1,5 +1,7 @@
 let context: AudioContext | null = null;
 let unlocked = false;
+let pending: "order" | "message" | null = null;
+let listenersBound = false;
 
 function getContext() {
   if (!context) {
@@ -10,23 +12,26 @@ function getContext() {
   return context;
 }
 
-export function unlockNotifySound() {
-  const audio = getContext();
-  if (!audio) return;
-  if (audio.state === "suspended") {
-    void audio.resume();
-  }
-  unlocked = true;
+function canPlay(audio: AudioContext) {
+  return audio.state === "running";
 }
 
-export function playNewOrderSound() {
+async function resumeContext() {
   const audio = getContext();
-  if (!audio) return;
-  if (audio.state === "suspended") {
-    void audio.resume();
+  if (!audio) return null;
+  const state = audio.state as string;
+  if (state === "suspended" || state === "interrupted") {
+    try {
+      await audio.resume();
+    } catch {
+      return audio;
+    }
   }
-  if (!unlocked && audio.state !== "running") return;
+  if (audio.state === "running") unlocked = true;
+  return audio;
+}
 
+function playOrderTone(audio: AudioContext) {
   const now = audio.currentTime;
   const gain = audio.createGain();
   gain.gain.setValueAtTime(0.0001, now);
@@ -49,15 +54,7 @@ export function playNewOrderSound() {
   second.stop(now + 0.42);
 }
 
-/** Tom mais curto e suave — nova mensagem WhatsApp. */
-export function playNewMessageSound() {
-  const audio = getContext();
-  if (!audio) return;
-  if (audio.state === "suspended") {
-    void audio.resume();
-  }
-  if (!unlocked && audio.state !== "running") return;
-
+function playMessageTone(audio: AudioContext) {
   const now = audio.currentTime;
   const gain = audio.createGain();
   gain.gain.setValueAtTime(0.0001, now);
@@ -72,6 +69,74 @@ export function playNewMessageSound() {
   tone.connect(gain);
   tone.start(now);
   tone.stop(now + 0.28);
+}
+
+function flushPending() {
+  if (!pending || !context || !canPlay(context)) return;
+  const kind = pending;
+  pending = null;
+  if (kind === "order") playOrderTone(context);
+  else playMessageTone(context);
+}
+
+async function play(kind: "order" | "message") {
+  const audio = await resumeContext();
+  if (!audio) return;
+  if (!canPlay(audio)) {
+    pending = kind;
+    return;
+  }
+  pending = null;
+  if (kind === "order") playOrderTone(audio);
+  else playMessageTone(audio);
+}
+
+export async function unlockNotifySound() {
+  const audio = await resumeContext();
+  if (audio && canPlay(audio)) flushPending();
+}
+
+export function playNewOrderSound() {
+  void play("order");
+}
+
+export function playNewMessageSound() {
+  void play("message");
+}
+
+export function bindNotifySoundUnlock() {
+  if (listenersBound || typeof window === "undefined") return () => undefined;
+  listenersBound = true;
+
+  const onGesture = () => {
+    void unlockNotifySound();
+  };
+  const onVisible = () => {
+    if (document.visibilityState !== "visible") return;
+    void unlockNotifySound();
+  };
+
+  const gestureOpts: AddEventListenerOptions = { capture: true, passive: true };
+  window.addEventListener("pointerdown", onGesture, gestureOpts);
+  window.addEventListener("touchstart", onGesture, gestureOpts);
+  window.addEventListener("click", onGesture, gestureOpts);
+  window.addEventListener("keydown", onGesture, gestureOpts);
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("focus", onVisible);
+  window.addEventListener("pageshow", onVisible);
+
+  void unlockNotifySound();
+
+  return () => {
+    listenersBound = false;
+    window.removeEventListener("pointerdown", onGesture, gestureOpts);
+    window.removeEventListener("touchstart", onGesture, gestureOpts);
+    window.removeEventListener("click", onGesture, gestureOpts);
+    window.removeEventListener("keydown", onGesture, gestureOpts);
+    document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("focus", onVisible);
+    window.removeEventListener("pageshow", onVisible);
+  };
 }
 
 declare global {
