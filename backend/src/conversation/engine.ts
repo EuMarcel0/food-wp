@@ -5,8 +5,8 @@ import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
-  createOrder,
   findLatestOrder,
+  createOrder,
   findOrderByCode,
   getConversation,
   getProduct,
