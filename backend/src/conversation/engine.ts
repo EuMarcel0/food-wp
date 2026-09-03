@@ -559,7 +559,7 @@ async function resumeCurrentStep(
       await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
       return;
     case "cart":
-      await showCheckoutOptions(to, store, context, hint || "🛒 *Seu carrinho*");
+      await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_order_note":
       // Fluxo novo pula esta etapa; mantém resume para conversas antigas.
@@ -567,7 +567,8 @@ async function resumeCurrentStep(
       await askOrderNote(to);
       return;
     case "awaiting_fulfillment":
-      await showCheckoutOptions(to, store, context, hint ? `${hint}\n\n🛒 *Seu carrinho*` : "🛒 *Seu carrinho*");
+      // intro já inclui o título do carrinho em showCheckoutOptions — não duplicar.
+      await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_neighborhood":
       await sendHintIfNeeded();
@@ -1276,8 +1277,9 @@ export async function handleIncomingMessage(input: {
   }
 
   // Atalhos globais (menu/status/pedido) não interrompem pedido em andamento.
-  // No carrinho, o botão "Adicionar mais" usa id "order" — esse continua válido.
-  const cartAddMore = state === "cart" && incoming === "order";
+  // No checkout unificado, "Adicionar mais" usa id "order" em cart e awaiting_fulfillment.
+  const cartAddMore =
+    (state === "cart" || state === "awaiting_fulfillment") && incoming === "order";
   const globalShortcut =
     ["menu", "status"].includes(incoming) ||
     ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
@@ -1319,7 +1321,7 @@ export async function handleIncomingMessage(input: {
     context.orderNotes = notes;
     if (!context.fulfillment) {
       await persist("awaiting_fulfillment", context);
-      await showCheckoutOptions(input.from, store, context, "🛒 *Seu carrinho*");
+      await showCheckoutOptions(input.from, store, context, "✅ Continue seu pedido");
       return;
     }
     await persist("awaiting_payment", context);
@@ -1773,7 +1775,7 @@ export async function handleIncomingMessage(input: {
       command === "fechar pedido"
     ) {
       await persist("awaiting_fulfillment", context);
-      await showCheckoutOptions(input.from, store, context, "🛒 *Seu carrinho*");
+      await showCheckoutOptions(input.from, store, context, "✅ Continue seu pedido");
       return;
     }
 
