@@ -646,10 +646,75 @@ function MessageActionsPreview({ actions }: { actions: ConversationMessageAction
   );
 }
 
+const URL_IN_TEXT =
+  /(https?:\/\/[^\s<>"']+)/gi;
+
+function MessageBodyText({ body }: { body: string }) {
+  const parts = body.split(URL_IN_TEXT);
+  return (
+    <div className="whitespace-pre-wrap break-words">
+      {parts.map((part, index) => {
+        if (/^https?:\/\//i.test(part)) {
+          const href = part.replace(/[),.]+$/g, "");
+          const trailing = part.slice(href.length);
+          return (
+            <span key={`${index}-${href}`}>
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-[#027eb5] underline underline-offset-2 break-all dark:text-[#53bdeb]"
+              >
+                {href}
+              </a>
+              {trailing}
+            </span>
+          );
+        }
+        return <span key={`${index}-${part.slice(0, 12)}`}>{part}</span>;
+      })}
+    </div>
+  );
+}
+
+function LocationMessageBody({ body }: { body: string }) {
+  const lines = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const mapsLine = lines.find((line) => /^https?:\/\//i.test(line));
+  const labelLine = lines.find((line) => !/^https?:\/\//i.test(line));
+  const address = labelLine
+    ?.replace(/^📍\s*Localização\s*:?\s*/i, "")
+    .trim();
+
+  return (
+    <div className="space-y-1.5">
+      <div className="font-medium">📍 Localização</div>
+      {address ? (
+        <div className="text-xs leading-snug opacity-80">{address}</div>
+      ) : null}
+      {mapsLine ? (
+        <a
+          href={mapsLine}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-sm font-medium text-[#027eb5] underline underline-offset-2 break-all dark:text-[#53bdeb]"
+        >
+          Abrir no Google Maps
+        </a>
+      ) : (
+        <MessageBodyText body={body} />
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
   const pending = message.id.startsWith("temp-");
   const isAudio = message.msgType === "audio" && Boolean(message.mediaUrl);
+  const isLocation = message.msgType === "location";
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
@@ -679,8 +744,10 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
               Seu navegador não reproduz áudio.
             </audio>
           </div>
+        ) : isLocation ? (
+          <LocationMessageBody body={message.body} />
         ) : (
-          <div className="whitespace-pre-wrap break-words">{message.body}</div>
+          <MessageBodyText body={message.body} />
         )}
         {message.actions ? <MessageActionsPreview actions={message.actions} /> : null}
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-60">

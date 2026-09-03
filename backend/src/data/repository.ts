@@ -1891,7 +1891,9 @@ export async function appendConversationMessage(input: {
   const hasMedia = Boolean(input.mediaUrl);
   if (!body && msgType !== "location" && !hasMedia) return null;
   const preview = previewText(
-    body || (msgType === "audio" ? "🎤 Áudio" : hasMedia ? "[mídia]" : "[mídia]"),
+    msgType === "location"
+      ? "📍 Localização"
+      : body || (msgType === "audio" ? "🎤 Áudio" : hasMedia ? "[mídia]" : "[mídia]"),
   );
   const now = new Date().toISOString();
 

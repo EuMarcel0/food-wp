@@ -205,7 +205,16 @@ webhookRouter.post("/whatsapp", (req, res) => {
         const inboundBody =
           text ||
           (location
-            ? `📍 Localização${location.address ? `: ${location.address}` : ""}`
+            ? [
+                `📍 Localização${
+                  location.address?.trim()
+                    ? `: ${location.address.trim()}`
+                    : location.name?.trim()
+                      ? `: ${location.name.trim()}`
+                      : ""
+                }`,
+                `https://maps.google.com/?q=${location.latitude},${location.longitude}`,
+              ].join("\n")
             : replyId
               ? `[opção] ${replyId}`
               : "");
