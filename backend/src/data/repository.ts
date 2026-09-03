@@ -2297,9 +2297,10 @@ export async function saveConversation(
 
   const current = await getConversation(customer.id);
   const now = new Date().toISOString();
-  // Reabre Ativas no Bem-vindo ou no fluxo de pedido; encerramento só via painel.
-  const closedAt =
-    options?.reopen || isOrderFlowState(state)
+  // Reabre Ativas no fluxo de pedido / reopen; fecha em despedida (close) ou mantém.
+  const closedAt = options?.close
+    ? now
+    : options?.reopen || isOrderFlowState(state)
       ? null
       : (current?.closedAt ?? null);
   const activatedAt = nextActivatedAt(current, closedAt, now);

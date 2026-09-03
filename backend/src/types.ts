@@ -52,6 +52,8 @@ export function isOrderFlowState(state: ConversationState) {
 export type SaveConversationOptions = {
   /** Reabre Ativas (ex.: Bem-vindo ou nova mensagem após encerramento). */
   reopen?: boolean;
+  /** Encerra Ativas (despedida / cancelar atendimento) — evita timeout ocioso. */
+  close?: boolean;
 };
 
 export type ProductOption = {

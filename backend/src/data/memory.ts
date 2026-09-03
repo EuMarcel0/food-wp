@@ -1098,8 +1098,9 @@ export const memoryStore = {
   ) {
     const current = conversations.get(customer.id);
     const now = new Date().toISOString();
-    const closedAt =
-      options?.reopen || isOrderFlowState(state)
+    const closedAt = options?.close
+      ? now
+      : options?.reopen || isOrderFlowState(state)
         ? null
         : (current?.closedAt ?? null);
     const activatedAt =

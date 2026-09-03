@@ -1249,7 +1249,7 @@ export async function handleIncomingMessage(input: {
   }
 
   if (CANCEL_KEYS.includes(command)) {
-    await persist("welcome", emptyContext());
+    await persist("welcome", emptyContext(), { close: true });
     await sendText(
       input.from,
       "👋 Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."
@@ -1343,7 +1343,8 @@ export async function handleIncomingMessage(input: {
       return;
     }
     if (no) {
-      await persist("welcome", emptyContext());
+      // Despedida explícita: fecha Ativas p/ o job de ociosidade não avisar de novo.
+      await persist("welcome", emptyContext(), { close: true });
       await declineNewOrder(input.from, store.timezone);
       return;
     }
@@ -1752,7 +1753,7 @@ export async function handleIncomingMessage(input: {
       command === "limpar carrinho")
   ) {
     context.cart = [];
-    await persist("welcome", emptyContext());
+    await persist("welcome", emptyContext(), { close: true });
     await sendText(input.from, "Carrinho limpo. É só chamar quando quiser pedir de novo.");
     return;
   }
