@@ -312,28 +312,35 @@ export function unitPriceCents(product: Product, selections: CartSelection[]) {
   return Math.max(0, cents);
 }
 
-function originalFlavorLabel(productName: string) {
-  const stripped = productName.replace(/^pizza\s+(salgada|doce)\s+/i, "").trim();
-  return stripped || productName;
+/** Remove prefixo "Pizza" / "Pizza Salgada" do sabor para o rótulo curto. */
+export function cleanFlavorName(name: string) {
+  const cleaned = name
+    .replace(/^pizza\s+salgada\s+/i, "")
+    .replace(/^pizza\s+doce\s+/i, "")
+    .replace(/^pizza\s+/i, "")
+    .trim();
+  return cleaned || name.trim();
 }
 
-function extraFlavorNames(productName: string, names: string[]) {
-  const original = normalizeName(originalFlavorLabel(productName));
-  const full = normalizeName(productName);
-  return names.filter((name) => {
-    const current = normalizeName(name);
-    return current !== original && current !== full && !full.includes(current);
-  });
+/** "Pizza Cangaceiro" → "Pizza"; demais produtos mantêm o nome. */
+export function productBaseLabel(productName: string) {
+  if (/^pizza(?:\s+(?:salgada|doce))?(\s|$)/i.test(productName.trim())) {
+    return "Pizza";
+  }
+  return productName.trim();
 }
 
-export function flavorShareLine(productName: string, extraNames: string[]) {
-  const extras = extraFlavorNames(productName, extraNames);
-  if (!extras.length) return "";
-  const slices = extras.length + 1;
-  const original = originalFlavorLabel(productName);
-  return [`1/${slices} ${original}`, ...extras.map((name) => `1/${slices} ${name}`)].join(
-    " + ",
-  );
+/** 1 sabor: "Cangaceiro"; 2+: "1/2 Cangaceiro + 1/2 Calabresa" (ASCII p/ cupom térmico). */
+export function formatFlavorShares(names: string[]) {
+  const cleaned = names.map(cleanFlavorName).filter(Boolean);
+  if (!cleaned.length) return "";
+  if (cleaned.length === 1) return cleaned[0];
+  const slices = cleaned.length;
+  return cleaned.map((name) => `1/${slices} ${name}`).join(" + ");
+}
+
+export function flavorShareLine(_productName: string, names: string[]) {
+  return formatFlavorShares(names);
 }
 
 function isShareGroup(group: ProductOptionGroup | undefined) {
@@ -341,7 +348,18 @@ function isShareGroup(group: ProductOptionGroup | undefined) {
   return group.maxSelect > 1 || Boolean(group.exclusiveSet?.trim());
 }
 
-export function assembledName(product: Product, selections: CartSelection[]) {
+export type AssembledParts = {
+  /** Ex.: "Pizza F - Família" */
+  title: string;
+  /** Ex.: "1/2 Cangaceiro + 1/2 Calabresa" */
+  flavors: string;
+  extras: string[];
+};
+
+export function assembledParts(
+  product: Product,
+  selections: CartSelection[],
+): AssembledParts {
   const groups = activeGroups(product);
   const size = resolveSizeSelection(product, selections);
   const flavorNames: string[] = [];
@@ -372,17 +390,19 @@ export function assembledName(product: Product, selections: CartSelection[]) {
     otherParts.push(names.join(" + "));
   }
 
-  const shares = flavorShareLine(product.name, flavorNames);
-  if (shares) {
-    return [sizeName, shares, ...otherParts].filter(Boolean).join(" · ");
-  }
-  const parts = [...flavorNames, ...otherParts];
-  if (parts.length) {
-    return [sizeName, `${product.name} · ${parts.join(" · ")}`]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  return [sizeName, product.name].filter(Boolean).join(" · ");
+  const kind = productBaseLabel(product.name);
+  const title =
+    [kind, sizeName].filter(Boolean).join(" ").trim() || product.name.trim();
+  const flavors = formatFlavorShares(flavorNames);
+
+  return { title, flavors, extras: otherParts };
+}
+
+export function assembledName(product: Product, selections: CartSelection[]) {
+  const { title, flavors, extras } = assembledParts(product, selections);
+  const detail = [flavors, ...extras].filter(Boolean).join(" · ");
+  if (detail) return `${title} — ${detail}`;
+  return title;
 }
 
 export function addonOptionLabel(option: { name: string; extraPrice: number }) {
@@ -434,8 +454,11 @@ export function groupPrompt(
           .map((option) => option.name);
   const shares = flavorShareLine(product.name, chosen);
   const catalogFlavors = usesCatalogFlavors(group);
+  const heading = catalogFlavors
+    ? `*${productBaseLabel(product.name)} ${group.name}*`
+    : `*${product.name}*`;
   const lines = [
-    `*${product.name}*`,
+    heading,
     catalogFlavors
       ? chosen.length
         ? `📏 Tamanho *${group.name}* — escolha o sabor`
@@ -454,7 +477,7 @@ export function groupPrompt(
         : group.required
           ? "Escolha 1 opção."
           : "Opcional — pode pular.",
-    chosen.length ? `✅ Já escolheu: ${shares || chosen.join(" + ")}.` : "",
+    chosen.length ? `✅ Já escolheu: ${shares || formatFlavorShares(chosen)}.` : "",
   ];
   return lines.filter(Boolean).join("\n");
 }

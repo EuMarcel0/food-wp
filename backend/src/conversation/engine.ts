@@ -33,6 +33,7 @@ import {
   addonOptionLabel,
   crustLabel,
   flavorShareLine,
+  productBaseLabel,
   groupPrompt,
   isCustomizable,
   nextAssembly,
@@ -168,15 +169,20 @@ function itemHeading(
   item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity" | "unitPriceCents">,
   opts?: { withQuantity?: boolean; withUnitPrice?: boolean },
 ) {
-  const title = item.catalogName?.trim() || item.name;
+  // Nome montável: "Pizza F - Família — 1/2 Cangaceiro + 1/2 Calabresa"
+  const raw = item.name.trim();
+  const sep = " — ";
+  const sepAt = raw.indexOf(sep);
+  const title = sepAt >= 0 ? raw.slice(0, sepAt).trim() : raw;
+  const detail = sepAt >= 0 ? raw.slice(sepAt + sep.length).trim() : "";
+
   let heading =
     opts?.withQuantity && item.quantity > 0 ? `${item.quantity}x ${title}` : title;
   if (opts?.withUnitPrice) {
     heading = `${heading} — ${formatBRL(item.unitPriceCents)}`;
   }
   const lines = [`*${heading}*`];
-  // Tamanho/sabores logo abaixo do nome do cardápio (sem quantidade).
-  if (item.name !== title) lines.push(item.name);
+  if (detail) lines.push(detail);
   const crust = crustLabel(item.extras);
   if (crust) lines.push(crust);
   const addons = addonLabel(item.extras);
@@ -458,9 +464,12 @@ async function resumeCurrentStep(
               product.name,
               current.options.map(item => item.name)
             ) || current.options.map(item => item.name).join(" + ");
+          const label = usesCatalogFlavors(openGroup)
+            ? `*${productBaseLabel(product.name)} ${openGroup.name}*\n${shares}`
+            : `*${openGroup.name}:*\n${shares}`;
           await sendButtons(
             to,
-            withHint(`*${usesCatalogFlavors(openGroup) ? "Sabores" : openGroup.name}:*\n${shares}`),
+            withHint(label),
             [
               { id: "more_options", title: "Mais um" },
               { id: "done_options", title: "Pronto" }
@@ -930,19 +939,23 @@ async function groupWantingMore(product: Product, drafts: CartSelection[]) {
 async function askQuantity(to: string, product: Product, extras: CartSelection[]) {
   const variant = assembledName(product, extras);
   const price = unitPriceCents(product, extras);
+  const sep = " — ";
+  const sepAt = variant.indexOf(sep);
+  const title = sepAt >= 0 ? variant.slice(0, sepAt).trim() : variant;
+  const detail = sepAt >= 0 ? variant.slice(sepAt + sep.length).trim() : "";
   const heading = [
-    `*${product.name}*`,
-    variant !== product.name ? variant : null,
+    `*${title}*`,
+    detail || null,
     crustLabel(extras),
     addonLabel(extras),
-    formatReais(price / 100)
+    formatReais(price / 100),
   ]
     .filter(Boolean)
     .join("\n");
   await sendButtons(to, `${heading}\n🔢 Quantas unidades?\nOu digite um número.`, [
     { id: "qty:1", title: "1" },
     { id: "qty:2", title: "2" },
-    { id: "qty:3", title: "3" }
+    { id: "qty:3", title: "3" },
   ]);
 }
 
@@ -1450,9 +1463,12 @@ export async function handleIncomingMessage(input: {
             current.options.map(item => item.name)
           ) || current.options.map(item => item.name).join(" + ");
         const canAddMore = Boolean(await groupWantingMore(product, drafts));
+        const label = usesCatalogFlavors(group)
+          ? `*${productBaseLabel(product.name)} ${group.name}*\n${shares}`
+          : `*${group.name}:*\n${shares}`;
         await sendButtons(
           input.from,
-          usesCatalogFlavors(group) ? `*Sabores:*\n${shares}` : `*${group.name}:*\n${shares}`,
+          label,
           canAddMore
             ? [
                 { id: "more_options", title: "Mais um" },
