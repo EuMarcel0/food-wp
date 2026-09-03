@@ -562,7 +562,6 @@ async function resumeCurrentStep(
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_order_note":
-      // Fluxo novo pula esta etapa; mantém resume para conversas antigas.
       await sendHintIfNeeded();
       await askOrderNote(to);
       return;
@@ -670,7 +669,6 @@ async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
     zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
     "🏠 Qual o endereço completo da entrega?",
     "Pode digitar o endereço ou, *no celular*, compartilhar a localização.",
-    "Opcional: na *mesma mensagem*, em outra linha, a observação (interfone, ponto de referência)."
   ]
     .filter(Boolean)
     .join("\n");
@@ -683,7 +681,7 @@ function formatLocation(location: { latitude: number; longitude: number; name?: 
   return label ? `${label}\n${maps}` : maps;
 }
 
-function resolveAddressAndDeliveryNote(input: {
+function resolveAddress(input: {
   text: string;
   location?: {
     latitude: number;
@@ -691,23 +689,10 @@ function resolveAddressAndDeliveryNote(input: {
     name?: string;
     address?: string;
   };
-}): { address: string; note: string | null } | null {
-  if (input.location) {
-    return { address: formatLocation(input.location), note: null };
-  }
+}): string | null {
+  if (input.location) return formatLocation(input.location);
   const text = input.text.trim();
-  if (!text) return null;
-  const parts = text
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
-  if (parts.length >= 2) {
-    return {
-      address: parts[0],
-      note: clipNote(parts.slice(1).join(" "))
-    };
-  }
-  return { address: text, note: null };
+  return text || null;
 }
 
 const PAYMENT_ROWS = [
@@ -1864,15 +1849,14 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_address") {
-    const resolved = resolveAddressAndDeliveryNote(input);
-    if (!resolved) {
+    const address = resolveAddress(input);
+    if (!address) {
       await resumeCurrentStep(input.from, store, state, context);
       return;
     }
-    context.addressText = resolved.address;
-    context.orderNotes = resolved.note;
-    await persist("awaiting_payment", context);
-    await askPayment(input.from);
+    context.addressText = address;
+    await persist("awaiting_order_note", context);
+    await askOrderNote(input.from);
     return;
   }
 
