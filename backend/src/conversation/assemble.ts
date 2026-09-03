@@ -330,6 +330,22 @@ export function productBaseLabel(productName: string) {
   return productName.trim();
 }
 
+/**
+ * Sabores do cardápio excluem a pizza escolhida no menu — ela é o 1º sabor.
+ * Ex.: produto Cangaceiro + opções [Atum, Calabresa] → [Cangaceiro, Atum, Calabresa]
+ */
+export function resolveFlavorShareNames(productName: string, selectedNames: string[]) {
+  const selected = selectedNames.map(cleanFlavorName).filter(Boolean);
+  const original = cleanFlavorName(productName);
+  if (!original) return selected;
+
+  const selectedNorm = new Set(selected.map(normalizeName));
+  if (!selectedNorm.has(normalizeName(original))) {
+    return [original, ...selected];
+  }
+  return selected;
+}
+
 /** 1 sabor: "Cangaceiro"; 2+: "1/2 Cangaceiro + 1/2 Calabresa" (ASCII p/ cupom térmico). */
 export function formatFlavorShares(names: string[]) {
   const cleaned = names.map(cleanFlavorName).filter(Boolean);
@@ -339,8 +355,8 @@ export function formatFlavorShares(names: string[]) {
   return cleaned.map((name) => `1/${slices} ${name}`).join(" + ");
 }
 
-export function flavorShareLine(_productName: string, names: string[]) {
-  return formatFlavorShares(names);
+export function flavorShareLine(productName: string, names: string[]) {
+  return formatFlavorShares(resolveFlavorShareNames(productName, names));
 }
 
 function isShareGroup(group: ProductOptionGroup | undefined) {
@@ -365,6 +381,7 @@ export function assembledParts(
   const flavorNames: string[] = [];
   const otherParts: string[] = [];
   let sizeName = size.selection?.groupName || size.group?.name || "";
+  let usedCatalogFlavors = false;
 
   for (const selection of selections) {
     if (isCatalogExtraGroup(selection.groupId)) continue;
@@ -378,6 +395,7 @@ export function assembledParts(
 
     if (!selection.options.length) {
       if (isSize && !sizeName) sizeName = selection.groupName;
+      if (isSize && usesCatalogFlavors(group)) usedCatalogFlavors = true;
       continue;
     }
 
@@ -385,15 +403,33 @@ export function assembledParts(
     if (isShareGroup(group) || isSize) {
       flavorNames.push(...names);
       if (isSize || group?.exclusiveSet?.trim()) sizeName = selection.groupName;
+      if (usesCatalogFlavors(group) || (isSize && usesCatalogFlavors(size.group))) {
+        usedCatalogFlavors = true;
+      }
       continue;
     }
     otherParts.push(names.join(" + "));
   }
 
+  // Tamanho de pizza do cardápio: mesmo sem opção extra ("Só este sabor"),
+  // o sabor original conta.
+  if (
+    !usedCatalogFlavors &&
+    size.group &&
+    usesCatalogFlavors(size.group) &&
+    (size.selection || sizeName)
+  ) {
+    usedCatalogFlavors = true;
+  }
+
   const kind = productBaseLabel(product.name);
   const title =
     [kind, sizeName].filter(Boolean).join(" ").trim() || product.name.trim();
-  const flavors = formatFlavorShares(flavorNames);
+  const flavors = formatFlavorShares(
+    usedCatalogFlavors
+      ? resolveFlavorShareNames(product.name, flavorNames)
+      : flavorNames,
+  );
 
   return { title, flavors, extras: otherParts };
 }

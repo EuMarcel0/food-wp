@@ -22,7 +22,7 @@ import {
   canCustomerCancelStatus,
   CUSTOMER_CANCEL_HINT,
   formatOrderStatusMessage,
-  isOpenOrderStatus,
+  isOpenOrderStatus
 } from "./status.js";
 import { resolveDeliveryFee } from "./deliveryFee.js";
 import {
@@ -63,7 +63,7 @@ import {
   type Product,
   type ProductOptionGroup,
   type SaveConversationOptions,
-  type Store,
+  type Store
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
@@ -83,7 +83,7 @@ const ACK_KEYS = [
   "perfeito",
   "blz",
   "beleza",
-  "tmj",
+  "tmj"
 ];
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
 
@@ -93,7 +93,7 @@ function isCustomerAck(normalized: string) {
   // Joinha / curtida do WhatsApp
   if (/^👍+$/u.test(text) || /^👍\s/u.test(text)) return true;
   if (ACK_KEYS.includes(text)) return true;
-  return ACK_KEYS.some((key) => text === key || text.startsWith(`${key} `));
+  return ACK_KEYS.some(key => text === key || text.startsWith(`${key} `));
 }
 
 function isConversationIdle(lastMessageAt: string | undefined, minutes: number) {
@@ -167,7 +167,7 @@ function cartTotal(context: ConversationContext) {
 
 function itemHeading(
   item: Pick<CartItem, "name" | "catalogName" | "extras" | "quantity" | "unitPriceCents">,
-  opts?: { withQuantity?: boolean; withUnitPrice?: boolean },
+  opts?: { withQuantity?: boolean; withUnitPrice?: boolean }
 ) {
   // Nome montável: "Pizza F - Família — 1/2 Cangaceiro + 1/2 Calabresa"
   const raw = item.name.trim();
@@ -176,8 +176,7 @@ function itemHeading(
   const title = sepAt >= 0 ? raw.slice(0, sepAt).trim() : raw;
   const detail = sepAt >= 0 ? raw.slice(sepAt + sep.length).trim() : "";
 
-  let heading =
-    opts?.withQuantity && item.quantity > 0 ? `${item.quantity}x ${title}` : title;
+  let heading = opts?.withQuantity && item.quantity > 0 ? `${item.quantity}x ${title}` : title;
   if (opts?.withUnitPrice) {
     heading = `${heading} — ${formatBRL(item.unitPriceCents)}`;
   }
@@ -331,7 +330,7 @@ function setDraftCrust(drafts: CartSelection[], crust: Crust) {
 
 function crustsForPizza(product: Product, crusts: Crust[]) {
   if (!product.pizzaKind) return crusts;
-  return crusts.filter((crust) => crust.pizzaKind === product.pizzaKind);
+  return crusts.filter(crust => crust.pizzaKind === product.pizzaKind);
 }
 
 async function askCrusts(to: string, product: Product, crusts: Crust[]) {
@@ -396,9 +395,7 @@ export async function resumeAfterHumanHandoff(input: {
   const store = await getStore();
   const latest = await findLatestOrder(input.customerId);
   const afterDelivered =
-    input.state === "welcome" &&
-    !(input.context.cart?.length ?? 0) &&
-    latest?.status === "delivered";
+    input.state === "welcome" && !(input.context.cart?.length ?? 0) && latest?.status === "delivered";
 
   if (afterDelivered) {
     const customer = await upsertCustomer(input.phone);
@@ -407,10 +404,7 @@ export async function resumeAfterHumanHandoff(input: {
     return;
   }
 
-  await sendText(
-    input.phone,
-    "Atendimento humano encerrado. Vamos continuar de onde você parou!",
-  );
+  await sendText(input.phone, "Atendimento humano encerrado. Vamos continuar de onde você parou!");
   await resumeCurrentStep(input.phone, store, input.state, input.context, { afterHandoff: true });
 }
 
@@ -421,12 +415,12 @@ async function askNewOrderAfterHandoff(to: string) {
       "Atendimento humano encerrado. Seu último pedido já está *entregue*.",
       "Deseja solicitar um *novo pedido*?",
       "",
-      "Selecione uma das opções ou digite qualquer coisa.",
+      "Selecione uma das opções ou digite qualquer coisa."
     ].join("\n"),
     [
       { id: "handoff_new_order:yes", title: "Sim" },
-      { id: "handoff_new_order:no", title: "Não" },
-    ],
+      { id: "handoff_new_order:no", title: "Não" }
+    ]
   );
 }
 
@@ -436,7 +430,7 @@ async function resumeCurrentStep(
   store: Store,
   state: ConversationState,
   context: ConversationContext,
-  opts?: { afterHandoff?: boolean },
+  opts?: { afterHandoff?: boolean }
 ) {
   const hint = opts?.afterHandoff ? "" : RESUME_HINT;
   const withHint = (text: string) => (hint ? `${hint}\n${text}` : text);
@@ -467,14 +461,10 @@ async function resumeCurrentStep(
           const label = usesCatalogFlavors(openGroup)
             ? `*${productBaseLabel(product.name)} ${openGroup.name}*\n${shares}`
             : `*${openGroup.name}:*\n${shares}`;
-          await sendButtons(
-            to,
-            withHint(label),
-            [
-              { id: "more_options", title: "Mais um" },
-              { id: "done_options", title: "Pronto" }
-            ]
-          );
+          await sendButtons(to, withHint(label), [
+            { id: "more_options", title: "Mais um" },
+            { id: "done_options", title: "Pronto" }
+          ]);
           return;
         }
       }
@@ -565,11 +555,7 @@ async function resumeCurrentStep(
  * Foto, áudio, documento etc.: se há pedido em andamento, mantém a etapa;
  * senão, avisa que só texto/botões são aceitos.
  */
-export async function handleUnsupportedInbound(input: {
-  from: string;
-  name?: string;
-  avatarUrl?: string;
-}) {
+export async function handleUnsupportedInbound(input: { from: string; name?: string; avatarUrl?: string }) {
   const store = await getStore();
   if (!isStoreOpen(store.businessHours, store.timezone)) {
     await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
@@ -598,7 +584,7 @@ async function askItemNote(to: string, item: CartItem) {
   await sendButtons(
     to,
     [
-      "📝 Observação para este item?",
+      "📝 *Observação para este item?*",
       ...lines,
       itemPriceLine(item),
       "Ex.: sem cebola, bem assada.",
@@ -643,12 +629,7 @@ async function askNeighborhoods(to: string, store: Store) {
       }))
     });
   }
-  await sendList(
-    to,
-    "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.",
-    "Ver bairros",
-    sections,
-  );
+  await sendList(to, "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.", "Ver bairros", sections);
 }
 
 function findNeighborhood(incoming: string, normalized: string, zones: DeliveryNeighborhood[]) {
@@ -749,7 +730,7 @@ function parseChangeCents(text: string): number | null {
 async function askChange(to: string, totalCents: number) {
   await sendText(
     to,
-    `💵 Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`,
+    `💵 Troco para quanto?\nO total é *${formatBRL(totalCents)}*.\nSe não precisar, envie *sem troco*.`
   );
 }
 
@@ -850,12 +831,7 @@ async function pizzaFlavorChoices(kind: PizzaKind | null | undefined, excludeIds
   });
 }
 
-async function showFlavorList(
-  to: string,
-  product: Product,
-  group: ProductOptionGroup,
-  drafts: CartSelection[]
-) {
+async function showFlavorList(to: string, product: Product, group: ProductOptionGroup, drafts: CartSelection[]) {
   const current = drafts.find(item => item.groupId === group.id);
   const picked = current?.options.map(option => option.id) ?? [];
   const pickedNames = current?.options.map(option => option.name) ?? [];
@@ -947,19 +923,13 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   const sepAt = variant.indexOf(sep);
   const title = sepAt >= 0 ? variant.slice(0, sepAt).trim() : variant;
   const detail = sepAt >= 0 ? variant.slice(sepAt + sep.length).trim() : "";
-  const heading = [
-    `*${title}*`,
-    detail || null,
-    crustLabel(extras),
-    addonLabel(extras),
-    formatReais(price / 100),
-  ]
+  const heading = [`*${title}*`, detail || null, crustLabel(extras), addonLabel(extras), formatReais(price / 100)]
     .filter(Boolean)
     .join("\n");
   await sendButtons(to, `${heading}\n🔢 Quantas unidades?\nOu digite um número.`, [
     { id: "qty:1", title: "1" },
     { id: "qty:2", title: "2" },
-    { id: "qty:3", title: "3" },
+    { id: "qty:3", title: "3" }
   ]);
 }
 
@@ -1105,9 +1075,7 @@ async function finishOrder(
       "",
       cartSummary,
       "",
-      fulfillment === "delivery"
-        ? `📍 Entrega: ${addressText ?? "a combinar"}`
-        : "🏪 Retirada no local",
+      fulfillment === "delivery" ? `📍 Entrega: ${addressText ?? "a combinar"}` : "🏪 Retirada no local",
       `💳 Pagamento: ${paymentLabel(paymentMethod)}`,
       changeLine ? `💵 ${changeLine}` : null,
       feeLine.startsWith("Taxa") || feeLine.startsWith("Entrega") ? `🛵 ${feeLine}` : null,
@@ -1116,7 +1084,7 @@ async function finishOrder(
       `💰 Total: *${formatBRL(order.totalCents)}*`,
       "",
       "Assim que o status mudar, eu te aviso por aqui. 😊",
-      store.allowCustomerCancel ? CUSTOMER_CANCEL_HINT : null,
+      store.allowCustomerCancel ? CUSTOMER_CANCEL_HINT : null
     ]
       .filter((line): line is string => line != null)
       .join("\n")
@@ -1155,11 +1123,8 @@ export async function handleIncomingMessage(input: {
   const normalized = normalize(incoming);
   const command = normalized.replace(/[!?.,]+$/g, "").trim();
 
-  const persist = (
-    nextState: ConversationState,
-    nextContext = context,
-    options?: SaveConversationOptions,
-  ) => saveConversation(customer, nextState, nextContext, options);
+  const persist = (nextState: ConversationState, nextContext = context, options?: SaveConversationOptions) =>
+    saveConversation(customer, nextState, nextContext, options);
 
   async function replyOpenOrderStatus(thanks = false) {
     const latest = await findLatestOrder(customer.id);
@@ -1170,8 +1135,8 @@ export async function handleIncomingMessage(input: {
       input.from,
       formatOrderStatusMessage(latest, {
         thanks,
-        allowCustomerCancel: store.allowCustomerCancel,
-      }),
+        allowCustomerCancel: store.allowCustomerCancel
+      })
     );
     return true;
   }
@@ -1192,16 +1157,13 @@ export async function handleIncomingMessage(input: {
         input.from,
         [
           "Seu pedido foi cancelado e seu atendimento finalizado.",
-          'Caso queira fazer um novo pedido, clique em "Novo pedido".',
+          'Caso queira fazer um novo pedido, clique em "Novo pedido".'
         ].join("\n"),
-        [{ id: "order", title: "Novo pedido" }],
+        [{ id: "order", title: "Novo pedido" }]
       );
       return;
     }
-    await sendText(
-      input.from,
-      "Não há pedido em andamento que possa ser cancelado.",
-    );
+    await sendText(input.from, "Não há pedido em andamento que possa ser cancelado.");
     return;
   }
 
@@ -1298,10 +1260,7 @@ export async function handleIncomingMessage(input: {
     }
     if (no) {
       await persist("welcome", emptyContext());
-      await sendText(
-        input.from,
-        "Tudo bem! Quando quiser pedir de novo, é só mandar uma mensagem. 😊",
-      );
+      await sendText(input.from, "Tudo bem! Quando quiser pedir de novo, é só mandar uma mensagem. 😊");
       return;
     }
     await persist("awaiting_new_order", context);
@@ -1319,9 +1278,7 @@ export async function handleIncomingMessage(input: {
     await persist("awaiting_product", context);
     await showMenu(
       input.from,
-      context.cart.length
-        ? "📋 Escolha o próximo item:"
-        : "🍕 Vamos montar seu pedido. Escolha o primeiro item:"
+      context.cart.length ? "📋 Escolha o próximo item:" : "🍕 Vamos montar seu pedido. Escolha o primeiro item:"
     );
     return;
   }
@@ -1333,8 +1290,8 @@ export async function handleIncomingMessage(input: {
       await sendText(
         input.from,
         formatOrderStatusMessage(latest, {
-          allowCustomerCancel: store.allowCustomerCancel,
-        }),
+          allowCustomerCancel: store.allowCustomerCancel
+        })
       );
       return;
     }
@@ -1345,11 +1302,7 @@ export async function handleIncomingMessage(input: {
 
   // Após o pedido (conversa em welcome/fechada), texto livre não reinicia o menu
   // enquanto houver pedido em aberto — responde o status (com "Por nada" se for ack).
-  if (
-    !orderActive &&
-    !hasReply &&
-    (await replyOpenOrderStatus(isCustomerAck(command)))
-  ) {
+  if (!orderActive && !hasReply && (await replyOpenOrderStatus(isCustomerAck(command)))) {
     return;
   }
 
@@ -1850,8 +1803,8 @@ export async function handleIncomingMessage(input: {
     await sendText(
       input.from,
       formatOrderStatusMessage(order, {
-        allowCustomerCancel: store.allowCustomerCancel,
-      }),
+        allowCustomerCancel: store.allowCustomerCancel
+      })
     );
     return;
   }
