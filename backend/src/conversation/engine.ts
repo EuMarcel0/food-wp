@@ -692,7 +692,7 @@ function resolveAddress(input: {
 }
 
 const PAYMENT_ROWS = [
-  { id: "pay:pix", title: "Pix" },
+  { id: "pay:pix", title: "Pix na Entrega/Retirada" },
   { id: "pay:cash", title: "Dinheiro" },
   { id: "pay:credit", title: "Cartão crédito" },
   { id: "pay:debit", title: "Cartão débito" }
@@ -705,7 +705,7 @@ async function askPayment(to: string, intro = "💳 Como deseja pagar?") {
 function parsePayment(incoming: string, normalized: string): PaymentMethod | "card_ambiguous" | null {
   const raw = incoming.startsWith("pay:") ? incoming.slice(4) : normalized;
   const value = normalize(raw.replace(/_/g, " "));
-  if (value === "pix") return "pix";
+  if (value === "pix" || value.startsWith("pix ")) return "pix";
   if (value === "cash" || value === "dinheiro") return "cash";
   if (value === "credit" || value === "credito" || value === "cartao credito" || value === "cartao de credito") {
     return "credit";
@@ -718,7 +718,7 @@ function parsePayment(incoming: string, normalized: string): PaymentMethod | "ca
 }
 
 function paymentLabel(method: PaymentMethod) {
-  if (method === "pix") return "Pix";
+  if (method === "pix") return "Pix na Entrega/Retirada";
   if (method === "cash") return "Dinheiro";
   if (method === "credit") return "Cartão crédito";
   if (method === "debit") return "Cartão débito";
