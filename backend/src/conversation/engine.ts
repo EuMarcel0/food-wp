@@ -1,7 +1,8 @@
 import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
-import { closedStoreMessage, isStoreOpen } from "../lib/businessHours.js";
+import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
+import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
   createOrder,
@@ -408,19 +409,38 @@ export async function resumeAfterHumanHandoff(input: {
   await resumeCurrentStep(input.phone, store, input.state, input.context, { afterHandoff: true });
 }
 
-async function askNewOrderAfterHandoff(to: string) {
+async function askNewOrderPrompt(to: string, intro?: string) {
   await sendButtons(
     to,
     [
-      "Atendimento humano encerrado. Seu último pedido já está *entregue*.",
-      "Deseja solicitar um *novo pedido*?",
-      "",
-      "Selecione uma das opções ou digite qualquer coisa."
-    ].join("\n"),
-    [
-      { id: "handoff_new_order:yes", title: "Sim" },
-      { id: "handoff_new_order:no", title: "Não" }
+      intro,
+      intro ? "" : null,
+      "Deseja fazer um *novo pedido*?",
     ]
+      .filter((line): line is string => line != null)
+      .join("\n"),
+    [
+      { id: NEW_ORDER_YES, title: "✅ Sim" },
+      { id: NEW_ORDER_NO, title: "❌ Não" },
+    ],
+  );
+}
+
+async function askNewOrderAfterHandoff(to: string) {
+  await askNewOrderPrompt(
+    to,
+    "Atendimento humano encerrado. Seu último pedido já está *entregue*.",
+  );
+}
+
+async function declineNewOrder(to: string, timezone: string) {
+  await sendText(
+    to,
+    [
+      "😊 Agradecemos pela preferência!",
+      "Esperamos você novamente. 🍕",
+      dayPeriodWish(timezone),
+    ].join("\n"),
   );
 }
 
@@ -1249,9 +1269,13 @@ export async function handleIncomingMessage(input: {
 
   if (state === "awaiting_new_order") {
     const yes =
+      incoming === NEW_ORDER_YES ||
       incoming === "handoff_new_order:yes" ||
       ["sim", "s", "yes", "quero", "order", "fazer pedido", "pedir"].includes(normalized);
-    const no = incoming === "handoff_new_order:no" || ["nao", "n", "no"].includes(normalized);
+    const no =
+      incoming === NEW_ORDER_NO ||
+      incoming === "handoff_new_order:no" ||
+      ["nao", "n", "no"].includes(normalized);
 
     if (yes) {
       await persist("awaiting_product", emptyContext());
@@ -1260,11 +1284,11 @@ export async function handleIncomingMessage(input: {
     }
     if (no) {
       await persist("welcome", emptyContext());
-      await sendText(input.from, "Tudo bem! Quando quiser pedir de novo, é só mandar uma mensagem. 😊");
+      await declineNewOrder(input.from, store.timezone);
       return;
     }
     await persist("awaiting_new_order", context);
-    await askNewOrderAfterHandoff(input.from);
+    await askNewOrderPrompt(input.from);
     return;
   }
 

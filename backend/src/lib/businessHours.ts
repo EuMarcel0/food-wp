@@ -22,6 +22,15 @@ const DAY_LABELS = [
 const DAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] as const;
 export const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
+/** Saudação final conforme o horário no fuso da loja. */
+export function dayPeriodWish(timeZone = DEFAULT_TIMEZONE, now = new Date()) {
+  const { minutes } = localClock(now, timeZone);
+  const hour = Math.floor(minutes / 60);
+  if (hour >= 5 && hour < 12) return "Tenha um ótimo dia!";
+  if (hour >= 12 && hour < 18) return "Tenha uma ótima tarde!";
+  return "Tenha uma ótima noite!";
+}
+
 export function defaultBusinessHours(): BusinessHoursDay[] {
   return WEEK_ORDER.map((day) => ({
     day,

@@ -123,13 +123,19 @@ function statusMessageLines(order: Order): string[] {
       ];
     case "delivered":
       return [
-        pickup ? `🎉 Pedido ${code} foi retirado!` : `🎉 Pedido ${code} foi entregue!`,
+        pickup ? `🎉 Pedido ${code} retirado!` : `🎉 Pedido ${code} entregue!`,
         "",
-        "Obrigado pela preferência! Esperamos você de novo. 🍕",
+        "Obrigado pela preferência! ❤️🍕",
+        "Deseja fazer um novo pedido?",
       ];
     case "cancelled":
       return [`❌ Pedido ${code} foi cancelado.`];
   }
+}
+
+/** Texto do prompt pós-entrega (com botões Sim/Não). */
+export function formatDeliveredNewOrderPrompt(order: Order) {
+  return statusMessageLines({ ...order, status: "delivered" }).join("\n");
 }
 
 export function isAllowedOrderStatus(
