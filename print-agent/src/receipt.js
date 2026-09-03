@@ -80,16 +80,38 @@ function formatPhone(raw) {
   return raw;
 }
 
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+/** Sempre DD/MM/YYYY HH:mm no fuso de Brasília (evita ISO/locale do Node). */
 function formatDate(iso) {
   try {
-    return new Date(iso).toLocaleString("pt-BR", {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return String(iso ?? "");
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/Sao_Paulo",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    });
+    }).formatToParts(date);
+    const get = (type) => parts.find((part) => part.type === type)?.value ?? "";
+    const day = get("day");
+    const month = get("month");
+    const year = get("year");
+    const hour = get("hour");
+    const minute = get("minute");
+    if (day && month && year) {
+      return `${day}/${month}/${year} ${hour}:${minute}`;
+    }
+    // Fallback manual se formatToParts falhar.
+    const local = new Date(
+      date.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }),
+    );
+    return `${pad2(local.getDate())}/${pad2(local.getMonth() + 1)}/${local.getFullYear()} ${pad2(local.getHours())}:${pad2(local.getMinutes())}`;
   } catch {
     return String(iso ?? "");
   }
