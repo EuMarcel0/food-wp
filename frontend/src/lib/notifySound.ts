@@ -1,5 +1,4 @@
 let context: AudioContext | null = null;
-let unlocked = false;
 let pending: "order" | "message" | null = null;
 let listenersBound = false;
 
@@ -27,7 +26,6 @@ async function resumeContext() {
       return audio;
     }
   }
-  if (audio.state === "running") unlocked = true;
   return audio;
 }
 
