@@ -4,6 +4,9 @@ import type { ConversationMessageAuthor } from "../types.js";
 
 const GRAPH = `https://graph.facebook.com/${env.whatsappGraphVersion}`;
 
+/** Formato que a Cloud API aceitou por número (processo). Evita retry 131030. */
+const preferredRecipientByKey = new Map<string, string>();
+
 type Button = { id: string; title: string };
 
 type ListSection = {
@@ -20,17 +23,44 @@ function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
 }
 
-/** Brasil: o 9 extra depois do DDD às vezes entra no webhook e não na lista de teste. */
+/**
+ * Chave estável BR: DDD + 8 dígitos locais (ignora o 9 móvel).
+ * Ex.: 5577991776299 e 557791776299 → 7791776299
+ */
+function brazilPhoneKey(value: string) {
+  let digits = digitsOnly(value);
+  if (digits.startsWith("55")) digits = digits.slice(2);
+  if (digits.length === 11 && digits[2] === "9") {
+    digits = `${digits.slice(0, 2)}${digits.slice(3)}`;
+  }
+  return digits;
+}
+
+/**
+ * Brasil: webhook/wa_id muitas vezes vem sem o 9 (12 dígitos), mas a Cloud API
+ * só entrega com o 9 (13). Erro 131030 = destinatário inválido naquele formato.
+ * Preferimos o formato com 9 e o último que já funcionou para esse número.
+ */
 function brazilRecipientOptions(to: string) {
   const digits = digitsOnly(to);
-  const options = [digits];
-  if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
-    options.push(`${digits.slice(0, 4)}${digits.slice(5)}`);
-  }
+  const options: string[] = [];
+  const preferred = preferredRecipientByKey.get(brazilPhoneKey(digits));
+  if (preferred) options.push(preferred);
+
   if (digits.startsWith("55") && digits.length === 12) {
-    options.push(`${digits.slice(0, 4)}9${digits.slice(4)}`);
+    // Celular sem 9 → tenta COM 9 primeiro (caso do print).
+    options.push(`${digits.slice(0, 4)}9${digits.slice(4)}`, digits);
+  } else if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+    options.push(digits, `${digits.slice(0, 4)}${digits.slice(5)}`);
+  } else {
+    options.push(digits);
   }
+
   return [...new Set(options)];
+}
+
+function rememberPreferredRecipient(originalTo: string, workingTo: string) {
+  preferredRecipientByKey.set(brazilPhoneKey(originalTo), digitsOnly(workingTo));
 }
 
 async function sendTo(to: string, payload: Record<string, unknown>) {
@@ -70,12 +100,14 @@ async function send(
     return { dryRun: true };
   }
 
-  const targets = brazilRecipientOptions(String(payload.to ?? ""));
+  const originalTo = String(payload.to ?? "");
+  const targets = brazilRecipientOptions(originalTo);
   let lastBody = "";
   let lastStatus = 0;
   for (const to of targets) {
     const result = await sendTo(to, payload);
     if (result.ok) {
+      rememberPreferredRecipient(originalTo, to);
       if (to !== targets[0]) {
         console.log(`WhatsApp: enviado para formato alternativo ${to}`);
       }

@@ -44,6 +44,102 @@ const MESSAGE_PAGE_SIZE = 40;
 type MessagesCursor = { createdAt: string; id: string } | null;
 type MessagesInfinite = InfiniteData<ConversationMessagesPage, MessagesCursor>;
 
+function mapRealtimeActions(
+  raw: unknown,
+): ConversationMessageActions | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+  const type = data.type === "list" ? "list" : data.type === "buttons" ? "buttons" : null;
+  if (!type) return null;
+  const items = Array.isArray(data.items)
+    ? data.items
+        .map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const row = item as Record<string, unknown>;
+          const title = String(row.title ?? "").trim();
+          if (!title) return null;
+          return {
+            id: row.id != null ? String(row.id) : undefined,
+            title,
+            description:
+              row.description != null
+                ? String(row.description).trim() || undefined
+                : undefined,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null)
+    : [];
+  if (!items.length) return null;
+  return {
+    type,
+    items,
+    listButtonLabel:
+      data.listButtonLabel != null
+        ? String(data.listButtonLabel).trim() || undefined
+        : undefined,
+  };
+}
+
+function mapRealtimeConversationMessage(
+  row: Record<string, unknown>,
+): ConversationMessage | null {
+  if (row.id == null || row.conversation_id == null) return null;
+  return {
+    id: String(row.id),
+    conversationId: String(row.conversation_id),
+    customerId: String(row.customer_id ?? ""),
+    direction: row.direction === "inbound" ? "inbound" : "outbound",
+    author:
+      row.author === "customer"
+        ? "customer"
+        : row.author === "agent"
+          ? "agent"
+          : "bot",
+    body: String(row.body ?? ""),
+    msgType: String(row.msg_type ?? "text"),
+    actions: mapRealtimeActions(row.actions),
+    mediaUrl: row.media_url != null ? String(row.media_url) : null,
+    mediaMime: row.media_mime != null ? String(row.media_mime) : null,
+    waMessageId: row.wa_message_id != null ? String(row.wa_message_id) : null,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  };
+}
+
+function upsertMessageInCache(
+  current: MessagesInfinite | undefined,
+  message: ConversationMessage,
+): MessagesInfinite {
+  if (!current?.pages.length) {
+    return {
+      pages: [
+        {
+          items: [message],
+          hasMore: false,
+          nextBefore: null,
+        },
+      ],
+      pageParams: [null],
+    };
+  }
+
+  let found = false;
+  const pages = current.pages.map((page) => {
+    const index = page.items.findIndex((item) => item.id === message.id);
+    if (index < 0) return page;
+    found = true;
+    const items = page.items.slice();
+    items[index] = message;
+    return { ...page, items };
+  });
+
+  if (found) return { ...current, pages };
+
+  const nextPages = pages.map((page, index) =>
+    index === 0 ? { ...page, items: [...page.items, message] } : page,
+  );
+  return { ...current, pages: nextPages };
+}
+
 function relativeTime(iso: string) {
   const ms = Date.now() - Date.parse(iso);
   if (!Number.isFinite(ms) || ms < 0) return "";
@@ -204,9 +300,11 @@ export function WhatsAppInbox({
     getNextPageParam: (lastPage) =>
       lastPage.hasMore && lastPage.nextBefore ? lastPage.nextBefore : undefined,
     enabled: Boolean(selectedId),
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnMount: "always",
-    refetchInterval: 8000,
+    // Sem polling: Realtime (WebSocket do Supabase) aplica cada INSERT na hora.
+    // Só faz poll se o Supabase não estiver configurado (modo demo).
+    refetchInterval: supabase ? false : 4000,
   });
 
   const messages = useMemo(() => {
@@ -221,6 +319,7 @@ export function WhatsAppInbox({
   useEffect(() => {
     const client = supabase;
     if (!client || !selectedId) return;
+    const key = queryKeys.conversations.messages(selectedId);
     const channel = client
       .channel(`conversation-messages-${selectedId}`)
       .on(
@@ -231,10 +330,19 @@ export function WhatsAppInbox({
           table: "conversation_messages",
           filter: `conversation_id=eq.${selectedId}`,
         },
-        () => {
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.conversations.messages(selectedId),
-          });
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | null;
+          if (
+            (payload.eventType === "INSERT" || payload.eventType === "UPDATE") &&
+            row
+          ) {
+            const message = mapRealtimeConversationMessage(row);
+            if (message) {
+              queryClient.setQueryData<MessagesInfinite>(key, (current) =>
+                upsertMessageInCache(current, message),
+              );
+            }
+          }
           void queryClient.invalidateQueries({
             queryKey: queryKeys.conversations.live,
           });
@@ -245,13 +353,6 @@ export function WhatsAppInbox({
       void client.removeChannel(channel);
     };
   }, [queryClient, selectedId]);
-
-  useEffect(() => {
-    if (!selectedId || !selected?.lastMessageAt) return;
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.conversations.messages(selectedId),
-    });
-  }, [queryClient, selectedId, selected?.lastMessageAt, selected?.lastMessagePreview]);
 
   useEffect(() => {
     const el = threadRef.current;
