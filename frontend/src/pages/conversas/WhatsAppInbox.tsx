@@ -6,6 +6,7 @@ import {
   CheckOutlined,
   CloseCircleOutlined,
   RobotOutlined,
+  SearchOutlined,
   SendOutlined,
   UnorderedListOutlined,
   UserSwitchOutlined,
@@ -59,6 +60,28 @@ function customerLabel(item: LiveConversation) {
   return item.customerName?.trim() || formatPhoneDisplay(item.customerPhone) || "Cliente";
 }
 
+function normalizeSearch(text: string) {
+  return text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLowerCase();
+}
+
+function matchesConversation(item: LiveConversation, rawQuery: string) {
+  const q = normalizeSearch(rawQuery);
+  if (!q) return true;
+  const name = normalizeSearch(item.customerName ?? "");
+  const formattedPhone = normalizeSearch(formatPhoneDisplay(item.customerPhone));
+  const phoneDigits = (item.customerPhone ?? "").replace(/\D/g, "");
+  const queryDigits = rawQuery.replace(/\D/g, "");
+  return (
+    name.includes(q) ||
+    formattedPhone.includes(q) ||
+    (queryDigits.length >= 2 && phoneDigits.includes(queryDigits))
+  );
+}
+
 export function WhatsAppInbox({
   items,
   loading,
@@ -89,13 +112,9 @@ export function WhatsAppInbox({
   const threadRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return items;
-    return items.filter((item) => {
-      const name = (item.customerName ?? "").toLowerCase();
-      const phone = item.customerPhone.replace(/\D/g, "");
-      return name.includes(q) || phone.includes(q.replace(/\D/g, "")) || item.id.includes(q);
-    });
+    return items.filter((item) => matchesConversation(item, q));
   }, [items, query]);
 
   useEffect(() => {
@@ -316,8 +335,9 @@ export function WhatsAppInbox({
               {items.length} ativas
             </Tag>
           </div>
-          <Input.Search
+          <Input
             allowClear
+            prefix={<SearchOutlined className="text-food-muted" />}
             placeholder="Buscar nome ou telefone"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -339,7 +359,12 @@ export function WhatsAppInbox({
             </div>
           ) : null}
           {!loading && !filtered.length ? (
-            <Empty className="py-10" description="Nenhuma conversa ativa" />
+            <Empty
+              className="py-10"
+              description={
+                query.trim() ? "Nenhuma conversa encontrada" : "Nenhuma conversa ativa"
+              }
+            />
           ) : null}
           {filtered.map((item) => {
             const active = item.id === selectedId;
