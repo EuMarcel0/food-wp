@@ -649,6 +649,21 @@ function MessageActionsPreview({ actions }: { actions: ConversationMessageAction
 const URL_IN_TEXT =
   /(https?:\/\/[^\s<>"']+)/gi;
 
+function extractMapsUrl(body: string): string | null {
+  const match =
+    body.match(
+      /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps)[^\s<>"']*/i,
+    ) ?? body.match(/https?:\/\/[^\s<>"']+/i);
+  if (!match?.[0]) return null;
+  return match[0].replace(/[),.;]+$/g, "");
+}
+
+function isLocationMessage(message: ConversationMessage) {
+  if (message.msgType === "location") return true;
+  if (/📍\s*Localização/i.test(message.body)) return true;
+  return /maps\.google\.com\/\?q=/i.test(message.body);
+}
+
 function MessageBodyText({ body }: { body: string }) {
   const parts = body.split(URL_IN_TEXT);
   return (
@@ -677,36 +692,69 @@ function MessageBodyText({ body }: { body: string }) {
   );
 }
 
-function LocationMessageBody({ body }: { body: string }) {
-  const lines = body
+function LocationMessageBody({
+  body,
+  createdAt,
+  mine,
+  pending,
+}: {
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  pending: boolean;
+}) {
+  const mapsUrl = extractMapsUrl(body);
+  const address = body
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean);
-  const mapsLine = lines.find((line) => /^https?:\/\//i.test(line));
-  const labelLine = lines.find((line) => !/^https?:\/\//i.test(line));
-  const address = labelLine
-    ?.replace(/^📍\s*Localização\s*:?\s*/i, "")
-    .trim();
+    .filter((line) => line && !/^https?:\/\//i.test(line))
+    .map((line) => line.replace(/^📍\s*Localização\s*:?\s*/i, "").trim())
+    .find(Boolean);
+
+  if (!mapsUrl) {
+    return (
+      <div className="space-y-1 px-3 py-2">
+        <div className="font-medium">📍 Localização</div>
+        {address ? (
+          <div className="text-xs leading-snug opacity-80">{address}</div>
+        ) : (
+          <MessageBodyText body={body} />
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-1.5">
-      <div className="font-medium">📍 Localização</div>
-      {address ? (
-        <div className="text-xs leading-snug opacity-80">{address}</div>
-      ) : null}
-      {mapsLine ? (
-        <a
-          href={mapsLine}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block text-sm font-medium text-[#027eb5] underline underline-offset-2 break-all dark:text-[#53bdeb]"
-        >
-          Abrir no Google Maps
-        </a>
-      ) : (
-        <MessageBodyText body={body} />
-      )}
-    </div>
+    <a
+      href={mapsUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group relative block overflow-hidden rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-food-accent"
+      title="Abrir no Google Maps"
+    >
+      <img
+        src="/map_image.png"
+        alt="Localização no mapa"
+        className="block h-[148px] w-full object-cover transition duration-200 group-hover:brightness-110 sm:h-[168px]"
+        draggable={false}
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-8">
+        <div className="flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold text-white drop-shadow">
+              📍 Localização
+            </div>
+            {address ? (
+              <div className="truncate text-[10px] text-white/85">{address}</div>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1 text-[10px] text-white/85">
+            <span>{clock(createdAt)}</span>
+            {mine ? <MessageChecks pending={pending} /> : null}
+          </div>
+        </div>
+      </div>
+    </a>
   );
 }
 
@@ -714,19 +762,32 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
   const pending = message.id.startsWith("temp-");
   const isAudio = message.msgType === "audio" && Boolean(message.mediaUrl);
-  const isLocation = message.msgType === "location";
+  const isLocation = isLocationMessage(message);
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[min(100%,420px)] rounded-2xl px-3 py-2 text-sm shadow-sm",
+          "max-w-[min(100%,280px)] text-sm shadow-sm sm:max-w-[min(100%,320px)]",
+          isLocation
+            ? "overflow-hidden rounded-2xl p-1"
+            : "rounded-2xl px-3 py-2",
           mine
-            ? "rounded-br-md bg-[#d9fdd3] text-food-text dark:bg-[#005c4b] dark:text-white"
-            : "rounded-bl-md bg-white text-food-text dark:bg-[#1f2c34] dark:text-white",
+            ? cn(
+                "rounded-br-md text-food-text dark:text-white",
+                isLocation
+                  ? "bg-[#d9fdd3] dark:bg-[#005c4b]"
+                  : "bg-[#d9fdd3] dark:bg-[#005c4b]",
+              )
+            : cn(
+                "rounded-bl-md text-food-text dark:text-white",
+                isLocation
+                  ? "bg-white dark:bg-[#1f2c34]"
+                  : "bg-white dark:bg-[#1f2c34]",
+              ),
           pending && "opacity-90",
         )}
       >
-        {mine && message.author !== "customer" ? (
+        {mine && message.author !== "customer" && !isLocation ? (
           <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-70">
             {message.author === "agent" ? "Atendente" : "Bot"}
           </div>
@@ -745,15 +806,22 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             </audio>
           </div>
         ) : isLocation ? (
-          <LocationMessageBody body={message.body} />
+          <LocationMessageBody
+            body={message.body}
+            createdAt={message.createdAt}
+            mine={mine}
+            pending={pending}
+          />
         ) : (
           <MessageBodyText body={message.body} />
         )}
         {message.actions ? <MessageActionsPreview actions={message.actions} /> : null}
-        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-60">
-          <span>{clock(message.createdAt)}</span>
-          {mine ? <MessageChecks pending={pending} /> : null}
-        </div>
+        {!isLocation || !extractMapsUrl(message.body) ? (
+          <div className="mt-1 flex items-center justify-end gap-1 px-0 text-[10px] opacity-60">
+            <span>{clock(message.createdAt)}</span>
+            {mine ? <MessageChecks pending={pending} /> : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
