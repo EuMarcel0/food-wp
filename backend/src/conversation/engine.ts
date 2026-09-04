@@ -1,7 +1,7 @@
 import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
 import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
-import { sendButtons, sendList, sendText } from "../lib/whatsapp.js";
+import { sendButtons, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
@@ -600,9 +600,17 @@ async function resumeCurrentStep(
  * Foto, áudio, documento etc.: se há pedido em andamento, mantém a etapa;
  * senão, avisa que só texto/botões são aceitos.
  */
-export async function handleUnsupportedInbound(input: { from: string; name?: string; avatarUrl?: string }) {
+export async function handleUnsupportedInbound(input: {
+  from: string;
+  name?: string;
+  avatarUrl?: string;
+  waMessageId?: string;
+}) {
   const store = await getStore();
   if (!isStoreOpen(store.businessHours, store.timezone)) {
+    if (input.waMessageId) {
+      await sendTypingIndicator(input.waMessageId).catch(() => undefined);
+    }
     await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
     return;
   }
@@ -611,6 +619,9 @@ export async function handleUnsupportedInbound(input: { from: string; name?: str
   if (existing?.handoffMode === "human") {
     await touchConversation(customer.id);
     return;
+  }
+  if (input.waMessageId) {
+    await sendTypingIndicator(input.waMessageId).catch(() => undefined);
   }
   const state: ConversationState = existing?.state ?? "welcome";
   const context = existing?.context ?? emptyContext();
@@ -1166,6 +1177,7 @@ export async function handleIncomingMessage(input: {
   avatarUrl?: string;
   text: string;
   replyId?: string;
+  waMessageId?: string;
   location?: {
     latitude: number;
     longitude: number;
@@ -1181,6 +1193,11 @@ export async function handleIncomingMessage(input: {
   if (existing?.handoffMode === "human") {
     await touchConversation(customer.id);
     return;
+  }
+
+  // Mostra "Digitando…" enquanto monta a resposta (some ao enviar ou em ~25s).
+  if (input.waMessageId) {
+    await sendTypingIndicator(input.waMessageId).catch(() => undefined);
   }
 
   const state: ConversationState = existing?.state ?? "welcome";

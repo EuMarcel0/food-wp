@@ -171,6 +171,43 @@ export async function sendText(
   );
 }
 
+/**
+ * Marca a mensagem como lida e mostra "Digitando…" no WhatsApp do cliente
+ * (até ~25s ou até a próxima resposta). Exige o wamid da mensagem recebida.
+ */
+export async function sendTypingIndicator(waMessageId: string) {
+  const messageId = waMessageId.trim();
+  if (!messageId) return { skipped: true as const };
+
+  if (!flags.whatsappReady) {
+    console.info("[whatsapp:dry-run] typing_indicator", messageId);
+    return { dryRun: true as const };
+  }
+
+  const response = await fetch(
+    `${GRAPH}/${env.whatsappPhoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.whatsappToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+        typing_indicator: { type: "text" },
+      }),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    console.warn(`WhatsApp typing_indicator ${response.status}: ${body}`);
+    return { ok: false as const, status: response.status, body };
+  }
+  return { ok: true as const };
+}
+
 export async function sendButtons(to: string, body: string, buttons: Button[]) {
   return send({
     to,

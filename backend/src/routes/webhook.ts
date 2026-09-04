@@ -171,7 +171,12 @@ webhookRouter.post("/whatsapp", (req, res) => {
                 { name, avatarUrl },
               );
             }
-            await handleUnsupportedInbound({ from: to, name, avatarUrl });
+            await handleUnsupportedInbound({
+              from: to,
+              name,
+              avatarUrl,
+              waMessageId: message.id,
+            });
           }).catch((error) => {
             console.error("Falha ao processar áudio WhatsApp", error);
           });
@@ -191,7 +196,12 @@ webhookRouter.post("/whatsapp", (req, res) => {
               message.type ?? "unsupported",
               { name, avatarUrl },
             );
-            await handleUnsupportedInbound({ from: to, name, avatarUrl });
+            await handleUnsupportedInbound({
+              from: to,
+              name,
+              avatarUrl,
+              waMessageId: message.id,
+            });
           }).catch((error) => {
             console.error("Falha ao avisar mensagem não suportada", error);
           });
@@ -233,6 +243,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
             text,
             replyId,
             location,
+            waMessageId: message.id,
           });
         }).catch((error) => {
           console.error("Falha ao processar mensagem WhatsApp", error);
