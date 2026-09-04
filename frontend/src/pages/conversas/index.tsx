@@ -45,6 +45,7 @@ export function ConversationsPage() {
     queryKey: queryKeys.conversations.live,
     queryFn: () => api.conversations("active", true),
     refetchInterval: supabase ? false : 8000,
+    networkMode: "always",
   });
 
   const historyQuery = useQuery({

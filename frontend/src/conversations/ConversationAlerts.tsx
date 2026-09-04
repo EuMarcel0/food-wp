@@ -17,6 +17,7 @@ import { playNewMessageSound } from "../lib/notifySound";
 import { queryKeys } from "../lib/queryKeys";
 import { supabase } from "../lib/supabase";
 import type { LiveConversation } from "../types";
+import { applyRealtimeMessageToCaches } from "./realtimeCache";
 
 export const CONVERSATIONS_LIVE_EVENT = "food-wp-conversas-live";
 
@@ -129,12 +130,16 @@ export function ConversationAlertsProvider({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "conversation_messages" },
         (payload) => {
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.conversations.live,
-          });
+          const row = payload.new as Record<string, unknown> | undefined;
+          if (row) {
+            applyRealtimeMessageToCaches(queryClient, row, viewingIdRef.current);
+          } else {
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.conversations.live,
+            });
+          }
           notifyLive();
 
-          const row = payload.new as Record<string, unknown> | undefined;
           if (row?.direction !== "inbound") return;
 
           playNewMessageSound();

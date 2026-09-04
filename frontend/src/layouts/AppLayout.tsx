@@ -96,6 +96,7 @@ export function AppLayout() {
     queryKey: queryKeys.conversations.live,
     queryFn: () => api.conversations("active", true),
     refetchInterval: 12_000,
+    networkMode: "always",
   });
   const liveConversations = liveQuery.data ?? [];
   const liveKey = liveConversations
