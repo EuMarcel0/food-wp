@@ -231,16 +231,27 @@ export async function sendList(
   buttonLabel: string,
   sections: ListSection[],
 ) {
-  const cleanedSections = sections
-    .map((section) => ({
+  // Cloud API: no máximo 10 linhas no total (todas as seções somadas).
+  let remaining = 10;
+  const cleanedSections = [];
+  for (const section of sections) {
+    if (remaining <= 0) break;
+    const rows = section.rows.slice(0, remaining).map((row) => ({
+      id: row.id,
+      title: row.title.slice(0, 24),
+      ...(row.description ? { description: row.description.slice(0, 72) } : {}),
+    }));
+    if (!rows.length) continue;
+    remaining -= rows.length;
+    cleanedSections.push({
       title: section.title.trim().slice(0, 24),
-      rows: section.rows.slice(0, 10).map((row) => ({
-        id: row.id,
-        title: row.title.slice(0, 24),
-        ...(row.description ? { description: row.description.slice(0, 72) } : {}),
-      })),
-    }))
-    .filter((section) => section.rows.length > 0);
+      rows,
+    });
+  }
+
+  if (!cleanedSections.length) {
+    throw new Error("Lista WhatsApp sem linhas para enviar.");
+  }
 
   return send({
     to,

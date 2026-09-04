@@ -651,20 +651,29 @@ async function askOrderNote(to: string) {
 }
 
 async function askNeighborhoods(to: string, store: Store) {
-  const zones = [...(store.neighborhoods ?? [])].sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
-  const sections = [];
-  for (let index = 0; index < zones.length; index += 10) {
-    const chunk = zones.slice(index, index + 10);
-    sections.push({
-      title: zones.length > 10 ? `Bairros ${Math.floor(index / 10) + 1}` : "Bairros",
-      rows: chunk.map(zone => ({
-        id: `nbh:${zone.id}`,
-        title: zone.name,
-        description: formatBRL(zone.feeCents)
-      }))
-    });
+  const zones = [...(store.neighborhoods ?? [])].sort((left, right) =>
+    left.name.localeCompare(right.name, "pt-BR"),
+  );
+  // WhatsApp: máx. 10 linhas por lista — envia em páginas se passar disso.
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(zones.length / pageSize));
+  for (let page = 0; page < totalPages; page++) {
+    const chunk = zones.slice(page * pageSize, page * pageSize + pageSize);
+    const intro =
+      totalPages > 1
+        ? `📍 Escolha o bairro da entrega (parte ${page + 1} de ${totalPages}). A taxa já aparece em cada opção.`
+        : "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.";
+    await sendList(to, intro, "Ver bairros", [
+      {
+        title: totalPages > 1 ? `Bairros ${page + 1}` : "Bairros",
+        rows: chunk.map(zone => ({
+          id: `nbh:${zone.id}`,
+          title: zone.name,
+          description: formatBRL(zone.feeCents),
+        })),
+      },
+    ]);
   }
-  await sendList(to, "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.", "Ver bairros", sections);
 }
 
 function findNeighborhood(incoming: string, normalized: string, zones: DeliveryNeighborhood[]) {
@@ -816,23 +825,44 @@ async function showMenu(to: string, intro = "📋 Escolha um item do cardápio:"
     return;
   }
 
-  const grouped = new Map<string, typeof products>();
-  for (const product of products) {
-    const list = grouped.get(product.categoryName) ?? [];
-    list.push(product);
-    grouped.set(product.categoryName, list);
-  }
-
-  const sections = [...grouped.entries()].map(([title, items]) => ({
-    title,
-    rows: items.map(product => ({
-      id: `product:${product.id}`,
-      title: product.name,
-      ...(product.customizable ? {} : { description: formatReais(product.price) })
-    }))
+  // WhatsApp: no máximo 10 linhas por mensagem de lista (todas as seções).
+  type MenuRow = {
+    category: string;
+    id: string;
+    title: string;
+    description?: string;
+  };
+  const flat: MenuRow[] = products.map(product => ({
+    category: product.categoryName?.trim() || "Cardápio",
+    id: `product:${product.id}`,
+    title: product.name,
+    ...(product.customizable ? {} : { description: formatReais(product.price) }),
   }));
 
-  await sendList(to, intro, "Ver itens", sections);
+  const pageSize = 10;
+  const totalPages = Math.ceil(flat.length / pageSize);
+  for (let page = 0; page < totalPages; page++) {
+    const chunk = flat.slice(page * pageSize, page * pageSize + pageSize);
+    const grouped = new Map<string, MenuRow[]>();
+    for (const item of chunk) {
+      const list = grouped.get(item.category) ?? [];
+      list.push(item);
+      grouped.set(item.category, list);
+    }
+    const sections = [...grouped.entries()].map(([title, items]) => ({
+      title,
+      rows: items.map(item => ({
+        id: item.id,
+        title: item.title,
+        ...(item.description ? { description: item.description } : {}),
+      })),
+    }));
+    const body =
+      totalPages > 1
+        ? `${intro}\n_(parte ${page + 1} de ${totalPages})_`
+        : intro;
+    await sendList(to, body, "Ver itens", sections);
+  }
 }
 
 async function askAssembly(to: string, product: Product, context: ConversationContext) {
