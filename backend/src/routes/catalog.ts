@@ -29,6 +29,7 @@ import {
   updateAddon,
   updateCategory,
   updateCrust,
+  updateNeighborhood,
   updateProduct,
   updateSize,
   updateStore,
@@ -289,6 +290,27 @@ catalogRouter.post("/store/neighborhoods", async (req, res) => {
   } catch (error) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "Falha ao incluir o bairro.",
+    });
+  }
+});
+
+catalogRouter.patch("/store/neighborhoods/:id", async (req, res) => {
+  const name = String(req.body?.name ?? "").trim();
+  const feeCents = Number(req.body?.feeCents);
+  if (!name || !Number.isFinite(feeCents) || feeCents < 0) {
+    res.status(400).json({ error: "Informe o bairro e a taxa." });
+    return;
+  }
+  try {
+    res.json(
+      await updateNeighborhood(String(req.params.id), {
+        name,
+        feeCents: Math.round(feeCents),
+      }),
+    );
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao atualizar o bairro.",
     });
   }
 });

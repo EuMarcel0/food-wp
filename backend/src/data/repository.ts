@@ -414,6 +414,36 @@ export async function createNeighborhood(input: {
   return mapNeighborhood(data as Record<string, unknown>);
 }
 
+export async function updateNeighborhood(
+  id: string,
+  input: { name: string; feeCents: number },
+): Promise<DeliveryNeighborhood> {
+  const name = input.name.trim();
+  const feeCents = Math.max(0, Math.round(Number(input.feeCents)));
+  if (!name) throw new Error("Informe o bairro.");
+
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updateNeighborhood(id, { name, feeCents });
+
+  const { data, error } = await supabase
+    .from("delivery_neighborhoods")
+    .update({ name, fee_cents: feeCents })
+    .eq("id", id)
+    .select("id, name, fee_cents")
+    .maybeSingle();
+  if (error) {
+    if (missingNeighborhoodsTable(error.message)) {
+      throw new Error("Rode a migration 018_delivery_neighborhoods.sql no Supabase.");
+    }
+    if (error.code === "23505") {
+      throw new Error("Esse bairro já está cadastrado.");
+    }
+    throw new Error(error.message);
+  }
+  if (!data) throw new Error("Bairro não encontrado.");
+  return mapNeighborhood(data as Record<string, unknown>);
+}
+
 export async function deleteNeighborhood(id: string): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) {

@@ -79,6 +79,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  updateNeighborhood: (
+    id: string,
+    payload: { name: string; feeCents: number },
+  ) =>
+    request<Store["neighborhoods"][number]>(`/api/store/neighborhoods/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   deleteNeighborhood: (id: string) => request<void>(`/api/store/neighborhoods/${id}`, { method: "DELETE" }),
   categories: (all = false) => request<Category[]>(`/api/categories${all ? "?all=1" : ""}`),
   listCategories: (page = 1, limit = PAGE_SIZE, filters?: { q?: string; active?: boolean }) =>

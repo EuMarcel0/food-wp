@@ -294,6 +294,24 @@ export const memoryStore = {
     return neighborhood;
   },
 
+  updateNeighborhood(
+    id: string,
+    input: { name: string; feeCents: number },
+  ): DeliveryNeighborhood {
+    const current = store.neighborhoods.find((item) => item.id === id);
+    if (!current) throw new Error("Bairro não encontrado.");
+    const name = input.name.trim();
+    const exists = store.neighborhoods.some(
+      (item) =>
+        item.id !== id &&
+        item.name.localeCompare(name, "pt-BR", { sensitivity: "base" }) === 0,
+    );
+    if (exists) throw new Error("Esse bairro já está cadastrado.");
+    current.name = name;
+    current.feeCents = Math.max(0, Math.round(input.feeCents));
+    return { ...current };
+  },
+
   deleteNeighborhood(id: string) {
     store.neighborhoods = store.neighborhoods.filter((item) => item.id !== id);
   },
