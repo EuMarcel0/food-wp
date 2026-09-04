@@ -481,12 +481,12 @@ async function resumeCurrentStep(
 
   switch (state) {
     case "awaiting_product":
-      await showMenu(to, withHint("Escolha um item do cardápio:"));
+      await showMenu(to, withHint("Escolha um item do cardápio:"), context);
       return;
     case "awaiting_option": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product || !isCustomizable(product)) {
-        await showMenu(to, withHint("Escolha um item do cardápio:"));
+        await showMenu(to, withHint("Escolha um item do cardápio:"), context);
         return;
       }
       const drafts = context.draftSelections ?? [];
@@ -496,7 +496,13 @@ async function resumeCurrentStep(
         if (current?.options.length) {
           if (usesCatalogFlavors(openGroup)) {
             await sendHintIfNeeded();
-            await showFlavorList(to, product, openGroup, drafts);
+            await showFlavorList(
+              to,
+              product,
+              openGroup,
+              drafts,
+              context.flavorOffset ?? 0,
+            );
             return;
           }
           const shares =
@@ -520,7 +526,7 @@ async function resumeCurrentStep(
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       const crusts = await listCrusts();
       if (!product) {
-        await showMenu(to, withHint("Escolha um item do cardápio:"));
+        await showMenu(to, withHint("Escolha um item do cardápio:"), context);
         return;
       }
       const matching = crustsForPizza(product, crusts);
@@ -535,17 +541,17 @@ async function resumeCurrentStep(
     case "awaiting_addon": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product) {
-        await showMenu(to, withHint("Escolha um item do cardápio:"));
+        await showMenu(to, withHint("Escolha um item do cardápio:"), context);
         return;
       }
       await sendHintIfNeeded();
-      await askAddons(to, product, context.draftSelections);
+      await askAddons(to, product, context.draftSelections, context.addonOffset ?? 0);
       return;
     }
     case "awaiting_quantity": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
       if (!product) {
-        await showMenu(to, withHint("Escolha um item do cardápio:"));
+        await showMenu(to, withHint("Escolha um item do cardápio:"), context);
         return;
       }
       await askQuantity(to, product, context.draftSelections ?? []);
@@ -571,7 +577,7 @@ async function resumeCurrentStep(
       return;
     case "awaiting_neighborhood":
       await sendHintIfNeeded();
-      await askNeighborhoods(to, store);
+      await askNeighborhoods(to, store, context);
       return;
     case "awaiting_address": {
       const zone = (store.neighborhoods ?? []).find(item => item.id === context.neighborhoodId) ?? null;
@@ -650,30 +656,100 @@ async function askOrderNote(to: string) {
   ]);
 }
 
-async function askNeighborhoods(to: string, store: Store) {
+async function askNeighborhoods(
+  to: string,
+  store: Store,
+  context: ConversationContext = { cart: [] },
+) {
   const zones = [...(store.neighborhoods ?? [])].sort((left, right) =>
     left.name.localeCompare(right.name, "pt-BR"),
   );
-  // WhatsApp: máx. 10 linhas por lista — envia em páginas se passar disso.
-  const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(zones.length / pageSize));
-  for (let page = 0; page < totalPages; page++) {
-    const chunk = zones.slice(page * pageSize, page * pageSize + pageSize);
-    const intro =
-      totalPages > 1
-        ? `📍 Escolha o bairro da entrega (parte ${page + 1} de ${totalPages}). A taxa já aparece em cada opção.`
-        : "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.";
-    await sendList(to, intro, "Ver bairros", [
-      {
-        title: totalPages > 1 ? `Bairros ${page + 1}` : "Bairros",
-        rows: chunk.map(zone => ({
-          id: `nbh:${zone.id}`,
-          title: zone.name,
-          description: formatBRL(zone.feeCents),
-        })),
-      },
-    ]);
+  if (!zones.length) {
+    await sendText(to, "Nenhum bairro cadastrado. Digite o endereço completo.");
+    return;
   }
+
+  const pageSize = WA_LIST_MAX_ROWS;
+  const buckets: DeliveryNeighborhood[][] = [];
+  for (let i = 0; i < zones.length; i += pageSize) {
+    buckets.push(zones.slice(i, i + pageSize));
+  }
+
+  // Poucos bairros: uma lista só.
+  if (zones.length <= pageSize) {
+    await sendList(
+      to,
+      "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.\nOu digite o nome.",
+      "Ver bairros",
+      [
+        {
+          title: "Bairros",
+          rows: zones.map(zone => ({
+            id: `nbh:${zone.id}`,
+            title: zone.name,
+            description: formatBRL(zone.feeCents),
+          })),
+        },
+      ],
+    );
+    return;
+  }
+
+  const page = context.neighborhoodPage;
+
+  // Seletor de grupos (ex.: Abreu–Centro).
+  if (page == null || page < 0 || page >= buckets.length) {
+    const offset = 0;
+    const catSlots = Math.min(pageSize, buckets.length);
+    // Se houver mais de 10 grupos (100+ bairros), mostra 9 + Ver mais via neighborhoodPage meta — raro.
+    // Por simplicidade: primeiros 10 grupos; se >10 grupos, o cliente ainda pode digitar o nome.
+    const visible = buckets.slice(offset, offset + pageSize);
+    await sendList(
+      to,
+      [
+        "📍 Escolha o *grupo* do bairro (ou digite o nome completo).",
+        `Há *${zones.length}* bairros cadastrados.`,
+      ].join("\n"),
+      "Ver grupos",
+      [
+        {
+          title: "Grupos",
+          rows: visible.map((bucket, index) => {
+            const first = bucket[0]?.name ?? "";
+            const last = bucket[bucket.length - 1]?.name ?? "";
+            const title =
+              first === last
+                ? first.slice(0, 24)
+                : `${first.slice(0, 10)}–${last.slice(0, 10)}`.slice(0, 24);
+            return {
+              id: `nbhpage:${index}`,
+              title,
+              description: `${bucket.length} bairros`,
+            };
+          }),
+        },
+      ],
+    );
+    return;
+  }
+
+  const bucket = buckets[page] ?? [];
+  const rows = bucket.slice(0, pageSize - 1).map(zone => ({
+    id: `nbh:${zone.id}`,
+    title: zone.name,
+    description: formatBRL(zone.feeCents),
+  }));
+  rows.push({
+    id: "nbhpage:back",
+    title: "Outros bairros",
+    description: "Voltar aos grupos",
+  });
+  await sendList(
+    to,
+    `📍 Bairros do grupo ${page + 1}.\nOu digite o nome do bairro.`,
+    "Ver bairros",
+    [{ title: "Bairros", rows }],
+  );
 }
 
 function findNeighborhood(incoming: string, normalized: string, zones: DeliveryNeighborhood[]) {
@@ -681,7 +757,11 @@ function findNeighborhood(incoming: string, normalized: string, zones: DeliveryN
     const id = incoming.slice(4);
     return zones.find(zone => zone.id === id) ?? null;
   }
-  return zones.find(zone => normalize(zone.name) === normalized) ?? null;
+  const exact = zones.find(zone => normalize(zone.name) === normalized) ?? null;
+  if (exact) return exact;
+  if (normalized.length < 3) return null;
+  const matches = zones.filter(zone => normalize(zone.name).includes(normalized));
+  return matches.length === 1 ? matches[0] : null;
 }
 
 async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
@@ -805,64 +885,176 @@ async function showWelcome(to: string, storeName: string) {
   );
 }
 
-async function showMenu(to: string, intro = "📋 Escolha um item do cardápio:") {
+const WA_LIST_MAX_ROWS = 10;
+
+function resetMenuBrowse(context: ConversationContext) {
+  context.menuCategoryId = null;
+  context.menuOffset = 0;
+}
+
+function productCategories(products: Product[]) {
+  const map = new Map<string, { id: string; name: string; count: number }>();
+  for (const product of products) {
+    const id = product.categoryId || product.categoryName || "cardapio";
+    const name = product.categoryName?.trim() || "Cardápio";
+    const current = map.get(id);
+    if (current) current.count += 1;
+    else map.set(id, { id, name, count: 1 });
+  }
+  return [...map.values()].sort((left, right) =>
+    left.name.localeCompare(right.name, "pt-BR"),
+  );
+}
+
+async function showMenuCategories(
+  to: string,
+  intro: string,
+  categories: { id: string; name: string; count: number }[],
+  offset: number,
+) {
+  const reserveMore = offset + (WA_LIST_MAX_ROWS - 1) < categories.length ? 1 : 0;
+  const pageSize = WA_LIST_MAX_ROWS - reserveMore;
+  const page = categories.slice(offset, offset + pageSize);
+  const rows = page.map(category => ({
+    id: `menucat:${category.id}`,
+    title: category.name.slice(0, 24),
+    description: category.count === 1 ? "1 item" : `${category.count} itens`,
+  }));
+  if (reserveMore) {
+    rows.push({
+      id: "menu:more_cats",
+      title: "Mais categorias",
+      description: "Ver próximas",
+    });
+  }
+  await sendList(
+    to,
+    [
+      intro,
+      "📂 Escolha uma *categoria*.",
+      "Ou digite o nome do item.",
+    ].join("\n"),
+    "Categorias",
+    [{ title: "Categorias", rows }],
+  );
+}
+
+async function showMenuProducts(
+  to: string,
+  intro: string,
+  products: Product[],
+  opts: { categoryName?: string | null; offset: number; canGoBack: boolean },
+) {
+  const reserveBack = opts.canGoBack ? 1 : 0;
+  const tentativeMore =
+    opts.offset + (WA_LIST_MAX_ROWS - reserveBack - 1) < products.length ? 1 : 0;
+  const pageSize = WA_LIST_MAX_ROWS - reserveBack - tentativeMore;
+  const page = products.slice(opts.offset, opts.offset + pageSize);
+  const hasMore = opts.offset + page.length < products.length;
+
+  const rows: { id: string; title: string; description?: string }[] = page.map(
+    product => ({
+      id: `product:${product.id}`,
+      title: product.name.slice(0, 24),
+      ...(product.customizable ? {} : { description: formatReais(product.price) }),
+    }),
+  );
+  if (hasMore) {
+    rows.push({
+      id: "menu:more_items",
+      title: "Mais itens",
+      description: "Ver próximos",
+    });
+  }
+  if (opts.canGoBack) {
+    rows.push({
+      id: "menu:back_cats",
+      title: "← Categorias",
+      description: "Voltar",
+    });
+  }
+
+  const heading = [
+    intro,
+    opts.categoryName ? `📂 *${opts.categoryName}*` : null,
+    "Ou digite o nome do item.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  await sendList(to, heading, "Ver itens", [
+    {
+      title: opts.categoryName?.slice(0, 24) || "Cardápio",
+      rows: rows.slice(0, WA_LIST_MAX_ROWS),
+    },
+  ]);
+}
+
+async function showMenu(
+  to: string,
+  intro = "📋 Escolha um item do cardápio:",
+  context: ConversationContext = { cart: [] },
+) {
   const products = await listProducts();
   if (!products.length) {
     await sendText(to, "📋 O cardápio ainda não foi cadastrado.");
     return;
   }
 
-  // Até 3 itens: botões de resposta (evita lista com 1 opção e linha vazia estranha).
-  if (products.length <= 3) {
+  // Até 3 itens: botões de resposta.
+  if (products.length <= 3 && !context.menuCategoryId) {
     await sendButtons(
       to,
       intro,
       products.map(product => ({
         id: `product:${product.id}`,
-        title: product.name.slice(0, 20)
-      }))
+        title: product.name.slice(0, 20),
+      })),
     );
     return;
   }
 
-  // WhatsApp: no máximo 10 linhas por mensagem de lista (todas as seções).
-  type MenuRow = {
-    category: string;
-    id: string;
-    title: string;
-    description?: string;
-  };
-  const flat: MenuRow[] = products.map(product => ({
-    category: product.categoryName?.trim() || "Cardápio",
-    id: `product:${product.id}`,
-    title: product.name,
-    ...(product.customizable ? {} : { description: formatReais(product.price) }),
-  }));
+  const categories = productCategories(products);
+  const offset = Math.max(0, context.menuOffset ?? 0);
 
-  const pageSize = 10;
-  const totalPages = Math.ceil(flat.length / pageSize);
-  for (let page = 0; page < totalPages; page++) {
-    const chunk = flat.slice(page * pageSize, page * pageSize + pageSize);
-    const grouped = new Map<string, MenuRow[]>();
-    for (const item of chunk) {
-      const list = grouped.get(item.category) ?? [];
-      list.push(item);
-      grouped.set(item.category, list);
-    }
-    const sections = [...grouped.entries()].map(([title, items]) => ({
-      title,
-      rows: items.map(item => ({
-        id: item.id,
-        title: item.title,
-        ...(item.description ? { description: item.description } : {}),
-      })),
-    }));
-    const body =
-      totalPages > 1
-        ? `${intro}\n_(parte ${page + 1} de ${totalPages})_`
-        : intro;
-    await sendList(to, body, "Ver itens", sections);
+  // Categoria já escolhida → lista produtos dela.
+  if (context.menuCategoryId) {
+    const inCategory = products.filter(
+      item => (item.categoryId || item.categoryName || "cardapio") === context.menuCategoryId,
+    );
+    const categoryName =
+      inCategory[0]?.categoryName ??
+      categories.find(item => item.id === context.menuCategoryId)?.name ??
+      "Cardápio";
+    await showMenuProducts(to, intro, inCategory, {
+      categoryName,
+      offset,
+      canGoBack: categories.length > 1,
+    });
+    return;
   }
+
+  // Muitos itens e várias categorias → escolhe categoria primeiro.
+  if (categories.length > 1 && products.length > WA_LIST_MAX_ROWS) {
+    await showMenuCategories(to, intro, categories, offset);
+    return;
+  }
+
+  // Catálogo curto ou uma categoria só → produtos com "Mais itens" se precisar.
+  await showMenuProducts(to, intro, products, {
+    categoryName: categories.length === 1 ? categories[0].name : null,
+    offset,
+    canGoBack: false,
+  });
+}
+
+function findProductByText(products: Product[], normalized: string) {
+  if (!normalized) return null;
+  const exact = products.find(item => normalize(item.name) === normalized);
+  if (exact) return exact;
+  if (normalized.length < 3) return null;
+  const matches = products.filter(item => normalize(item.name).includes(normalized));
+  return matches.length === 1 ? matches[0] : null;
 }
 
 async function askAssembly(to: string, product: Product, context: ConversationContext) {
@@ -896,33 +1088,51 @@ async function pizzaFlavorChoices(kind: PizzaKind | null | undefined, excludeIds
   });
 }
 
-async function showFlavorList(to: string, product: Product, group: ProductOptionGroup, drafts: CartSelection[]) {
+async function showFlavorList(
+  to: string,
+  product: Product,
+  group: ProductOptionGroup,
+  drafts: CartSelection[],
+  offset = 0,
+) {
   const current = drafts.find(item => item.groupId === group.id);
   const picked = current?.options.map(option => option.id) ?? [];
   const pickedNames = current?.options.map(option => option.name) ?? [];
   const remaining = await pizzaFlavorChoices(product.pizzaKind, [product.id, ...picked]);
   if (!remaining.length) return true;
 
-  const rows: { id: string; title: string; description?: string }[] = remaining
-    .slice(0, picked.length >= 1 ? 9 : 10)
-    .map(pizza => ({
-      id: `flavor:${pizza.id}`,
-      title: pizza.name.slice(0, 24)
-    }));
-  // Já tem sabor: permite encerrar sem mensagem extra "Mais um / Pronto".
-  if (picked.length >= 1 && rows.length < 10) {
+  const needsDone = picked.length >= 1;
+  const reserveDone = needsDone ? 1 : 0;
+  const tentativeMore =
+    offset + (WA_LIST_MAX_ROWS - reserveDone - 1) < remaining.length ? 1 : 0;
+  const pageSize = WA_LIST_MAX_ROWS - reserveDone - tentativeMore;
+  const page = remaining.slice(offset, offset + pageSize);
+  const hasMore = offset + page.length < remaining.length;
+
+  const rows: { id: string; title: string; description?: string }[] = page.map(pizza => ({
+    id: `flavor:${pizza.id}`,
+    title: pizza.name.slice(0, 24),
+  }));
+  if (hasMore) {
+    rows.push({
+      id: "more_flavors",
+      title: "Mais sabores",
+      description: "Ver próximos",
+    });
+  }
+  if (needsDone) {
     rows.push({
       id: "done_options",
       title: "Pronto",
-      description: "Seguir com estes sabores"
+      description: "Seguir com estes sabores",
     });
   }
 
   await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolha o sabor", [
     {
       title: "Sabores",
-      rows
-    }
+      rows: rows.slice(0, WA_LIST_MAX_ROWS),
+    },
   ]);
   return false;
 }
@@ -939,7 +1149,7 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
 
     // Já tem sabor extra: abre a lista direto (fluxo "Mais um").
     if (picked.length > 0) {
-      return showFlavorList(to, product, group, drafts);
+      return showFlavorList(to, product, group, drafts, 0);
     }
 
     // Primeira decisão: botões lado a lado — "Escolher sabor" por último (mais clicado).
@@ -953,10 +1163,11 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
   const remaining = group.options.filter(option => !picked.includes(option.id));
   if (!remaining.length) return true;
 
+  const pageSize = WA_LIST_MAX_ROWS;
   await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolher", [
     {
       title: group.name.slice(0, 24),
-      rows: remaining.slice(0, 10).map(option => ({
+      rows: remaining.slice(0, pageSize).map(option => ({
         id: `opt:${option.id}`,
         title: option.name.slice(0, 24),
         ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
@@ -1010,7 +1221,12 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   ]);
 }
 
-async function askAddons(to: string, product: Product, drafts?: CartSelection[]) {
+async function askAddons(
+  to: string,
+  product: Product,
+  drafts?: CartSelection[],
+  offset = 0,
+) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
@@ -1018,35 +1234,48 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
   const prompt = [
     `*${product.name}*`,
     picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "🧀 Escolha um adicional",
-    picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
+    picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : "",
   ]
     .filter(Boolean)
     .join("\n");
 
-  const rows = remaining.slice(0, 9).map(addon => ({
+  const footer = !picked.length
+    ? {
+        id: "skip_addon",
+        title: "Sem adicional",
+        description: "Pular esta etapa",
+      }
+    : {
+        id: "done_addons",
+        title: "Pronto",
+        description: "Seguir sem mais adicionais",
+      };
+
+  const tentativeMore =
+    offset + (WA_LIST_MAX_ROWS - 2) < remaining.length ? 1 : 0;
+  const pageSize = WA_LIST_MAX_ROWS - 1 - tentativeMore;
+  const page = remaining.slice(offset, offset + pageSize);
+  const hasMore = offset + page.length < remaining.length;
+
+  const rows = page.map(addon => ({
     id: `addon:${addon.id}`,
     title: addon.name.slice(0, 24),
-    description: `+ ${formatReais(addon.price)}`
+    description: `+ ${formatReais(addon.price)}`,
   }));
-  if (!picked.length) {
+  if (hasMore) {
     rows.push({
-      id: "skip_addon",
-      title: "Sem adicional",
-      description: "Pular esta etapa"
-    });
-  } else {
-    rows.push({
-      id: "done_addons",
-      title: "Pronto",
-      description: "Seguir sem mais adicionais"
+      id: "more_addons",
+      title: "Ver mais",
+      description: "Próximos adicionais",
     });
   }
+  rows.push(footer);
 
   await sendList(to, prompt, "Adicionais", [
     {
       title: "Adicionais",
-      rows: rows.slice(0, 10)
-    }
+      rows: rows.slice(0, WA_LIST_MAX_ROWS),
+    },
   ]);
   return false;
 }
@@ -1099,8 +1328,9 @@ async function askQuantityStage(
     }
   }
   if ((await productHasAddons(product)) && !addonStepDone(context.draftSelections)) {
+    context.addonOffset = 0;
     await persist("awaiting_addon", context);
-    await askAddons(to, product, context.draftSelections);
+    await askAddons(to, product, context.draftSelections, 0);
     return;
   }
   // Padrão: 1 unidade (evita +1 mensagem). Resume em awaiting_quantity ainda pergunta.
@@ -1341,7 +1571,7 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_order_note") {
     if (!context.cart.length) {
       await persist("awaiting_product", context);
-      await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:");
+      await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:", context);
       return;
     }
     const notes = isSkipNote(incoming, normalized) ? null : clipNote(input.text);
@@ -1369,8 +1599,10 @@ export async function handleIncomingMessage(input: {
       incoming === NEW_ORDER_NO || incoming === "handoff_new_order:no" || ["nao", "n", "no"].includes(normalized);
 
     if (yes) {
-      await persist("awaiting_product", emptyContext());
-      await showMenu(input.from, "🍕 Vamos montar seu pedido. Escolha o primeiro item:");
+      const next = emptyContext();
+      resetMenuBrowse(next);
+      await persist("awaiting_product", next);
+      await showMenu(input.from, "🍕 Vamos montar seu pedido. Escolha o primeiro item:", next);
       return;
     }
     if (no) {
@@ -1385,16 +1617,21 @@ export async function handleIncomingMessage(input: {
   }
 
   if (["menu", "ver cardapio", "cardapio"].includes(normalized)) {
+    resetMenuBrowse(context);
     await persist("awaiting_product", context);
-    await showMenu(input.from);
+    await showMenu(input.from, "📋 Escolha um item do cardápio:", context);
     return;
   }
 
   if (["order", "fazer pedido", "pedir"].includes(normalized)) {
+    resetMenuBrowse(context);
     await persist("awaiting_product", context);
     await showMenu(
       input.from,
-      context.cart.length ? "📋 Escolha o próximo item:" : "🍕 Vamos montar seu pedido. Escolha o primeiro item:"
+      context.cart.length
+        ? "📋 Escolha o próximo item:"
+        : "🍕 Vamos montar seu pedido. Escolha o primeiro item:",
+      context,
     );
     return;
   }
@@ -1433,7 +1670,7 @@ export async function handleIncomingMessage(input: {
     const product = await getProduct(context.selectedProductId);
     if (!product || !isCustomizable(product)) {
       await persist("awaiting_product", context);
-      await showMenu(input.from);
+      await showMenu(input.from, "📋 Escolha um item do cardápio:", context);
       return;
     }
 
@@ -1487,9 +1724,32 @@ export async function handleIncomingMessage(input: {
         await resumeCurrentStep(input.from, store, state, context);
         return;
       }
+      context.flavorOffset = 0;
       await persist("awaiting_option", context);
-      const finished = await showFlavorList(input.from, product, group, drafts);
+      const finished = await showFlavorList(
+        input.from,
+        product,
+        group,
+        drafts,
+        context.flavorOffset ?? 0,
+      );
       if (finished) await goNext();
+      return;
+    }
+
+    if (incoming === "more_flavors") {
+      const openGroup = await groupWantingMore(product, drafts);
+      const pendingGroup = pending.type === "options" ? pending.group : null;
+      const group =
+        (openGroup && usesCatalogFlavors(openGroup) ? openGroup : null) ??
+        (pendingGroup && usesCatalogFlavors(pendingGroup) ? pendingGroup : null);
+      if (!group) {
+        await resumeCurrentStep(input.from, store, state, context);
+        return;
+      }
+      context.flavorOffset = (context.flavorOffset ?? 0) + 8;
+      await persist("awaiting_option", context);
+      await showFlavorList(input.from, product, group, drafts, context.flavorOffset);
       return;
     }
 
@@ -1530,6 +1790,7 @@ export async function handleIncomingMessage(input: {
       await persist("awaiting_option", context);
 
       if (current.options.length >= group.maxSelect) {
+        context.flavorOffset = 0;
         await goNext();
         return;
       }
@@ -1542,7 +1803,9 @@ export async function handleIncomingMessage(input: {
         const canAddMore = Boolean(await groupWantingMore(product, drafts));
         // Sabores do cardápio: próxima lista direto (Pronto fica na própria lista).
         if (usesCatalogFlavors(group) && canAddMore) {
-          await showFlavorList(input.from, product, group, drafts);
+          context.flavorOffset = 0;
+          await persist("awaiting_option", context);
+          await showFlavorList(input.from, product, group, drafts, 0);
           return;
         }
         const shares =
@@ -1624,7 +1887,7 @@ export async function handleIncomingMessage(input: {
     const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
     if (!product) {
       await persist("awaiting_product", context);
-      await showMenu(input.from, "Escolha um item do cardápio:");
+      await showMenu(input.from, "Escolha um item do cardápio:", context);
       return;
     }
 
@@ -1653,7 +1916,7 @@ export async function handleIncomingMessage(input: {
     const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
     if (!product) {
       await persist("awaiting_product", context);
-      await showMenu(input.from, "Escolha um item do cardápio:");
+      await showMenu(input.from, "Escolha um item do cardápio:", context);
       return;
     }
 
@@ -1682,17 +1945,26 @@ export async function handleIncomingMessage(input: {
     }
 
     if (incoming === "more_addons" || incoming === "more_options") {
-      const finished = await askAddons(input.from, product, drafts);
+      context.addonOffset = (context.addonOffset ?? 0) + 8;
+      await persist("awaiting_addon", context);
+      const finished = await askAddons(
+        input.from,
+        product,
+        drafts,
+        context.addonOffset,
+      );
       if (finished) await finishAddons();
       return;
     }
 
     if (incoming === "done_addons" || incoming === "done_options") {
+      context.addonOffset = 0;
       await finishAddons();
       return;
     }
 
     if (incoming === "skip_addon") {
+      context.addonOffset = 0;
       context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
       return;
@@ -1710,6 +1982,7 @@ export async function handleIncomingMessage(input: {
     }
 
     context.draftSelections = addDraftAddon(drafts, addon);
+    context.addonOffset = 0;
     await persist("awaiting_addon", context);
 
     if (!(await remainingAddons(product, context.draftSelections)).length) {
@@ -1717,16 +1990,43 @@ export async function handleIncomingMessage(input: {
       return;
     }
     // Próxima lista já inclui "Pronto" — sem mensagem extra Mais um/Pronto.
-    await askAddons(input.from, product, context.draftSelections);
+    await askAddons(input.from, product, context.draftSelections, 0);
     return;
   }
 
   if (state === "awaiting_product") {
+    if (incoming.startsWith("menucat:")) {
+      context.menuCategoryId = incoming.slice("menucat:".length);
+      context.menuOffset = 0;
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "📋 Escolha um item:", context);
+      return;
+    }
+    if (incoming === "menu:more_cats") {
+      context.menuOffset = (context.menuOffset ?? 0) + 9;
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "📋 Escolha uma categoria:", context);
+      return;
+    }
+    if (incoming === "menu:more_items") {
+      context.menuOffset = (context.menuOffset ?? 0) + 8;
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "📋 Escolha um item:", context);
+      return;
+    }
+    if (incoming === "menu:back_cats") {
+      context.menuCategoryId = null;
+      context.menuOffset = 0;
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "📋 Escolha uma categoria:", context);
+      return;
+    }
+
     const productId = incoming.startsWith("product:") ? incoming.slice("product:".length) : null;
-    // Lista (product:) ou nome exato do item — texto aleatório não avança.
+    const catalog = await listProducts();
     const product = productId
       ? await getProduct(productId)
-      : (await listProducts()).find(item => normalize(item.name) === normalized);
+      : findProductByText(catalog, normalized);
 
     if (!product) {
       await persist("awaiting_product", context);
@@ -1734,9 +2034,12 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
+    resetMenuBrowse(context);
     context.selectedProductId = product.id;
     context.draftSelections = [];
     context.optionGroupIndex = 0;
+    context.addonOffset = 0;
+    context.flavorOffset = 0;
 
     await continueProductFlow(input.from, product, context, persist);
     return;
@@ -1791,13 +2094,15 @@ export async function handleIncomingMessage(input: {
 
   if (state === "cart" || state === "awaiting_fulfillment") {
     if (!context.cart.length) {
+      resetMenuBrowse(context);
       await persist("awaiting_product", context);
-      await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:");
+      await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:", context);
       return;
     }
-    if (incoming === "order" || normalized === "adicionar mais itens") {
+    if (incoming === "order" || normalized === "adicionar mais" || normalized === "adicionar mais itens") {
+      resetMenuBrowse(context);
       await persist("awaiting_product", context);
-      await showMenu(input.from, "Escolha o próximo item:");
+      await showMenu(input.from, "Escolha o próximo item:", context);
       return;
     }
     if (
@@ -1831,8 +2136,9 @@ export async function handleIncomingMessage(input: {
         if (zones.length) {
           context.neighborhoodId = undefined;
           context.neighborhoodName = undefined;
+          context.neighborhoodPage = null;
           await persist("awaiting_neighborhood", context);
-          await askNeighborhoods(input.from, store);
+          await askNeighborhoods(input.from, store, context);
           return;
         }
         await persist("awaiting_address", context);
@@ -1867,8 +2173,9 @@ export async function handleIncomingMessage(input: {
       if (zones.length) {
         context.neighborhoodId = undefined;
         context.neighborhoodName = undefined;
+        context.neighborhoodPage = null;
         await persist("awaiting_neighborhood", context);
-        await askNeighborhoods(input.from, store);
+        await askNeighborhoods(input.from, store, context);
         return;
       }
       await persist("awaiting_address", context);
@@ -1882,6 +2189,24 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_neighborhood") {
+    if (incoming === "nbhpage:back") {
+      context.neighborhoodPage = null;
+      await persist("awaiting_neighborhood", context);
+      await askNeighborhoods(input.from, store, context);
+      return;
+    }
+    if (incoming.startsWith("nbhpage:")) {
+      const page = Number(incoming.slice("nbhpage:".length));
+      if (!Number.isFinite(page) || page < 0) {
+        await resumeCurrentStep(input.from, store, state, context);
+        return;
+      }
+      context.neighborhoodPage = page;
+      await persist("awaiting_neighborhood", context);
+      await askNeighborhoods(input.from, store, context);
+      return;
+    }
+
     const zone = findNeighborhood(incoming, normalized, store.neighborhoods ?? []);
     if (!zone) {
       await resumeCurrentStep(input.from, store, state, context);
@@ -1889,6 +2214,7 @@ export async function handleIncomingMessage(input: {
     }
     context.neighborhoodId = zone.id;
     context.neighborhoodName = zone.name;
+    context.neighborhoodPage = null;
     await persist("awaiting_address", context);
     await goToAddress(input.from, zone);
     return;

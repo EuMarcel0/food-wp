@@ -107,10 +107,17 @@ export type ConversationContext = {
   fulfillment?: Fulfillment;
   neighborhoodId?: string;
   neighborhoodName?: string;
+  /** Página do seletor de bairros (null = lista de grupos). */
+  neighborhoodPage?: number | null;
   addressText?: string;
   paymentMethod?: PaymentMethod;
   changeForCents?: number;
   orderNotes?: string | null;
+  /** Categoria aberta no cardápio (navegação em etapas). */
+  menuCategoryId?: string | null;
+  menuOffset?: number;
+  addonOffset?: number;
+  flavorOffset?: number;
 };
 
 export type DeliveryNeighborhood = {
