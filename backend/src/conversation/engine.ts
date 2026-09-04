@@ -364,7 +364,7 @@ function commitDraftToCart(context: ConversationContext) {
 }
 
 const CART_ACTIONS = [
-  { id: "order", title: "Adicionar mais" },
+  { id: "order", title: "Adicionar mais itens" },
   { id: "checkout", title: "Fechar pedido" },
   { id: "clear_cart", title: "Limpar carrinho" }
 ] as const;
@@ -376,7 +376,7 @@ async function showCheckoutOptions(
   context: ConversationContext,
   intro = "✅ Item adicionado!"
 ) {
-  const buttons: { id: string; title: string }[] = [{ id: "order", title: "Adicionar mais" }];
+  const buttons: { id: string; title: string }[] = [{ id: "order", title: "Adicionar mais itens" }];
   if (store.deliveryEnabled) {
     buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
   }
@@ -668,7 +668,7 @@ async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
   const intro = [
     zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
     "🏠 Qual o endereço completo da entrega?",
-    "Pode digitar o endereço ou, *no celular*, compartilhar a localização.",
+    "Pode digitar o endereço ou, *no celular*, compartilhar a localização."
   ]
     .filter(Boolean)
     .join("\n");
@@ -1263,8 +1263,7 @@ export async function handleIncomingMessage(input: {
 
   // Atalhos globais (menu/status/pedido) não interrompem pedido em andamento.
   // No checkout unificado, "Adicionar mais" usa id "order" em cart e awaiting_fulfillment.
-  const cartAddMore =
-    (state === "cart" || state === "awaiting_fulfillment") && incoming === "order";
+  const cartAddMore = (state === "cart" || state === "awaiting_fulfillment") && incoming === "order";
   const globalShortcut =
     ["menu", "status"].includes(incoming) ||
     ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
@@ -1749,7 +1748,7 @@ export async function handleIncomingMessage(input: {
       await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:");
       return;
     }
-    if (incoming === "order" || normalized === "adicionar mais") {
+    if (incoming === "order" || normalized === "adicionar mais itens") {
       await persist("awaiting_product", context);
       await showMenu(input.from, "Escolha o próximo item:");
       return;

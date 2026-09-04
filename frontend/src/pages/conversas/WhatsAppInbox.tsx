@@ -538,7 +538,7 @@ export function WhatsAppInbox({
       className={cn(
         "min-h-0 flex-1 overflow-hidden bg-food-surface",
         isDesktop
-          ? "grid min-h-[70vh] grid-cols-[340px_minmax(0,1fr)] rounded-2xl border border-food-border shadow-food-soft"
+          ? "grid h-full min-h-0 grid-cols-[340px_minmax(0,1fr)] rounded-2xl border border-food-border shadow-food-soft"
           : "flex h-full flex-col",
       )}
     >

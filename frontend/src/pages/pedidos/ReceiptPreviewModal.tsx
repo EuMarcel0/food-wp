@@ -140,21 +140,29 @@ export function ReceiptPreviewModal({
       width={420}
       centered
       destroyOnHidden
+      styles={{
+        body: {
+          maxHeight: "calc(100dvh - 160px)",
+          overflowY: "auto",
+        },
+      }}
+      classNames={{
+        content: "max-h-[calc(100dvh-24px)]",
+      }}
     >
       {!agentOnline ? (
         <Alert
           type="warning"
           showIcon
           className="mb-3"
-          message="Agente de impressão offline"
-          description="Com o agente no PC da cozinha (Configurações → Impressão), o cupom sai direto na térmica sem cortar. Enquanto offline, o botão usa o diálogo do navegador."
+          message="Impressora offline"
         />
       ) : null}
 
       {order ? (
         <div
           ref={ticketRef}
-          className="receipt-print-root flex justify-center rounded-xl py-4"
+          className="receipt-print-root flex justify-center rounded-xl py-4 [@media(max-height:800px)]:py-2"
           style={{ background: "#1f1f1f" }}
         >
           <ReceiptTicket order={order} store={store} />

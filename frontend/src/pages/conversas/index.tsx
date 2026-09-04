@@ -181,7 +181,10 @@ export function ConversationsPage() {
       )}
     >
       <PageHeader
-        className={cn("mb-3 shrink-0 max-lg:hidden")}
+        className={cn(
+          "mb-3 shrink-0 max-lg:hidden",
+          "[@media(max-height:800px)]:mb-1.5 [@media(max-height:800px)]:[&_.ant-typography-secondary]:hidden",
+        )}
         kicker="WhatsApp"
         title="Conversas"
         subtitle="Inbox do WhatsApp: atenda no chat, ou veja o histórico de pedidos."
@@ -199,6 +202,7 @@ export function ConversationsPage() {
           onChange={(key) => setTab(key as TabKey)}
           className={cn(
             "mb-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden",
+            "[@media(max-height:800px)]:[&_.ant-tabs-nav]:mb-2",
             !isDesktop &&
               !mobileChatOpen &&
               "max-lg:[&_.ant-tabs-nav]:mb-2 max-lg:[&_.ant-tabs-tab]:!ms-0 max-lg:[&_.ant-tabs-tab+.ant-tabs-tab]:!ms-5",

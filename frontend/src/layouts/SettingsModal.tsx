@@ -43,7 +43,18 @@ export function SettingsModal({
       onCancel={onClose}
       footer={null}
       destroyOnHidden
+      centered
       afterClose={() => setPhoto(null)}
+      styles={{
+        body: {
+          maxHeight: "calc(100dvh - 120px)",
+          overflowY: "auto",
+          paddingTop: 8,
+        },
+      }}
+      classNames={{
+        content: "max-h-[calc(100dvh-24px)]",
+      }}
     >
       <Formik
         enableReinitialize
@@ -84,8 +95,8 @@ export function SettingsModal({
                 message={status}
               />
             ) : null}
-            <div className="mb-4 flex flex-col items-center gap-2.5">
-              <Avatar src={preview} size={88} />
+            <div className="mb-4 flex flex-col items-center gap-2.5 [@media(max-height:800px)]:mb-2 [@media(max-height:800px)]:gap-1.5">
+              <Avatar src={preview} size={72} />
               <Upload
                 accept="image/png,image/jpeg,image/webp"
                 showUploadList={false}
