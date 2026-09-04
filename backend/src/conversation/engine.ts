@@ -977,7 +977,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[])
   const prompt = [
     `*${product.name}*`,
     picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "🧀 Escolha um adicional",
-    picked.length ? "Quer outro? Escolha na lista ou toque em *Pronto*." : ""
+    picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
   ]
     .filter(Boolean)
     .join("\n");
