@@ -182,7 +182,7 @@ export function ConversationsPage() {
     >
       <PageHeader
         className={cn(
-          "mb-3 shrink-0 max-lg:hidden",
+          "mb-3 shrink-0 max-lg:hidden max-[1440px]:hidden",
           "[@media(max-height:800px)]:mb-1.5 [@media(max-height:800px)]:[&_.ant-typography-secondary]:hidden",
         )}
         kicker="WhatsApp"
@@ -195,6 +195,7 @@ export function ConversationsPage() {
           "shrink-0",
           !isDesktop && mobileChatOpen && "max-lg:hidden",
           !isDesktop && !mobileChatOpen && "max-lg:px-3 max-lg:pt-2",
+          isDesktop && "max-[1440px]:px-3 max-[1440px]:pt-2",
         )}
       >
         <Tabs
@@ -253,6 +254,7 @@ export function ConversationsPage() {
           className={cn(
             "flex min-h-0 flex-1 flex-col",
             !isDesktop && "max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
+            isDesktop && "max-[1440px]:min-h-0",
           )}
         >
           <WhatsAppInbox

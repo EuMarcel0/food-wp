@@ -87,9 +87,10 @@ export function UserMenu() {
           },
         }}
       >
-        <button type="button" className="inline-flex cursor-pointer rounded-full border-0 bg-transparent p-0" aria-label="Menu da conta">
+        <button type="button" className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0" aria-label="Menu da conta">
           <Avatar
             className="shrink-0"
+            size={28}
             src={user ? getAvatarUrl(user) : undefined}
             icon={!user ? <UserOutlined /> : undefined}
             style={{ backgroundColor: "#E85D04" }}

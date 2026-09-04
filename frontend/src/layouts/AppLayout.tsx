@@ -77,11 +77,12 @@ export function AppLayout() {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const isMobile = screens.lg === false;
+  const isConversasPage = location.pathname === "/conversas";
   const usesFillLayout =
     location.pathname === "/pedidos" ||
-    location.pathname === "/conversas" ||
+    isConversasPage ||
     (!isMobile && ["/cardapio", "/categorias", "/adicionais"].includes(location.pathname));
-  const isConversasMobile = isMobile && location.pathname === "/conversas";
+  const isConversasMobile = isMobile && isConversasPage;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
   const storeQuery = useQuery({
@@ -210,24 +211,25 @@ export function AppLayout() {
         )}
         <Layout className='h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-food-bg'>
           <Layout.Header
-            className='flex h-15 shrink-0 items-center justify-between gap-2 leading-15 backdrop-blur-md'
-            style={{ borderBottom: `1px solid ${token.colorBorder}`, paddingInline: 8 }}
+            className='flex !h-11 shrink-0 items-center justify-between gap-1.5 !leading-none backdrop-blur-md'
+            style={{ borderBottom: `1px solid ${token.colorBorder}`, paddingInline: 8, height: 44, lineHeight: "44px" }}
           >
-            <div className='flex min-w-0 items-center gap-2'>
+            <div className='flex min-w-0 items-center gap-1.5'>
               <Tooltip title={isMobile ? undefined : collapsed ? "Expandir menu" : "Recolher menu"}>
                 <Button
-                  className='inline-flex'
+                  className='inline-flex !size-8'
                   type='text'
+                  size='small'
                   aria-label={isMobile ? "Abrir menu" : collapsed ? "Expandir menu" : "Recolher menu"}
                   icon={isMobile ? <MenuOutlined /> : collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                   onClick={() => (isMobile ? setDrawerOpen(true) : toggleSider())}
                 />
               </Tooltip>
-              <Typography.Text strong className='truncate font-semibold tracking-tight max-sm:text-sm'>
+              <Typography.Text strong className='truncate text-sm font-semibold tracking-tight max-sm:text-[13px]'>
                 Atendimento por WhatsApp
               </Typography.Text>
             </div>
-            <div className='flex items-center gap-2'>
+            <div className='flex items-center gap-1'>
               <ConnectionStatus />
               <NotificationBell />
               <UserMenu />
@@ -239,7 +241,10 @@ export function AppLayout() {
               "min-h-0 min-w-0 flex-1 scroll-mt-3 bg-food-bg",
               usesFillLayout
                 ? cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden px-4 py-3",
+                    "flex h-full min-h-0 flex-col overflow-hidden",
+                    isConversasPage
+                      ? "px-4 py-3 max-[1440px]:px-0 max-[1440px]:py-0"
+                      : "px-4 py-3",
                     isConversasMobile
                       ? "max-lg:h-full max-lg:overflow-hidden max-lg:px-0 max-lg:py-0"
                       : "max-lg:h-auto max-lg:overflow-auto max-lg:px-3.5",

@@ -106,8 +106,9 @@ export function NotificationBell() {
   const trigger = (
     <Badge count={unread} size="small" offset={[-2, 2]}>
       <Button
-        className="size-9"
+        className="!size-8"
         type="text"
+        size="small"
         aria-label="Notificações"
         aria-expanded={open}
         aria-haspopup="dialog"

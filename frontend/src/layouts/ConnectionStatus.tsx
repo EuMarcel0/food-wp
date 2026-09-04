@@ -52,7 +52,7 @@ export function ConnectionStatus() {
     <Tooltip title={title} placement="bottomRight">
       <button
         type="button"
-        className="grid size-9 cursor-default place-items-center border-0 bg-transparent p-0"
+        className="grid size-8 cursor-default place-items-center border-0 bg-transparent p-0"
         aria-label="Status das conexões"
       >
         <span className={cn("size-2.5 rounded-full", DOT[tone])} />
