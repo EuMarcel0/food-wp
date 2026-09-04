@@ -4,7 +4,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Alert, Avatar, Badge, Button, Empty, Input, Spin, Tag } from "antd";
+import { Alert, Avatar, Badge, Button, Empty, Input, Popover, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
   CheckOutlined,
@@ -12,6 +12,7 @@ import {
   RobotOutlined,
   SearchOutlined,
   SendOutlined,
+  SmileOutlined,
   UnorderedListOutlined,
   UserSwitchOutlined,
 } from "@ant-design/icons";
@@ -39,6 +40,14 @@ import {
 import type { ConversationMessage, ConversationMessageActions, LiveConversation } from "../../types";
 
 const MESSAGE_PAGE_SIZE = 40;
+
+const CHAT_EMOJIS = [
+  "😀", "😁", "😂", "🥹", "😊", "😍", "🥰", "😘",
+  "😉", "😎", "🤔", "😅", "😢", "😭", "😤", "🙏",
+  "👍", "👎", "👏", "👋", "✌️", "🤝", "💪", "❤️",
+  "🔥", "✨", "🎉", "🍕", "🍔", "🍟", "🥤", "🍺",
+  "✅", "❌", "⏰", "📍", "💬", "📦", "🛵", "🏠",
+];
 
 type MessagesCursor = { createdAt: string; id: string } | null;
 
@@ -117,8 +126,10 @@ export function WhatsAppInbox({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [readTick, setReadTick] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
+  const draftAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const stickToBottomRef = useRef(true);
   const loadingOlderRef = useRef(false);
   const lastSelectedIdRef = useRef<string | null>(null);
@@ -436,6 +447,23 @@ export function WhatsAppInbox({
     sendMutation.mutate({ conversationId, text, tempId });
   }
 
+  function insertEmoji(emoji: string) {
+    const el = draftAreaRef.current;
+    if (!el) {
+      setDraft((value) => value + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const next = `${draft.slice(0, start)}${emoji}${draft.slice(end)}`;
+    setDraft(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
   return (
     <div
       className={cn(
@@ -701,11 +729,52 @@ export function WhatsAppInbox({
                 </p>
               ) : null}
               <div className="flex items-end gap-2">
+                <Popover
+                  trigger="click"
+                  placement="topLeft"
+                  open={emojiOpen}
+                  onOpenChange={setEmojiOpen}
+                  arrow={false}
+                  overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-2"
+                  content={
+                    <div
+                      className="grid max-h-52 w-[min(280px,calc(100vw-48px))] grid-cols-8 gap-0.5 overflow-y-auto"
+                      role="listbox"
+                      aria-label="Emojis"
+                    >
+                      {CHAT_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          className="grid size-8 place-items-center rounded-lg border-0 bg-transparent text-lg leading-none transition hover:bg-food-chip"
+                          onClick={() => {
+                            insertEmoji(emoji);
+                            setEmojiOpen(false);
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  }
+                >
+                  <Button
+                    type="primary"
+                    icon={<SmileOutlined />}
+                    aria-label="Emojis"
+                    aria-expanded={emojiOpen}
+                    aria-haspopup="dialog"
+                  />
+                </Popover>
                 <Input.TextArea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder="Digite uma mensagem"
                   autoSize={{ minRows: 1, maxRows: 4 }}
+                  ref={(node) => {
+                    draftAreaRef.current =
+                      node?.resizableTextArea?.textArea ?? null;
+                  }}
                   onPressEnter={(e) => {
                     if (!e.shiftKey) {
                       e.preventDefault();
