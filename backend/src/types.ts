@@ -16,6 +16,7 @@ export type ConversationState =
   | "awaiting_addon"
   | "awaiting_crust"
   | "awaiting_option"
+  | "awaiting_batch_count"
   | "awaiting_quantity"
   | "awaiting_item_note"
   | "cart"
@@ -34,6 +35,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_addon",
   "awaiting_crust",
   "awaiting_option",
+  "awaiting_batch_count",
   "awaiting_quantity",
   "awaiting_item_note",
   "cart",
@@ -118,6 +120,13 @@ export type ConversationContext = {
   menuOffset?: number;
   addonOffset?: number;
   flavorOffset?: number;
+  /**
+   * Lote quando "Solicitar quantidade?" está desligado:
+   * pergunta "Você vai querer quantas?" e monta cada unidade em sequência.
+   */
+  batchProductId?: string;
+  batchRemaining?: number;
+  batchTotal?: number;
 };
 
 export type DeliveryNeighborhood = {

@@ -123,6 +123,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_addon: "Adicionais",
   awaiting_crust: "Borda",
   awaiting_option: "Montando item",
+  awaiting_batch_count: "Qtd. (lote)",
   awaiting_quantity: "Quantidade",
   awaiting_item_note: "Obs. do item",
   cart: "Carrinho",

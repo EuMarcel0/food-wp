@@ -127,13 +127,87 @@ function findVariant(incoming: string, normalized: string, groups: ProductOption
   });
 }
 
-function parseQuantity(raw: string) {
-  const text = raw.replace(/^qty:/i, "").trim();
-  const match = text.match(/\d{1,3}/);
-  if (!match) return null;
-  const quantity = Number(match[0]);
-  if (!Number.isInteger(quantity) || quantity < 1) return null;
-  return quantity;
+function parseQuantity(raw: string): number | null {
+  const stripped = raw.replace(/^qty:/i, "").trim();
+  if (!stripped) return null;
+
+  const digitMatch = stripped.match(/\d{1,3}/);
+  if (digitMatch) {
+    const quantity = Number(digitMatch[0]);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) return null;
+    return quantity;
+  }
+
+  const text = normalize(stripped)
+    .replace(/-/g, " ")
+    .replace(/\s+e\s+/g, " ")
+    .replace(/\b(quero|queria|vou querer|pode ser|serao|sera|sao|de|unidades?|itens?|pizzas?|pedacos?|vezes)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+
+  const UNITS: Record<string, number> = {
+    um: 1,
+    uma: 1,
+    dois: 2,
+    duas: 2,
+    tres: 3,
+    quatro: 4,
+    cinco: 5,
+    seis: 6,
+    sete: 7,
+    oito: 8,
+    nove: 9,
+    dez: 10,
+    onze: 11,
+    doze: 12,
+    treze: 13,
+    quatorze: 14,
+    catorze: 14,
+    quinze: 15,
+    dezesseis: 16,
+    dezasseis: 16,
+    dezessete: 17,
+    dezassete: 17,
+    dezoito: 18,
+    dezenove: 19,
+    dezanove: 19
+  };
+  const TENS: Record<string, number> = {
+    vinte: 20,
+    trinta: 30,
+    quarenta: 40,
+    cinquenta: 50
+  };
+
+  if (UNITS[text] != null) return UNITS[text];
+  if (TENS[text] != null) return TENS[text];
+
+  const parts = text.split(" ").filter(Boolean);
+  if (parts.length === 2 && TENS[parts[0]] != null && UNITS[parts[1]] != null) {
+    const quantity = TENS[parts[0]] + UNITS[parts[1]];
+    if (quantity >= 1 && quantity <= 50) return quantity;
+  }
+
+  // Frases como "quero tres pizzas" → procura token conhecido.
+  for (const part of parts) {
+    if (UNITS[part] != null) return UNITS[part];
+    if (TENS[part] != null) return TENS[part];
+  }
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    if (TENS[parts[i]] != null && UNITS[parts[i + 1]] != null) {
+      const quantity = TENS[parts[i]] + UNITS[parts[i + 1]];
+      if (quantity >= 1 && quantity <= 50) return quantity;
+    }
+  }
+
+  return null;
+}
+
+function clearBatch(context: ConversationContext) {
+  context.batchProductId = undefined;
+  context.batchRemaining = undefined;
+  context.batchTotal = undefined;
 }
 
 function emptyContext(): ConversationContext {
@@ -552,6 +626,15 @@ async function resumeCurrentStep(
         return;
       }
       await askQuantity(to, product, context.draftSelections ?? []);
+      return;
+    }
+    case "awaiting_batch_count": {
+      const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
+      if (!product) {
+        await showMenu(to, withHint("Escolha um item do cardápio:"), context);
+        return;
+      }
+      await askBatchCount(to, product);
       return;
     }
     case "awaiting_item_note":
@@ -1109,7 +1192,15 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   const heading = [`*${title}*`, detail || null, crustLabel(extras), addonLabel(extras), formatReais(price / 100)]
     .filter(Boolean)
     .join("\n");
-  await sendButtons(to, `${heading}\n🔢 Quantas unidades?\nOu digite um número.`, [
+  await sendButtons(to, `${heading}\n🔢 Quantas unidades?\nOu digite um número de 1 a 50.`, [
+    { id: "qty:1", title: "1" },
+    { id: "qty:2", title: "2" },
+    { id: "qty:3", title: "3" }
+  ]);
+}
+
+async function askBatchCount(to: string, product: Product) {
+  await sendButtons(to, `*${product.name}*\n🔢 Você vai querer quantas?\nOu digite um número de 1 a 50.`, [
     { id: "qty:1", title: "1" },
     { id: "qty:2", title: "2" },
     { id: "qty:3", title: "3" }
@@ -1197,6 +1288,40 @@ async function applyQuantityAndContinue(
   }
 
   commitDraftToCart(context);
+  await finishItemOrContinueBatch(to, store, context, persist);
+}
+
+/** Após gravar um item: se ainda há lote, monta a próxima unidade; senão vai ao carrinho. */
+async function finishItemOrContinueBatch(
+  to: string,
+  store: Store,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
+) {
+  if (context.batchProductId && typeof context.batchRemaining === "number" && context.batchRemaining > 0) {
+    context.batchRemaining -= 1;
+    if (context.batchRemaining > 0) {
+      const product = await getProduct(context.batchProductId);
+      if (!product) {
+        clearBatch(context);
+        await persist("awaiting_fulfillment", context);
+        await showCartAfterAdd(to, store, context);
+        return;
+      }
+      const total = context.batchTotal ?? context.batchRemaining + 1;
+      const ordinal = total - context.batchRemaining + 1;
+      context.selectedProductId = product.id;
+      context.draftSelections = [];
+      context.optionGroupIndex = 0;
+      context.addonOffset = 0;
+      context.flavorOffset = 0;
+      await sendText(to, `✅ Item adicionado! Montando a *${ordinal}ª* de *${total}*:`);
+      await continueProductFlow(to, product, context, persist);
+      return;
+    }
+    clearBatch(context);
+  }
+
   await persist("awaiting_fulfillment", context);
   await showCartAfterAdd(to, store, context);
 }
@@ -1227,7 +1352,7 @@ async function askQuantityStage(
     await askQuantity(to, product, context.draftSelections ?? []);
     return;
   }
-  // Padrão: 1 unidade (evita +1 mensagem). Resume em awaiting_quantity ainda pergunta.
+  // Sem flag de quantidade: 1 unidade (lote já perguntou "quantas?" no início).
   const resolvedStore = store ?? (await getStore());
   await applyQuantityAndContinue(to, resolvedStore, product, context, persist, 1);
 }
@@ -1238,6 +1363,12 @@ async function continueProductFlow(
   context: ConversationContext,
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
+  // quantityEnabled false → pergunta o lote antes do tamanho/montagem (só na 1ª unidade).
+  if (!product.quantityEnabled && !context.batchProductId) {
+    await persist("awaiting_batch_count", context);
+    await askBatchCount(to, product);
+    return;
+  }
   if (isCustomizable(product)) {
     await persist("awaiting_option", context);
     await askAssembly(to, product, context);
@@ -1457,8 +1588,7 @@ export async function handleIncomingMessage(input: {
     const added = context.draftItem;
     added.notes = notes;
     commitDraftToCart(context);
-    await persist("awaiting_fulfillment", context);
-    await showCartAfterAdd(input.from, store, context);
+    await finishItemOrContinueBatch(input.from, store, context, persist);
     return;
   }
 
@@ -1929,6 +2059,7 @@ export async function handleIncomingMessage(input: {
     }
 
     resetMenuBrowse(context);
+    clearBatch(context);
     context.selectedProductId = product.id;
     context.draftSelections = [];
     context.optionGroupIndex = 0;
@@ -1939,11 +2070,33 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  if (state === "awaiting_batch_count") {
+    const quantity = parseQuantity(incoming);
+    const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
+
+    if (!product || quantity == null) {
+      await sendText(input.from, "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).");
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+
+    context.batchProductId = product.id;
+    context.batchRemaining = quantity;
+    context.batchTotal = quantity;
+    context.draftSelections = [];
+    context.optionGroupIndex = 0;
+    context.addonOffset = 0;
+    context.flavorOffset = 0;
+    await continueProductFlow(input.from, product, context, persist);
+    return;
+  }
+
   if (state === "awaiting_quantity") {
     const quantity = parseQuantity(incoming);
     const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
 
     if (!product || quantity == null) {
+      await sendText(input.from, "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).");
       await resumeCurrentStep(input.from, store, state, context);
       return;
     }
@@ -1967,9 +2120,8 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    const added = commitDraftToCart(context);
-    await persist("awaiting_fulfillment", context);
-    if (added) await showCartAfterAdd(input.from, store, context);
+    commitDraftToCart(context);
+    await finishItemOrContinueBatch(input.from, store, context, persist);
     return;
   }
 
