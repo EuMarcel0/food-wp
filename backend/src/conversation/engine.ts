@@ -69,6 +69,8 @@ import {
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
+/** Temporariamente desligada — após o endereço vai direto ao pagamento. */
+const ORDER_NOTE_STEP_ENABLED = false;
 const ACK_KEYS = [
   "obrigado",
   "obrigada",
@@ -563,8 +565,12 @@ async function resumeCurrentStep(
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_order_note":
-      await sendHintIfNeeded();
-      await askOrderNote(to);
+      // if (ORDER_NOTE_STEP_ENABLED) {
+      //   await sendHintIfNeeded();
+      //   await askOrderNote(to);
+      //   return;
+      // }
+      await askPayment(to, withHint("Como deseja pagar?"));
       return;
     case "awaiting_fulfillment":
       // intro já inclui o título do carrinho em showCheckoutOptions — não duplicar.
@@ -675,7 +681,8 @@ async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
   const intro = [
     zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
     "🏠 Qual o endereço completo da entrega?",
-    "Pode digitar o endereço ou, *no celular*, compartilhar a localização."
+    "*Pode digitar o endereço*.",
+    "*Por favor, informe também a referência da entrega*."
   ]
     .filter(Boolean)
     .join("\n");
@@ -849,15 +856,11 @@ async function showMenuProducts(
 
   const rows: { id: string; title: string; description?: string }[] = page.map(product => {
     const detail = product.description?.trim();
-    const description = detail
-      ? detail.slice(0, 72)
-      : product.customizable
-        ? undefined
-        : formatReais(product.price);
+    const description = detail ? detail.slice(0, 72) : product.customizable ? undefined : formatReais(product.price);
     return {
       id: `product:${product.id}`,
       title: product.name.slice(0, 24),
-      ...(description ? { description } : {}),
+      ...(description ? { description } : {})
     };
   });
   if (hasMore) {
@@ -1455,6 +1458,21 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_order_note") {
+    if (!ORDER_NOTE_STEP_ENABLED) {
+      if (!context.cart.length) {
+        await persist("awaiting_product", context);
+        await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:", context);
+        return;
+      }
+      if (!context.fulfillment) {
+        await persist("awaiting_fulfillment", context);
+        await showCheckoutOptions(input.from, store, context, "✅ Continue seu pedido");
+        return;
+      }
+      await persist("awaiting_payment", context);
+      await askPayment(input.from);
+      return;
+    }
     if (!context.cart.length) {
       await persist("awaiting_product", context);
       await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:", context);
@@ -2103,8 +2121,13 @@ export async function handleIncomingMessage(input: {
       return;
     }
     context.addressText = address;
-    await persist("awaiting_order_note", context);
-    await askOrderNote(input.from);
+    // if (ORDER_NOTE_STEP_ENABLED) {
+    //   await persist("awaiting_order_note", context);
+    //   await askOrderNote(input.from);
+    //   return;
+    // }
+    await persist("awaiting_payment", context);
+    await askPayment(input.from);
     return;
   }
 
