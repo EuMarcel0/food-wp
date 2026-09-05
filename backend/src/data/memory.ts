@@ -639,6 +639,24 @@ export const memoryStore = {
     return size;
   },
 
+  /** Espelha preço/nome/máx. do catálogo nos grupos de tamanho dos produtos. */
+  propagateSizeToProducts(previousName: string, size: Size) {
+    const key = previousName.trim().toLowerCase();
+    for (const product of products) {
+      product.optionGroups = product.optionGroups.map((group) => {
+        if (!group.exclusiveSet?.trim()) return group;
+        if (group.name.trim().toLowerCase() !== key) return group;
+        return {
+          ...group,
+          name: size.name,
+          price: size.price,
+          maxSelect: Math.max(1, size.maxSelect),
+          priceMode: size.priceMode,
+        };
+      });
+    }
+  },
+
   deleteSize(id: string) {
     const index = sizes.findIndex((item) => item.id === id);
     if (index < 0) return false;

@@ -90,6 +90,90 @@ function mapOptionGroups(row: Record<string, unknown>): ProductOptionGroup[] {
     });
 }
 
+/** Catálogo de tamanhos (Adicionais) é a fonte de verdade dos preços. */
+let sizeCatalogCache: { expires: number; items: Size[] } | null = null;
+
+function invalidateSizeCatalogCache() {
+  sizeCatalogCache = null;
+}
+
+function applyCatalogSizePrices(
+  groups: ProductOptionGroup[],
+  catalog: Size[],
+): ProductOptionGroup[] {
+  if (!groups.length || !catalog.length) return groups;
+  const byName = new Map(
+    catalog.map((size) => [size.name.trim().toLowerCase(), size]),
+  );
+  return groups.map((group) => {
+    if (!group.exclusiveSet?.trim()) return group;
+    const match = byName.get(group.name.trim().toLowerCase());
+    if (!match) return group;
+    return {
+      ...group,
+      name: match.name,
+      price: match.price,
+      maxSelect: Math.max(1, match.maxSelect),
+      priceMode: match.priceMode,
+    };
+  });
+}
+
+async function loadSizeCatalog(): Promise<Size[]> {
+  const now = Date.now();
+  if (sizeCatalogCache && sizeCatalogCache.expires > now) {
+    return sizeCatalogCache.items;
+  }
+  const items = await listAllSizes();
+  sizeCatalogCache = { expires: now + 10_000, items };
+  return items;
+}
+
+async function enrichProductSizes(product: Product): Promise<Product> {
+  const catalog = await loadSizeCatalog();
+  return {
+    ...product,
+    optionGroups: applyCatalogSizePrices(product.optionGroups, catalog),
+  };
+}
+
+async function enrichProductsSizes(products: Product[]): Promise<Product[]> {
+  if (!products.length) return products;
+  const catalog = await loadSizeCatalog();
+  return products.map((product) => ({
+    ...product,
+    optionGroups: applyCatalogSizePrices(product.optionGroups, catalog),
+  }));
+}
+
+/** Propaga alteração do catálogo para grupos de tamanho já linkados nos produtos. */
+async function propagateSizeToProductGroups(
+  previousName: string,
+  size: Size,
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    memoryStore.propagateSizeToProducts(previousName, size);
+    return;
+  }
+  const { error } = await supabase
+    .from("product_option_groups")
+    .update({
+      name: size.name,
+      price: size.price,
+      max_select: Math.max(1, Math.min(10, size.maxSelect)),
+      price_mode: size.priceMode,
+    })
+    .eq("name", previousName)
+    .not("exclusive_set", "is", null);
+  if (error) {
+    console.error(
+      "[sizes] falha ao propagar preço para produtos:",
+      error.message,
+    );
+  }
+}
+
 function mapStore(row: Record<string, unknown>): Store {
   return {
     id: String(row.id),
@@ -464,7 +548,7 @@ export async function deleteNeighborhood(id: string): Promise<void> {
 
 export async function listProducts(): Promise<Product[]> {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listProducts();
+  if (!supabase) return enrichProductsSizes(memoryStore.listProducts());
 
   const first = await supabase
     .from("products")
@@ -479,21 +563,25 @@ export async function listProducts(): Promise<Product[]> {
           .eq("active", true)
           .order("name")
       : first;
-  if (error || !data) return memoryStore.listProducts();
-  return data.map((row) => mapProduct(row as Record<string, unknown>));
+  if (error || !data) return enrichProductsSizes(memoryStore.listProducts());
+  return enrichProductsSizes(
+    data.map((row) => mapProduct(row as Record<string, unknown>)),
+  );
 }
 
 export async function listAllProducts(): Promise<Product[]> {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listAllProducts();
+  if (!supabase) return enrichProductsSizes(memoryStore.listAllProducts());
 
   const first = await supabase.from("products").select(PRODUCT_SELECT).order("name");
   const { data, error } =
     first.error && missingAddonsTable(first.error.message)
       ? await supabase.from("products").select(PRODUCT_SELECT_CORE).order("name")
       : first;
-  if (error || !data) return memoryStore.listAllProducts();
-  return data.map((row) => mapProduct(row as Record<string, unknown>));
+  if (error || !data) return enrichProductsSizes(memoryStore.listAllProducts());
+  return enrichProductsSizes(
+    data.map((row) => mapProduct(row as Record<string, unknown>)),
+  );
 }
 
 export async function listProductsPage(
@@ -502,7 +590,13 @@ export async function listProductsPage(
   filter: ProductFilter = {},
 ): Promise<PageResult<Product>> {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listProductsPage(page, limit, filter);
+  if (!supabase) {
+    const pageResult = memoryStore.listProductsPage(page, limit, filter);
+    return {
+      ...pageResult,
+      items: await enrichProductsSizes(pageResult.items),
+    };
+  }
 
   const from = (page - 1) * limit;
   const to = from + limit - 1;
@@ -533,9 +627,17 @@ export async function listProductsPage(
     }
     ({ data, error, count } = await fallback.range(from, to));
   }
-  if (error) return memoryStore.listProductsPage(page, limit, filter);
+  if (error) {
+    const fallback = memoryStore.listProductsPage(page, limit, filter);
+    return {
+      ...fallback,
+      items: await enrichProductsSizes(fallback.items),
+    };
+  }
   return {
-    items: (data ?? []).map((row) => mapProduct(row as Record<string, unknown>)),
+    items: await enrichProductsSizes(
+      (data ?? []).map((row) => mapProduct(row as Record<string, unknown>)),
+    ),
     total: count ?? 0,
     page,
     limit,
@@ -1153,7 +1255,10 @@ export async function createSize(input: {
   priceMode: "addon" | "replace";
 }) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.createSize(input);
+  if (!supabase) {
+    invalidateSizeCatalogCache();
+    return memoryStore.createSize(input);
+  }
   const store = await getStore();
   const { data: last } = await supabase
     .from("sizes")
@@ -1183,6 +1288,7 @@ export async function createSize(input: {
         : error?.message ?? "Não foi possível salvar o tamanho.",
     );
   }
+  invalidateSizeCatalogCache();
   return mapSize(data as Record<string, unknown>);
 }
 
@@ -1196,7 +1302,21 @@ export async function updateSize(
   },
 ) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.updateSize(id, input);
+  if (!supabase) {
+    const previous = memoryStore.listAllSizes().find((item) => item.id === id);
+    const updated = memoryStore.updateSize(id, input);
+    if (updated && previous) {
+      memoryStore.propagateSizeToProducts(previous.name, updated);
+    }
+    invalidateSizeCatalogCache();
+    return updated;
+  }
+  const { data: existing } = await supabase
+    .from("sizes")
+    .select("name")
+    .eq("id", id)
+    .maybeSingle();
+  const previousName = String(existing?.name ?? input.name);
   const { data, error } = await supabase
     .from("sizes")
     .update({
@@ -1209,14 +1329,21 @@ export async function updateSize(
     .select("*")
     .single();
   if (error || !data) return null;
-  return mapSize(data as Record<string, unknown>);
+  const size = mapSize(data as Record<string, unknown>);
+  await propagateSizeToProductGroups(previousName, size);
+  invalidateSizeCatalogCache();
+  return size;
 }
 
 export async function deleteSize(id: string) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.deleteSize(id);
+  if (!supabase) {
+    invalidateSizeCatalogCache();
+    return memoryStore.deleteSize(id);
+  }
   const { error } = await supabase.from("sizes").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  invalidateSizeCatalogCache();
   return true;
 }
 
@@ -1387,7 +1514,10 @@ async function replaceProductOptions(
 
 export async function getProduct(id: string) {
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.getProduct(id);
+  if (!supabase) {
+    const product = memoryStore.getProduct(id);
+    return product ? enrichProductSizes(product) : null;
+  }
 
   const first = await supabase
     .from("products")
@@ -1403,7 +1533,7 @@ export async function getProduct(id: string) {
           .maybeSingle()
       : first;
   if (error || !data) return null;
-  return mapProduct(data as Record<string, unknown>);
+  return enrichProductSizes(mapProduct(data as Record<string, unknown>));
 }
 
 function mapCustomer(data: Record<string, unknown>): Customer {
