@@ -102,7 +102,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   received: "Recebido",
   accepted: "Aceito",
   preparing: "Em preparo",
-  ready: "Pronto",
+  ready: "Pronto p/ retirada",
   out_for_delivery: "Saiu p/ entrega",
   delivered: "Entregue",
   cancelled: "Cancelado",
@@ -112,6 +112,8 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 export function statusActionLabel(status: OrderStatus) {
   if (status === "accepted") return "Aceitar";
   if (status === "preparing") return "Em preparo";
+  if (status === "ready") return "Pronto p/ retirada";
+  if (status === "out_for_delivery") return "Saiu p/ entrega";
   return STATUS_LABEL[status];
 }
 
@@ -171,8 +173,13 @@ export function nextStatus(
 ): OrderStatus | undefined {
   if (status === "received") return "accepted";
   if (status === "accepted") return "preparing";
-  if (status === "preparing") return "ready";
+  if (status === "preparing") {
+    // Entrega: preparo → saiu p/ entrega (sem "pronto").
+    // Retirada: preparo → pronto p/ retirada.
+    return fulfillment === "delivery" ? "out_for_delivery" : "ready";
+  }
   if (status === "ready") {
+    // Legacy: entrega que ainda esteja em "ready" avança para saiu p/ entrega.
     return fulfillment === "pickup" ? "delivered" : "out_for_delivery";
   }
   if (status === "out_for_delivery") return "delivered";

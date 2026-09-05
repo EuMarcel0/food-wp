@@ -4,7 +4,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   received: "Recebido",
   accepted: "Aceito",
   preparing: "Em preparo",
-  ready: "Pronto",
+  ready: "Pronto p/ retirada",
   out_for_delivery: "Saiu para entrega",
   delivered: "Entregue",
   cancelled: "Cancelado",
@@ -103,21 +103,15 @@ function statusMessageLines(order: Order): string[] {
       return lines;
     }
     case "ready":
-      if (pickup) {
-        return [
-          `✅ Pedido ${code} está pronto!`,
-          "",
-          "Pode vir retirar no local. Estamos te esperando. 🏪",
-        ];
-      }
+      // Só faz sentido em retirada; entrega pula este status.
       return [
-        `✅ Pedido ${code} está pronto!`,
+        `✅ Pedido ${code} está *pronto para retirada*!`,
         "",
-        "Estamos finalizando os últimos detalhes para a entrega. 🍕",
+        "Pode vir retirar no local. Estamos te esperando. 🏪",
       ];
     case "out_for_delivery":
       return [
-        `🛵 Pedido ${code} saiu para entrega!`,
+        `🛵 Pedido ${code} *saiu para entrega*!`,
         "",
         "O entregador já está a caminho do seu endereço. 😊",
       ];
@@ -142,5 +136,8 @@ export function isAllowedOrderStatus(
   fulfillment: Fulfillment,
   status: OrderStatus,
 ) {
-  return !(fulfillment === "pickup" && status === "out_for_delivery");
+  // Retirada não usa "saiu para entrega"; entrega não usa "pronto".
+  if (fulfillment === "pickup" && status === "out_for_delivery") return false;
+  if (fulfillment === "delivery" && status === "ready") return false;
+  return true;
 }
