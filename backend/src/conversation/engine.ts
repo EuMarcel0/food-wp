@@ -929,11 +929,7 @@ async function showMenuCategories(
   }
   await sendList(
     to,
-    [
-      intro,
-      "📂 Escolha uma *categoria*.",
-      "Ou digite o nome do item.",
-    ].join("\n"),
+    [intro, "📂 Escolha uma *categoria*."].join("\n"),
     "Categorias",
     [{ title: "Categorias", rows }],
   );
@@ -974,11 +970,7 @@ async function showMenuProducts(
     });
   }
 
-  const heading = [
-    intro,
-    opts.categoryName ? `📂 *${opts.categoryName}*` : null,
-    "Ou digite o nome do item.",
-  ]
+  const heading = [intro, opts.categoryName ? `📂 *${opts.categoryName}*` : null]
     .filter(Boolean)
     .join("\n");
 
