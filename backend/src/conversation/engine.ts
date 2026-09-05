@@ -847,11 +847,19 @@ async function showMenuProducts(
   const page = products.slice(opts.offset, opts.offset + pageSize);
   const hasMore = opts.offset + page.length < products.length;
 
-  const rows: { id: string; title: string; description?: string }[] = page.map(product => ({
-    id: `product:${product.id}`,
-    title: product.name.slice(0, 24),
-    ...(product.customizable ? {} : { description: formatReais(product.price) })
-  }));
+  const rows: { id: string; title: string; description?: string }[] = page.map(product => {
+    const detail = product.description?.trim();
+    const description = detail
+      ? detail.slice(0, 72)
+      : product.customizable
+        ? undefined
+        : formatReais(product.price);
+    return {
+      id: `product:${product.id}`,
+      title: product.name.slice(0, 24),
+      ...(description ? { description } : {}),
+    };
+  });
   if (hasMore) {
     rows.push({
       id: "menu:more_items",
