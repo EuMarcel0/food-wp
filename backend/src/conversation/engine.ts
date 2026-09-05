@@ -74,8 +74,7 @@ const ORDER_NOTE_STEP_ENABLED = false;
 const ACK_KEYS = [
   "obrigado",
   "obrigada",
-  "obrigadoo",
-  "obrigadaa",
+  "obrigadao",
   "obg",
   "obgd",
   "brigado",
@@ -89,104 +88,96 @@ const ACK_KEYS = [
   "ty",
   "ok",
   "okay",
-  "okk",
   "okey",
+  "okk",
   "certo",
   "show",
-  "perfeito",
-  "perfeita",
-  "blz",
-  "beleza",
-  "tmj",
-  "tamo junto",
-  "tmjj",
-  "joia",
   "top",
   "massa",
   "demais",
+  "perfeito",
   "otimo",
   "otima",
-  "legal",
-  "fechou",
+  "maravilha",
+  "excelente",
+  "blz",
+  "beleza",
+  "blza",
+  "tmj",
+  "tamo junto",
+  "tamos juntos",
+  "joia",
   "combinado",
-  "tranquilo",
-  "tranquila",
-  "de boa",
-  "deboa",
-  "suave",
+  "fechado",
+  "fechou",
+  "feito",
   "entendi",
   "entendido",
-  "ta bom",
-  "ta bem",
-  "ta certo",
-  "tudo bem",
-  "tudo bom",
-  "aham",
-  "uhum",
-  "hmm",
-  "hm",
-  "gratidao",
-  "agradecido",
-  "agradecida",
-  "muito obrigado",
-  "muito obrigada",
-  "mto obrigado",
-  "mto obrigada",
-  "valeu demais",
-  "show de bola",
+  "flw",
+  "falou",
+  "falus",
+  "abs",
+  "abraco",
+  "abraços",
+  "abracos",
+  "kk",
+  "kkk",
+  "kkkk",
+  "haha",
+  "hahaha",
+  "rsrs",
+  "de nada",
+  "por nada",
+  "disponha",
 ];
 
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
 
-/** Mensagem só (ou quase só) de emoji / reação. */
-function isEmojiOnlyMessage(text: string) {
-  const compact = text.replace(/\s+/g, "");
-  if (!compact) return false;
-  const withoutEmoji = compact
+/** Mensagem só com emoji(s) / espaços / pontuação (ex.: 👍❤️🍕). */
+function isEmojiOnlyMessage(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  const withoutEmoji = trimmed
     .replace(/\p{Extended_Pictographic}/gu, "")
-    .replace(/[\uFE0F\u200D\u2640\u2642]/g, "");
+    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "")
+    .replace(/\uFE0F|\u200D/gu, "")
+    .replace(/[\s.!?,;:~*_'"«»\-—…]+/gu, "");
   return withoutEmoji.length === 0;
 }
 
-function isCustomerAck(normalized: string) {
+function isCustomerAck(rawOrNormalized: string, normalizedMaybe?: string) {
+  const raw = normalizedMaybe == null ? rawOrNormalized : rawOrNormalized;
+  const normalized =
+    normalizedMaybe == null ? normalize(rawOrNormalized) : normalizedMaybe;
+
+  if (isEmojiOnlyMessage(raw)) return true;
+
   const text = normalized
-    .replace(/[!?.,;:~]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return false;
-
-  // Joinha / curtida / qualquer emoji (❤️ 🙏 😊 👏 …)
-  if (isEmojiOnlyMessage(text)) return true;
-  if (/^👍+$/u.test(text) || /^👍\s/u.test(text)) return true;
-
-  const withoutEmoji = text
     .replace(/\p{Extended_Pictographic}/gu, " ")
+    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "")
+    .replace(/\uFE0F|\u200D/gu, "")
+    .replace(/[!?.,;:~*_'"«»]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!withoutEmoji) return true;
+  if (!text) return isEmojiOnlyMessage(raw);
 
-  if (ACK_KEYS.includes(withoutEmoji)) return true;
+  // Joinha / curtida isolados (já cobertos por emoji-only; mantém fallback).
+  if (/^👍+$/u.test(raw.trim()) || /^👍\s/u.test(raw.trim())) return true;
+
+  if (ACK_KEYS.includes(text)) return true;
   if (
     ACK_KEYS.some(
       (key) =>
-        withoutEmoji === key ||
-        withoutEmoji.startsWith(`${key} `) ||
-        withoutEmoji.endsWith(` ${key}`),
+        text === key ||
+        text.startsWith(`${key} `) ||
+        text.endsWith(` ${key}`) ||
+        text.includes(` ${key} `),
     )
   ) {
     return true;
   }
-
-  // Frases curtas só com tokens de agradecimento (ex.: "ok valeu", "blz obg")
-  const tokens = withoutEmoji.split(" ").filter(Boolean);
-  if (
-    tokens.length > 0 &&
-    tokens.length <= 4 &&
-    tokens.every((token) => ACK_KEYS.includes(token))
-  ) {
-    return true;
-  }
-
+  // Variações curtas: okkk, blzzz, vlwww
+  if (/^(ok+|blz+|vlw+|obg+|tmj+)$/.test(text)) return true;
   return false;
 }
 
@@ -790,8 +781,8 @@ async function resumeCurrentStep(
 }
 
 /**
- * Foto, áudio, documento etc.: se há pedido em andamento, mantém a etapa;
- * senão, avisa que só texto/botões são aceitos.
+ * Foto, áudio, figurinha, documento etc.: em pedido ativo, mantém a etapa;
+ * fora do fluxo (ex.: após despedida), ignora em silêncio.
  */
 export async function handleUnsupportedInbound(input: {
   from: string;
@@ -813,19 +804,19 @@ export async function handleUnsupportedInbound(input: {
     await touchConversation(customer.id);
     return;
   }
+  const state: ConversationState = existing?.state ?? "welcome";
+  const context = existing?.context ?? emptyContext();
+
+  // Fora do pedido: figurinha/áudio/mídia não reinicia atendimento.
+  if (!isOrderInProgress(state) && state !== "awaiting_order_code") {
+    await touchConversation(customer.id);
+    return;
+  }
+
   if (input.waMessageId) {
     await sendTypingIndicator(input.waMessageId).catch(() => undefined);
   }
-  const state: ConversationState = existing?.state ?? "welcome";
-  const context = existing?.context ?? emptyContext();
-  if (isOrderInProgress(state) || state === "awaiting_order_code") {
-    await resumeCurrentStep(input.from, store, state, context);
-    return;
-  }
-  await sendText(
-    input.from,
-    "😅 Ainda não consigo entender esse tipo de mensagem (áudio, foto, vídeo ou documento).\nPara continuar, responda *por texto* ou toque nas opções da última mensagem."
-  );
+  await resumeCurrentStep(input.from, store, state, context);
 }
 
 async function askItemNote(to: string, item: CartItem) {
@@ -1672,11 +1663,12 @@ export async function handleIncomingMessage(input: {
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
     // Pedido em aberto (Aceito/Preparo/…): não reinicia o menu — só informa o status.
-    if (isCustomerAck(command)) {
-      if (await replyOpenOrderStatus(true)) return;
+    if (await replyOpenOrderStatus(isCustomerAck(input.text, command))) return;
+    // Agradecimento / emoji após ociosidade: não reinicia o cardápio.
+    if (!input.replyId && isCustomerAck(input.text, command)) {
+      await touchConversation(customer.id);
       return;
     }
-    if (await replyOpenOrderStatus(false)) return;
     // Bem-vindo já conta como conversa ativa no painel.
     await persist("welcome", emptyContext(), { reopen: true });
     await showWelcome(input.from, store.name);
@@ -1685,6 +1677,20 @@ export async function handleIncomingMessage(input: {
 
   const orderActive = isOrderInProgress(state);
   const hasReply = Boolean(input.replyId);
+
+  // Agradecimento / emoji fora do fluxo: não inicia novo pedido (ex.: após despedida).
+  // Não engole awaiting_new_order (Sim/Não) nem código de pedido.
+  if (
+    !orderActive &&
+    !hasReply &&
+    state !== "awaiting_new_order" &&
+    state !== "awaiting_order_code" &&
+    isCustomerAck(input.text, command)
+  ) {
+    if (await replyOpenOrderStatus(true)) return;
+    await touchConversation(customer.id);
+    return;
+  }
 
   // Localização só vale na etapa de endereço.
   if (orderActive && input.location && state !== "awaiting_address") {
@@ -1821,10 +1827,9 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  // Agradecimentos / emojis: não reinicia o cardápio após despedida ou fora do pedido.
-  if (!orderActive && !hasReply && isCustomerAck(command)) {
-    // Pedido ainda em aberto → "Por nada" + status; senão ignora em silêncio.
-    if (await replyOpenOrderStatus(true)) return;
+  // Após o pedido (conversa em welcome/fechada), texto livre não reinicia o menu
+  // enquanto houver pedido em aberto — responde o status (com "Por nada" se for ack).
+  if (!orderActive && !hasReply && (await replyOpenOrderStatus(isCustomerAck(input.text, command)))) {
     return;
   }
 
@@ -2530,12 +2535,13 @@ export async function handleIncomingMessage(input: {
   }
 
   // Pedido em aberto: qualquer mensagem residual responde o status, sem Bem-vindo.
-  // Agradecimentos / emojis sem pedido aberto: ignora (não inicia novo atendimento).
-  if (isCustomerAck(command)) {
-    if (await replyOpenOrderStatus(true)) return;
+  if (await replyOpenOrderStatus(isCustomerAck(input.text, command))) {
     return;
   }
-  if (await replyOpenOrderStatus(false)) {
+
+  // Agradecimento residual: não reinicia.
+  if (!hasReply && isCustomerAck(input.text, command)) {
+    await touchConversation(customer.id);
     return;
   }
 
