@@ -910,7 +910,7 @@ async function showMenuCategories(
   const reserveMore = offset + (WA_LIST_MAX_ROWS - 1) < categories.length ? 1 : 0;
   const pageSize = WA_LIST_MAX_ROWS - reserveMore;
   const page = categories.slice(offset, offset + pageSize);
-  const rows = page.map(category => ({
+  const rows: { id: string; title: string; description?: string }[] = page.map(category => ({
     id: `menucat:${category.id}`,
     title: category.name.slice(0, 24),
   }));
