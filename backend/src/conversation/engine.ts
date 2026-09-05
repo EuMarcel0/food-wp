@@ -2075,7 +2075,7 @@ export async function handleIncomingMessage(input: {
     const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
 
     if (!product || quantity == null) {
-      await sendText(input.from, "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).");
+      await sendText(input.from, "Informe um número.");
       await resumeCurrentStep(input.from, store, state, context);
       return;
     }
@@ -2096,7 +2096,7 @@ export async function handleIncomingMessage(input: {
     const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
 
     if (!product || quantity == null) {
-      await sendText(input.from, "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).");
+      await sendText(input.from, "Informe um número.");
       await resumeCurrentStep(input.from, store, state, context);
       return;
     }
