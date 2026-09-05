@@ -913,7 +913,6 @@ async function showMenuCategories(
   const rows = page.map(category => ({
     id: `menucat:${category.id}`,
     title: category.name.slice(0, 24),
-    description: category.count === 1 ? "1 item" : `${category.count} itens`
   }));
   if (reserveMore) {
     rows.push({
@@ -1291,7 +1290,7 @@ async function applyQuantityAndContinue(
   await finishItemOrContinueBatch(to, store, context, persist);
 }
 
-/** Após gravar um item: se ainda há lote, monta a próxima unidade; senão vai ao carrinho. */
+/** Após gravar um item: se ainda há lote, deixa escolher o próximo item; senão vai ao carrinho. */
 async function finishItemOrContinueBatch(
   to: string,
   store: Store,
@@ -1299,24 +1298,24 @@ async function finishItemOrContinueBatch(
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (context.batchProductId && typeof context.batchRemaining === "number" && context.batchRemaining > 0) {
+    const previous = await getProduct(context.batchProductId);
     context.batchRemaining -= 1;
     if (context.batchRemaining > 0) {
-      const product = await getProduct(context.batchProductId);
-      if (!product) {
-        clearBatch(context);
-        await persist("awaiting_fulfillment", context);
-        await showCartAfterAdd(to, store, context);
-        return;
-      }
       const total = context.batchTotal ?? context.batchRemaining + 1;
       const ordinal = total - context.batchRemaining + 1;
-      context.selectedProductId = product.id;
+      context.selectedProductId = undefined;
       context.draftSelections = [];
-      context.optionGroupIndex = 0;
+      context.optionGroupIndex = undefined;
       context.addonOffset = 0;
       context.flavorOffset = 0;
-      await sendText(to, `✅ Item adicionado! Montando a *${ordinal}ª* de *${total}*:`);
-      await continueProductFlow(to, product, context, persist);
+      context.menuCategoryId = previous?.categoryId ?? context.menuCategoryId ?? null;
+      context.menuOffset = 0;
+      await persist("awaiting_product", context);
+      await showMenu(
+        to,
+        `✅ Item adicionado!\n📋 Escolha o item da *${ordinal}ª* de *${total}*:`,
+        context,
+      );
       return;
     }
     clearBatch(context);
@@ -2059,7 +2058,14 @@ export async function handleIncomingMessage(input: {
     }
 
     resetMenuBrowse(context);
-    clearBatch(context);
+    // Em lote ativo, não zera o contador — só troca o item da próxima unidade.
+    const inBatch =
+      Boolean(context.batchProductId) &&
+      typeof context.batchRemaining === "number" &&
+      context.batchRemaining > 0;
+    if (!inBatch) clearBatch(context);
+    else context.batchProductId = product.id;
+
     context.selectedProductId = product.id;
     context.draftSelections = [];
     context.optionGroupIndex = 0;
