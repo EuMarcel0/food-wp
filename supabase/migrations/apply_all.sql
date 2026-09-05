@@ -936,3 +936,7 @@ create policy "chat_media_public_read"
   to public
   using (bucket_id = 'chat-media');
 
+-- ========== 042_product_quantity_enabled ==========
+alter table public.products
+  add column if not exists quantity_enabled boolean not null default false;
+

@@ -1222,6 +1222,11 @@ async function askQuantityStage(
     await askAddons(to, product, context.draftSelections, 0);
     return;
   }
+  if (product.quantityEnabled) {
+    await persist("awaiting_quantity", context);
+    await askQuantity(to, product, context.draftSelections ?? []);
+    return;
+  }
   // Padrão: 1 unidade (evita +1 mensagem). Resume em awaiting_quantity ainda pergunta.
   const resolvedStore = store ?? (await getStore());
   await applyQuantityAndContinue(to, resolvedStore, product, context, persist, 1);

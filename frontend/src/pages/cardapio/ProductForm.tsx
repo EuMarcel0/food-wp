@@ -118,6 +118,7 @@ export function ProductForm({
     notesEnabled: product?.notesEnabled ?? false,
     addonsEnabled: product?.addonsEnabled ?? false,
     crustsEnabled: product?.crustsEnabled ?? false,
+    quantityEnabled: product?.quantityEnabled ?? false,
     addonIds: (product?.addons ?? []).map((addon) => addon.id),
     optionGroups: groupsFromProduct(product, sizes),
   };
@@ -317,6 +318,20 @@ export function ProductForm({
                   </label>
                   <label className={formToggle}>
                     <div>
+                      <strong>Solicitar quantidade?</strong>
+                      <p>Pergunta quantas unidades no WhatsApp. Desligado = sempre 1</p>
+                    </div>
+                    <FormControl name="quantityEnabled" compact>
+                      {({ value, setValue }) => (
+                        <Switch
+                          checked={Boolean(value)}
+                          onChange={(checked) => setValue(checked)}
+                        />
+                      )}
+                    </FormControl>
+                  </label>
+                  <label className={formToggle}>
+                    <div>
                       <strong>Terá adicional</strong>
                       <p>Depois da montagem, o cliente pode marcar vários extras, um de cada vez, e em seguida a quantidade</p>
                     </div>
@@ -477,6 +492,7 @@ export function toProductPayload(values: ProductValues) {
     notesEnabled: Boolean(values.notesEnabled),
     addonsEnabled: Boolean(values.addonsEnabled),
     crustsEnabled: Boolean(values.crustsEnabled),
+    quantityEnabled: Boolean(values.quantityEnabled),
     addonIds: values.addonsEnabled ? values.addonIds ?? [] : [],
     optionGroups,
   };

@@ -215,6 +215,7 @@ export const api = {
     notesEnabled: boolean;
     addonsEnabled: boolean;
     crustsEnabled: boolean;
+    quantityEnabled: boolean;
     addonIds: string[];
     optionGroups: Product["optionGroups"];
   }) =>
@@ -235,6 +236,7 @@ export const api = {
       notesEnabled: boolean;
       addonsEnabled: boolean;
       crustsEnabled: boolean;
+      quantityEnabled: boolean;
       addonIds: string[];
       optionGroups: Product["optionGroups"];
     }>

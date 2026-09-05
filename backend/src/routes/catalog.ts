@@ -678,6 +678,7 @@ catalogRouter.post("/products", async (req, res) => {
   const notesEnabled = Boolean(req.body?.notesEnabled);
   const addonsEnabled = Boolean(req.body?.addonsEnabled);
   const crustsEnabled = Boolean(req.body?.crustsEnabled);
+  const quantityEnabled = Boolean(req.body?.quantityEnabled);
   const addonIds = parseAddonIds(req.body?.addonIds) ?? [];
   const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
@@ -715,6 +716,7 @@ catalogRouter.post("/products", async (req, res) => {
         notesEnabled,
         addonsEnabled,
         crustsEnabled,
+        quantityEnabled,
         addonIds: addonsEnabled ? addonIds : [],
         optionGroups,
       }),
@@ -738,6 +740,7 @@ function productPatch(body: Record<string, unknown>) {
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
     crustsEnabled?: boolean;
+    quantityEnabled?: boolean;
     addonIds?: string[];
     optionGroups?: ProductOptionGroup[];
   } = {};
@@ -777,6 +780,9 @@ function productPatch(body: Record<string, unknown>) {
   }
   if (body.crustsEnabled !== undefined) {
     patch.crustsEnabled = Boolean(body.crustsEnabled);
+  }
+  if (body.quantityEnabled !== undefined) {
+    patch.quantityEnabled = Boolean(body.quantityEnabled);
   }
   if (body.addonIds !== undefined) {
     patch.addonIds = parseAddonIds(body.addonIds) ?? [];

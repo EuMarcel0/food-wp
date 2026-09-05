@@ -89,6 +89,7 @@ export const productSchema = Yup.object({
   notesEnabled: Yup.boolean().default(false),
   addonsEnabled: Yup.boolean().default(false),
   crustsEnabled: Yup.boolean().default(false),
+  quantityEnabled: Yup.boolean().default(false),
   addonIds: Yup.array().of(Yup.string().required()).default([]),
   optionGroups: Yup.array()
     .of(

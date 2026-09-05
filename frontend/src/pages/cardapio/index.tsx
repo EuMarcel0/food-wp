@@ -295,6 +295,7 @@ export function CatalogPage() {
                   {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
                   {product.addonsEnabled ? <Tag color="purple">Adicional</Tag> : null}
                   {product.crustsEnabled ? <Tag color="gold">Borda</Tag> : null}
+                  {product.quantityEnabled ? <Tag color="cyan">Qtd.</Tag> : null}
                 </>
               ),
             },

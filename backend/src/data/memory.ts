@@ -79,6 +79,7 @@ const products: Product[] = [
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
+    quantityEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -95,6 +96,7 @@ const products: Product[] = [
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
+    quantityEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -111,6 +113,7 @@ const products: Product[] = [
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
+    quantityEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -127,6 +130,7 @@ const products: Product[] = [
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
+    quantityEnabled: false,
     addons: [],
     optionGroups: [],
   },
@@ -697,6 +701,7 @@ export const memoryStore = {
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
     crustsEnabled?: boolean;
+    quantityEnabled?: boolean;
     addonIds?: string[];
     optionGroups?: ProductOptionGroup[];
   }) {
@@ -715,6 +720,7 @@ export const memoryStore = {
       notesEnabled: Boolean(input.notesEnabled),
       addonsEnabled: Boolean(input.addonsEnabled),
       crustsEnabled: Boolean(input.crustsEnabled),
+      quantityEnabled: Boolean(input.quantityEnabled),
       addons: [],
       optionGroups: input.optionGroups ?? [],
     };
@@ -736,6 +742,7 @@ export const memoryStore = {
       notesEnabled: boolean;
       addonsEnabled: boolean;
       crustsEnabled: boolean;
+      quantityEnabled: boolean;
       addonIds: string[];
       optionGroups: ProductOptionGroup[];
     }>,
@@ -758,6 +765,9 @@ export const memoryStore = {
     if (input.notesEnabled !== undefined) product.notesEnabled = input.notesEnabled;
     if (input.addonsEnabled !== undefined) product.addonsEnabled = input.addonsEnabled;
     if (input.crustsEnabled !== undefined) product.crustsEnabled = input.crustsEnabled;
+    if (input.quantityEnabled !== undefined) {
+      product.quantityEnabled = input.quantityEnabled;
+    }
     if (input.optionGroups !== undefined) product.optionGroups = input.optionGroups;
     if (input.addonIds !== undefined || input.addonsEnabled === false) {
       this.replaceProductAddons(

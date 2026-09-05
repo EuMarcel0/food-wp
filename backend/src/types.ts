@@ -213,6 +213,7 @@ export type Product = {
   notesEnabled: boolean;
   addonsEnabled: boolean;
   crustsEnabled: boolean;
+  quantityEnabled: boolean;
   addons: Addon[];
   optionGroups: ProductOptionGroup[];
 };

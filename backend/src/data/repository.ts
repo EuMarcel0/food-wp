@@ -261,6 +261,7 @@ function mapProduct(row: Record<string, unknown>): Product {
     notesEnabled: Boolean(row.notes_enabled ?? false),
     addonsEnabled: Boolean(row.addons_enabled ?? false),
     crustsEnabled: Boolean(row.crusts_enabled ?? false),
+    quantityEnabled: Boolean(row.quantity_enabled ?? false),
     addons: mapProductAddons(row),
     optionGroups: mapOptionGroups(row),
   };
@@ -1358,6 +1359,7 @@ export async function createProduct(input: {
   notesEnabled?: boolean;
   addonsEnabled?: boolean;
   crustsEnabled?: boolean;
+  quantityEnabled?: boolean;
   addonIds?: string[];
   optionGroups?: ProductOptionGroup[];
 }) {
@@ -1380,6 +1382,7 @@ export async function createProduct(input: {
       notes_enabled: Boolean(input.notesEnabled),
       addons_enabled: Boolean(input.addonsEnabled),
       crusts_enabled: Boolean(input.crustsEnabled),
+      quantity_enabled: Boolean(input.quantityEnabled),
     })
     .select(PRODUCT_SELECT)
     .single();
@@ -1415,6 +1418,7 @@ export async function updateProduct(
     notesEnabled: boolean;
     addonsEnabled: boolean;
     crustsEnabled: boolean;
+    quantityEnabled: boolean;
     addonIds: string[];
     optionGroups: ProductOptionGroup[];
   }>,
@@ -1434,6 +1438,9 @@ export async function updateProduct(
   if (input.notesEnabled !== undefined) payload.notes_enabled = input.notesEnabled;
   if (input.addonsEnabled !== undefined) payload.addons_enabled = input.addonsEnabled;
   if (input.crustsEnabled !== undefined) payload.crusts_enabled = input.crustsEnabled;
+  if (input.quantityEnabled !== undefined) {
+    payload.quantity_enabled = input.quantityEnabled;
+  }
 
   if (Object.keys(payload).length) {
     const { error } = await supabase.from("products").update(payload).eq("id", id);
