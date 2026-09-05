@@ -250,7 +250,13 @@ function mapProduct(row: Record<string, unknown>): Product {
     categoryId: String(row.category_id),
     categoryName: category?.name ?? "Cardápio",
     name: String(row.name),
-    description: (row.description as string | null) ?? null,
+    description: (() => {
+      const raw = (row.description as string | null) ?? null;
+      if (raw == null) return null;
+      const text = String(raw).trim();
+      if (!text || text.toLowerCase() === "null") return null;
+      return text;
+    })(),
     price:
       row.price != null
         ? Number(row.price)

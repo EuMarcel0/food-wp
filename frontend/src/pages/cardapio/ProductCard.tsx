@@ -53,7 +53,7 @@ export function ProductCard({
         </>
       }
     >
-      {product.description ? (
+      {product.description && product.description.toLowerCase() !== "null" ? (
         <p className={entityDesc}>{product.description}</p>
       ) : (
         <p className={entityDesc}>Sem descrição</p>

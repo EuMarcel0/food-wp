@@ -45,28 +45,26 @@ export function CatalogPage() {
 
   const categoriesQuery = useQuery({
     queryKey: queryKeys.categories.options,
-    queryFn: () => api.categories(true),
+    queryFn: () => api.categories(true)
   });
   const categories = categoriesQuery.data ?? [];
 
   const addonsQuery = useQuery({
     queryKey: queryKeys.addons.options,
-    queryFn: () => api.addons(true),
+    queryFn: () => api.addons(true)
   });
   const addons = addonsQuery.data ?? [];
 
   const listQuery = useQuery({
     queryKey: queryKeys.products.list(page, limit, filters),
     queryFn: () => api.products(page, limit, filters),
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousData
   });
 
   const result = listQuery.data;
   const products = result?.items ?? [];
   const total = result?.total ?? 0;
-  const selectedProducts = products.filter((product) =>
-    selectedKeys.includes(product.id),
-  );
+  const selectedProducts = products.filter(product => selectedKeys.includes(product.id));
 
   useEffect(() => {
     if (!result) return;
@@ -75,9 +73,9 @@ export function CatalogPage() {
   }, [limit, page, result]);
 
   useEffect(() => {
-    const ids = new Set(products.map((product) => product.id));
-    setSelectedKeys((keys) => {
-      const next = keys.filter((key) => ids.has(String(key)));
+    const ids = new Set(products.map(product => product.id));
+    setSelectedKeys(keys => {
+      const next = keys.filter(key => ids.has(String(key)));
       return next.length === keys.length ? keys : next;
     });
   }, [products]);
@@ -86,7 +84,7 @@ export function CatalogPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.addons.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.addons.all })
     ]);
   }
 
@@ -101,33 +99,20 @@ export function CatalogPage() {
       setOpen(false);
       setEditing(null);
       await refreshCatalog();
-    },
+    }
   });
 
   const toggleMutation = useMutation({
-    mutationFn: (product: Product) =>
-      api.updateProduct(product.id, { active: !product.active }),
+    mutationFn: (product: Product) => api.updateProduct(product.id, { active: !product.active }),
     onSuccess: async (_updated, product) => {
-      toast.success(
-        product.active
-          ? "Item desativado no WhatsApp."
-          : "Item ativado no WhatsApp.",
-      );
+      toast.success(product.active ? "Item desativado no WhatsApp." : "Item ativado no WhatsApp.");
       await refreshCatalog();
-    },
+    }
   });
 
   const bulkActiveMutation = useMutation({
-    mutationFn: async ({
-      ids,
-      active: nextActive,
-    }: {
-      ids: string[];
-      active: boolean;
-    }) => {
-      await Promise.all(
-        ids.map((id) => api.updateProduct(id, { active: nextActive })),
-      );
+    mutationFn: async ({ ids, active: nextActive }: { ids: string[]; active: boolean }) => {
+      await Promise.all(ids.map(id => api.updateProduct(id, { active: nextActive })));
     },
     onSuccess: async (_data, variables) => {
       const count = variables.ids.length;
@@ -138,52 +123,42 @@ export function CatalogPage() {
             : `${count} itens ativados no WhatsApp.`
           : count === 1
             ? "1 item desativado no WhatsApp."
-            : `${count} itens desativados no WhatsApp.`,
+            : `${count} itens desativados no WhatsApp.`
       );
       setSelectedKeys([]);
       await refreshCatalog();
-    },
+    }
   });
 
   function askBulkActive(nextActive: boolean) {
-    const ids = selectedProducts.map((product) => product.id);
+    const ids = selectedProducts.map(product => product.id);
     if (!ids.length) return;
     const count = ids.length;
     void dialog.confirm({
       title: nextActive ? "Ativar itens" : "Desativar itens",
       description: nextActive ? (
         <>
-          Ativar <strong>{count}</strong>{" "}
-          {count === 1 ? "item selecionado" : "itens selecionados"}? Eles voltam
-          a aparecer no WhatsApp.
+          Ativar <strong>{count}</strong> {count === 1 ? "item selecionado" : "itens selecionados"}? Eles voltam a
+          aparecer no WhatsApp.
         </>
       ) : (
         <>
-          Desativar <strong>{count}</strong>{" "}
-          {count === 1 ? "item selecionado" : "itens selecionados"}? Eles deixam
-          de aparecer no WhatsApp.
+          Desativar <strong>{count}</strong> {count === 1 ? "item selecionado" : "itens selecionados"}? Eles deixam de
+          aparecer no WhatsApp.
         </>
       ),
       okText: nextActive ? "Ativar" : "Desativar",
-      onConfirm: () =>
-        bulkActiveMutation.mutateAsync({ ids, active: nextActive }),
+      onConfirm: () => bulkActiveMutation.mutateAsync({ ids, active: nextActive })
     });
   }
 
   const bulkTrailing =
     selectedKeys.length > 0 ? (
       <>
-        <Button
-          loading={bulkActiveMutation.isPending}
-          onClick={() => askBulkActive(true)}
-        >
+        <Button loading={bulkActiveMutation.isPending} onClick={() => askBulkActive(true)}>
           Ativar ({selectedKeys.length})
         </Button>
-        <Button
-          danger
-          loading={bulkActiveMutation.isPending}
-          onClick={() => askBulkActive(false)}
-        >
+        <Button danger loading={bulkActiveMutation.isPending} onClick={() => askBulkActive(false)}>
           Desativar ({selectedKeys.length})
         </Button>
       </>
@@ -192,13 +167,13 @@ export function CatalogPage() {
   return (
     <div className={listPage}>
       <PageHeader
-        className="mb-3 shrink-0"
-        kicker="Itens"
-        title="Cardápio"
-        subtitle="Os itens ativos aparecem para o cliente no WhatsApp."
+        className='mb-3 shrink-0'
+        kicker='Itens'
+        title='Cardápio'
+        subtitle='Os itens ativos aparecem para o cliente no WhatsApp.'
         extra={
           <Button
-            type="primary"
+            type='primary'
             icon={<PlusOutlined />}
             onClick={() => {
               setEditing(null);
@@ -210,7 +185,7 @@ export function CatalogPage() {
         }
       />
       <ListFilters
-        className="mb-3 shrink-0"
+        className='mb-3 shrink-0'
         activeCount={activeCount}
         trailing={bulkTrailing}
         onClear={() => {
@@ -222,34 +197,32 @@ export function CatalogPage() {
         <Input.Search
           className={filterSearch}
           allowClear
-          placeholder="Nome ou descrição…"
+          placeholder='Nome ou descrição…'
           value={qInput}
-          onChange={(event) => setQInput(event.target.value)}
+          onChange={event => setQInput(event.target.value)}
         />
         <Select
           className={filterSelect}
           allowClear
           showSearch
-          optionFilterProp="label"
-          placeholder="Categoria"
+          optionFilterProp='label'
+          placeholder='Categoria'
           value={categoryId}
           onChange={setCategoryId}
-          options={categories.map((category) => ({
+          options={categories.map(category => ({
             value: category.id,
-            label: category.name,
+            label: category.name
           }))}
         />
         <Select
           className={filterSelect}
           allowClear
-          placeholder="Situação"
+          placeholder='Situação'
           value={active === undefined ? undefined : active ? "1" : "0"}
-          onChange={(value) =>
-            setActive(value === undefined ? undefined : value === "1")
-          }
+          onChange={value => setActive(value === undefined ? undefined : value === "1")}
           options={[
             { value: "1", label: "Ativos" },
-            { value: "0", label: "Inativos" },
+            { value: "0", label: "Inativos" }
           ]}
         />
       </ListFilters>
@@ -263,7 +236,7 @@ export function CatalogPage() {
         })}
       >
         <Table
-          rowKey="id"
+          rowKey='id'
           className={`${tableClass} ${tableGridFill}`}
           loading={listQuery.isPending && !result}
           dataSource={products}
@@ -271,7 +244,7 @@ export function CatalogPage() {
           scroll={{ x: 800, y: bodyHeight }}
           rowSelection={{
             selectedRowKeys: selectedKeys,
-            onChange: setSelectedKeys,
+            onChange: setSelectedKeys
           }}
           columns={[
             { title: "Categoria", dataIndex: "categoryName", width: 180 },
@@ -282,7 +255,7 @@ export function CatalogPage() {
               render: (_, product) => (
                 <>
                   {product.customizable ? (
-                    <Tag color="orange">
+                    <Tag color='orange'>
                       {product.pizzaKind === "doce"
                         ? "Pizza doce"
                         : product.pizzaKind === "salgada"
@@ -292,29 +265,34 @@ export function CatalogPage() {
                   ) : (
                     <Tag>Simples</Tag>
                   )}
-                  {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
-                  {product.addonsEnabled ? <Tag color="purple">Adicional</Tag> : null}
-                  {product.crustsEnabled ? <Tag color="gold">Borda</Tag> : null}
-                  {product.quantityEnabled ? <Tag color="cyan">Qtd.</Tag> : null}
+                  {product.notesEnabled ? <Tag color='blue'>Observação</Tag> : null}
+                  {product.addonsEnabled ? <Tag color='purple'>Adicional</Tag> : null}
+                  {product.crustsEnabled ? <Tag color='gold'>Borda</Tag> : null}
+                  {product.quantityEnabled ? <Tag color='cyan'>Qtd.</Tag> : null}
                 </>
-              ),
+              )
             },
-            { title: "Descrição", dataIndex: "description" },
+            {
+              title: "Descrição",
+              dataIndex: "description",
+              ellipsis: true,
+              render: (value: string | null | undefined) => {
+                const text = typeof value === "string" ? value.trim() : "";
+                if (!text || text.toLowerCase() === "null") return "-";
+                return text;
+              }
+            },
             {
               title: "Preço",
               dataIndex: "price",
               width: 120,
-              render: (_, product) => catalogPriceLabel(product),
+              render: (_, product) => catalogPriceLabel(product)
             },
             {
               title: "Ativo",
               dataIndex: "active",
               width: 100,
-              render: (value: boolean) => (
-                <Tag color={value ? "green" : "default"}>
-                  {value ? "Sim" : "Não"}
-                </Tag>
-              ),
+              render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "Sim" : "Não"}</Tag>
             },
             {
               title: "Ações",
@@ -329,17 +307,17 @@ export function CatalogPage() {
                       onClick: () => {
                         setEditing(product);
                         setOpen(true);
-                      },
+                      }
                     },
                     {
                       key: "toggle",
                       label: product.active ? "Desativar" : "Ativar",
-                      onClick: () => toggleMutation.mutate(product),
-                    },
+                      onClick: () => toggleMutation.mutate(product)
+                    }
                   ]}
                 />
-              ),
-            },
+              )
+            }
           ]}
         />
       </FillTable>
@@ -347,25 +325,21 @@ export function CatalogPage() {
         <MobileCardList
           loading={listQuery.isPending && !result}
           isEmpty={products.length === 0}
-          empty={
-            activeCount > 0
-              ? "Nenhum item encontrado com esses filtros."
-              : "Inclua o primeiro item do cardápio."
-          }
+          empty={activeCount > 0 ? "Nenhum item encontrado com esses filtros." : "Inclua o primeiro item do cardápio."}
           pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
             setPage(nextPage);
             setLimit(nextSize);
           })}
         >
-          {products.map((product) => (
+          {products.map(product => (
             <ProductCard
               key={product.id}
               product={product}
-              onEdit={(item) => {
+              onEdit={item => {
                 setEditing(item);
                 setOpen(true);
               }}
-              onToggle={(item) => toggleMutation.mutate(item)}
+              onToggle={item => toggleMutation.mutate(item)}
             />
           ))}
         </MobileCardList>
@@ -373,16 +347,14 @@ export function CatalogPage() {
       <ProductForm
         open={open}
         product={editing}
-        categories={categories.filter(
-          (category) => category.active || category.id === editing?.categoryId,
-        )}
+        categories={categories.filter(category => category.active || category.id === editing?.categoryId)}
         addons={addons}
         submitting={saveMutation.isPending}
         onCancel={() => {
           setOpen(false);
           setEditing(null);
         }}
-        onSubmit={async (values) => {
+        onSubmit={async values => {
           await saveMutation.mutateAsync(values);
         }}
       />

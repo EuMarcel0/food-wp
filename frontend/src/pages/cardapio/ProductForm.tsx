@@ -479,7 +479,11 @@ export function toProductPayload(values: ProductValues) {
   return {
     name: values.name.trim(),
     categoryId: values.categoryId,
-    description: values.description.trim() || null,
+    description: (() => {
+      const text = values.description.trim();
+      if (!text || text.toLowerCase() === "null") return null;
+      return text;
+    })(),
     price,
     active: values.active,
     customizable: Boolean(values.customizable),
