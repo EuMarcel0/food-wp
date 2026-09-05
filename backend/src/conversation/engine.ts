@@ -2,6 +2,7 @@ import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
 import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
+import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
@@ -496,13 +497,7 @@ async function resumeCurrentStep(
         if (current?.options.length) {
           if (usesCatalogFlavors(openGroup)) {
             await sendHintIfNeeded();
-            await showFlavorList(
-              to,
-              product,
-              openGroup,
-              drafts,
-              context.flavorOffset ?? 0,
-            );
+            await showFlavorList(to, product, openGroup, drafts, context.flavorOffset ?? 0);
             return;
           }
           const shares =
@@ -656,112 +651,24 @@ async function askOrderNote(to: string) {
   ]);
 }
 
-async function askNeighborhoods(
-  to: string,
-  store: Store,
-  context: ConversationContext = { cart: [] },
-) {
-  const zones = [...(store.neighborhoods ?? [])].sort((left, right) =>
-    left.name.localeCompare(right.name, "pt-BR"),
-  );
+async function askNeighborhoods(to: string, store: Store, _context?: ConversationContext) {
+  const zones = store.neighborhoods ?? [];
   if (!zones.length) {
     await sendText(to, "Nenhum bairro cadastrado. Digite o endereço completo.");
     return;
   }
-
-  const pageSize = WA_LIST_MAX_ROWS;
-  const buckets: DeliveryNeighborhood[][] = [];
-  for (let i = 0; i < zones.length; i += pageSize) {
-    buckets.push(zones.slice(i, i + pageSize));
-  }
-
-  // Poucos bairros: uma lista só.
-  if (zones.length <= pageSize) {
-    await sendList(
-      to,
-      "📍 Escolha o bairro da entrega. A taxa já aparece em cada opção.\nOu digite o nome.",
-      "Ver bairros",
-      [
-        {
-          title: "Bairros",
-          rows: zones.map(zone => ({
-            id: `nbh:${zone.id}`,
-            title: zone.name,
-            description: formatBRL(zone.feeCents),
-          })),
-        },
-      ],
-    );
-    return;
-  }
-
-  const page = context.neighborhoodPage;
-
-  // Seletor de grupos (ex.: Abreu–Centro).
-  if (page == null || page < 0 || page >= buckets.length) {
-    const offset = 0;
-    const catSlots = Math.min(pageSize, buckets.length);
-    // Se houver mais de 10 grupos (100+ bairros), mostra 9 + Ver mais via neighborhoodPage meta — raro.
-    // Por simplicidade: primeiros 10 grupos; se >10 grupos, o cliente ainda pode digitar o nome.
-    const visible = buckets.slice(offset, offset + pageSize);
-    await sendList(
-      to,
-      [
-        "📍 Escolha o *grupo* do bairro (ou digite o nome completo).",
-        `Há *${zones.length}* bairros cadastrados.`,
-      ].join("\n"),
-      "Ver grupos",
-      [
-        {
-          title: "Grupos",
-          rows: visible.map((bucket, index) => {
-            const first = bucket[0]?.name ?? "";
-            const last = bucket[bucket.length - 1]?.name ?? "";
-            const title =
-              first === last
-                ? first.slice(0, 24)
-                : `${first.slice(0, 10)}–${last.slice(0, 10)}`.slice(0, 24);
-            return {
-              id: `nbhpage:${index}`,
-              title,
-              description: `${bucket.length} bairros`,
-            };
-          }),
-        },
-      ],
-    );
-    return;
-  }
-
-  const bucket = buckets[page] ?? [];
-  const rows = bucket.slice(0, pageSize - 1).map(zone => ({
-    id: `nbh:${zone.id}`,
-    title: zone.name,
-    description: formatBRL(zone.feeCents),
-  }));
-  rows.push({
-    id: "nbhpage:back",
-    title: "Outros bairros",
-    description: "Voltar aos grupos",
-  });
-  await sendList(
-    to,
-    `📍 Bairros do grupo ${page + 1}.\nOu digite o nome do bairro.`,
-    "Ver bairros",
-    [{ title: "Bairros", rows }],
-  );
+  await sendText(to, ["📍 Qual o *bairro* da entrega?", "Digite o bairro corretamente", ,].join("\n"));
 }
 
-function findNeighborhood(incoming: string, normalized: string, zones: DeliveryNeighborhood[]) {
-  if (incoming.startsWith("nbh:")) {
-    const id = incoming.slice(4);
-    return zones.find(zone => zone.id === id) ?? null;
-  }
-  const exact = zones.find(zone => normalize(zone.name) === normalized) ?? null;
-  if (exact) return exact;
-  if (normalized.length < 3) return null;
-  const matches = zones.filter(zone => normalize(zone.name).includes(normalized));
-  return matches.length === 1 ? matches[0] : null;
+async function askNeighborhoodAmbiguous(to: string, matches: { zone: DeliveryNeighborhood; score: number }[]) {
+  const rows = matches.slice(0, WA_LIST_MAX_ROWS).map(item => ({
+    id: `nbh:${item.zone.id}`,
+    title: item.zone.name.slice(0, 24),
+    description: formatBRL(item.zone.feeCents)
+  }));
+  await sendList(to, "📍 Encontrei mais de um bairro parecido. Qual é o certo?", "Ver bairros", [
+    { title: "Bairros", rows }
+  ]);
 }
 
 async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
@@ -901,16 +808,14 @@ function productCategories(products: Product[]) {
     if (current) current.count += 1;
     else map.set(id, { id, name, count: 1 });
   }
-  return [...map.values()].sort((left, right) =>
-    left.name.localeCompare(right.name, "pt-BR"),
-  );
+  return [...map.values()].sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
 }
 
 async function showMenuCategories(
   to: string,
   intro: string,
   categories: { id: string; name: string; count: number }[],
-  offset: number,
+  offset: number
 ) {
   const reserveMore = offset + (WA_LIST_MAX_ROWS - 1) < categories.length ? 1 : 0;
   const pageSize = WA_LIST_MAX_ROWS - reserveMore;
@@ -918,74 +823,64 @@ async function showMenuCategories(
   const rows = page.map(category => ({
     id: `menucat:${category.id}`,
     title: category.name.slice(0, 24),
-    description: category.count === 1 ? "1 item" : `${category.count} itens`,
+    description: category.count === 1 ? "1 item" : `${category.count} itens`
   }));
   if (reserveMore) {
     rows.push({
       id: "menu:more_cats",
       title: "Mais categorias",
-      description: "Ver próximas",
+      description: "Ver próximas"
     });
   }
-  await sendList(
-    to,
-    [intro, "📂 Escolha uma *categoria*."].join("\n"),
-    "Categorias",
-    [{ title: "Categorias", rows }],
-  );
+  await sendList(to, [intro, "📂 Escolha uma *categoria*."].join("\n"), "Categorias", [{ title: "Categorias", rows }]);
 }
 
 async function showMenuProducts(
   to: string,
   intro: string,
   products: Product[],
-  opts: { categoryName?: string | null; offset: number; canGoBack: boolean },
+  opts: { categoryName?: string | null; offset: number; canGoBack: boolean }
 ) {
   const reserveBack = opts.canGoBack ? 1 : 0;
-  const tentativeMore =
-    opts.offset + (WA_LIST_MAX_ROWS - reserveBack - 1) < products.length ? 1 : 0;
+  const tentativeMore = opts.offset + (WA_LIST_MAX_ROWS - reserveBack - 1) < products.length ? 1 : 0;
   const pageSize = WA_LIST_MAX_ROWS - reserveBack - tentativeMore;
   const page = products.slice(opts.offset, opts.offset + pageSize);
   const hasMore = opts.offset + page.length < products.length;
 
-  const rows: { id: string; title: string; description?: string }[] = page.map(
-    product => ({
-      id: `product:${product.id}`,
-      title: product.name.slice(0, 24),
-      ...(product.customizable ? {} : { description: formatReais(product.price) }),
-    }),
-  );
+  const rows: { id: string; title: string; description?: string }[] = page.map(product => ({
+    id: `product:${product.id}`,
+    title: product.name.slice(0, 24),
+    ...(product.customizable ? {} : { description: formatReais(product.price) })
+  }));
   if (hasMore) {
     rows.push({
       id: "menu:more_items",
       title: "Mais itens",
-      description: "Ver próximos",
+      description: "Ver próximos"
     });
   }
   if (opts.canGoBack) {
     rows.push({
       id: "menu:back_cats",
       title: "← Categorias",
-      description: "Voltar",
+      description: "Voltar"
     });
   }
 
-  const heading = [intro, opts.categoryName ? `📂 *${opts.categoryName}*` : null]
-    .filter(Boolean)
-    .join("\n");
+  const heading = [intro, opts.categoryName ? `📂 *${opts.categoryName}*` : null].filter(Boolean).join("\n");
 
   await sendList(to, heading, "Ver itens", [
     {
       title: opts.categoryName?.slice(0, 24) || "Cardápio",
-      rows: rows.slice(0, WA_LIST_MAX_ROWS),
-    },
+      rows: rows.slice(0, WA_LIST_MAX_ROWS)
+    }
   ]);
 }
 
 async function showMenu(
   to: string,
   intro = "📋 Escolha um item do cardápio:",
-  context: ConversationContext = { cart: [] },
+  context: ConversationContext = { cart: [] }
 ) {
   const products = await listProducts();
   if (!products.length) {
@@ -1000,8 +895,8 @@ async function showMenu(
       intro,
       products.map(product => ({
         id: `product:${product.id}`,
-        title: product.name.slice(0, 20),
-      })),
+        title: product.name.slice(0, 20)
+      }))
     );
     return;
   }
@@ -1012,16 +907,14 @@ async function showMenu(
   // Categoria já escolhida → lista produtos dela.
   if (context.menuCategoryId) {
     const inCategory = products.filter(
-      item => (item.categoryId || item.categoryName || "cardapio") === context.menuCategoryId,
+      item => (item.categoryId || item.categoryName || "cardapio") === context.menuCategoryId
     );
     const categoryName =
-      inCategory[0]?.categoryName ??
-      categories.find(item => item.id === context.menuCategoryId)?.name ??
-      "Cardápio";
+      inCategory[0]?.categoryName ?? categories.find(item => item.id === context.menuCategoryId)?.name ?? "Cardápio";
     await showMenuProducts(to, intro, inCategory, {
       categoryName,
       offset,
-      canGoBack: categories.length > 1,
+      canGoBack: categories.length > 1
     });
     return;
   }
@@ -1036,7 +929,7 @@ async function showMenu(
   await showMenuProducts(to, intro, products, {
     categoryName: categories.length === 1 ? categories[0].name : null,
     offset,
-    canGoBack: false,
+    canGoBack: false
   });
 }
 
@@ -1085,7 +978,7 @@ async function showFlavorList(
   product: Product,
   group: ProductOptionGroup,
   drafts: CartSelection[],
-  offset = 0,
+  offset = 0
 ) {
   const current = drafts.find(item => item.groupId === group.id);
   const picked = current?.options.map(option => option.id) ?? [];
@@ -1095,36 +988,35 @@ async function showFlavorList(
 
   const needsDone = picked.length >= 1;
   const reserveDone = needsDone ? 1 : 0;
-  const tentativeMore =
-    offset + (WA_LIST_MAX_ROWS - reserveDone - 1) < remaining.length ? 1 : 0;
+  const tentativeMore = offset + (WA_LIST_MAX_ROWS - reserveDone - 1) < remaining.length ? 1 : 0;
   const pageSize = WA_LIST_MAX_ROWS - reserveDone - tentativeMore;
   const page = remaining.slice(offset, offset + pageSize);
   const hasMore = offset + page.length < remaining.length;
 
   const rows: { id: string; title: string; description?: string }[] = page.map(pizza => ({
     id: `flavor:${pizza.id}`,
-    title: pizza.name.slice(0, 24),
+    title: pizza.name.slice(0, 24)
   }));
   if (hasMore) {
     rows.push({
       id: "more_flavors",
       title: "Mais sabores",
-      description: "Ver próximos",
+      description: "Ver próximos"
     });
   }
   if (needsDone) {
     rows.push({
       id: "done_options",
       title: "Pronto",
-      description: "Seguir com estes sabores",
+      description: "Seguir com estes sabores"
     });
   }
 
   await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolha o sabor", [
     {
       title: "Sabores",
-      rows: rows.slice(0, WA_LIST_MAX_ROWS),
-    },
+      rows: rows.slice(0, WA_LIST_MAX_ROWS)
+    }
   ]);
   return false;
 }
@@ -1213,12 +1105,7 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   ]);
 }
 
-async function askAddons(
-  to: string,
-  product: Product,
-  drafts?: CartSelection[],
-  offset = 0,
-) {
+async function askAddons(to: string, product: Product, drafts?: CartSelection[], offset = 0) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
@@ -1226,7 +1113,7 @@ async function askAddons(
   const prompt = [
     `*${product.name}*`,
     picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "🧀 Escolha um adicional",
-    picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : "",
+    picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
   ]
     .filter(Boolean)
     .join("\n");
@@ -1235,16 +1122,15 @@ async function askAddons(
     ? {
         id: "skip_addon",
         title: "Sem adicional",
-        description: "Pular esta etapa",
+        description: "Pular esta etapa"
       }
     : {
         id: "done_addons",
         title: "Pronto",
-        description: "Seguir sem mais adicionais",
+        description: "Seguir sem mais adicionais"
       };
 
-  const tentativeMore =
-    offset + (WA_LIST_MAX_ROWS - 2) < remaining.length ? 1 : 0;
+  const tentativeMore = offset + (WA_LIST_MAX_ROWS - 2) < remaining.length ? 1 : 0;
   const pageSize = WA_LIST_MAX_ROWS - 1 - tentativeMore;
   const page = remaining.slice(offset, offset + pageSize);
   const hasMore = offset + page.length < remaining.length;
@@ -1252,13 +1138,13 @@ async function askAddons(
   const rows = page.map(addon => ({
     id: `addon:${addon.id}`,
     title: addon.name.slice(0, 24),
-    description: `+ ${formatReais(addon.price)}`,
+    description: `+ ${formatReais(addon.price)}`
   }));
   if (hasMore) {
     rows.push({
       id: "more_addons",
       title: "Ver mais",
-      description: "Próximos adicionais",
+      description: "Próximos adicionais"
     });
   }
   rows.push(footer);
@@ -1266,8 +1152,8 @@ async function askAddons(
   await sendList(to, prompt, "Adicionais", [
     {
       title: "Adicionais",
-      rows: rows.slice(0, WA_LIST_MAX_ROWS),
-    },
+      rows: rows.slice(0, WA_LIST_MAX_ROWS)
+    }
   ]);
   return false;
 }
@@ -1620,10 +1506,8 @@ export async function handleIncomingMessage(input: {
     await persist("awaiting_product", context);
     await showMenu(
       input.from,
-      context.cart.length
-        ? "📋 Escolha o próximo item:"
-        : "🍕 Vamos montar seu pedido. Escolha o primeiro item:",
-      context,
+      context.cart.length ? "📋 Escolha o próximo item:" : "🍕 Vamos montar seu pedido. Escolha o primeiro item:",
+      context
     );
     return;
   }
@@ -1718,13 +1602,7 @@ export async function handleIncomingMessage(input: {
       }
       context.flavorOffset = 0;
       await persist("awaiting_option", context);
-      const finished = await showFlavorList(
-        input.from,
-        product,
-        group,
-        drafts,
-        context.flavorOffset ?? 0,
-      );
+      const finished = await showFlavorList(input.from, product, group, drafts, context.flavorOffset ?? 0);
       if (finished) await goNext();
       return;
     }
@@ -1939,12 +1817,7 @@ export async function handleIncomingMessage(input: {
     if (incoming === "more_addons" || incoming === "more_options") {
       context.addonOffset = (context.addonOffset ?? 0) + 8;
       await persist("awaiting_addon", context);
-      const finished = await askAddons(
-        input.from,
-        product,
-        drafts,
-        context.addonOffset,
-      );
+      const finished = await askAddons(input.from, product, drafts, context.addonOffset);
       if (finished) await finishAddons();
       return;
     }
@@ -2016,9 +1889,7 @@ export async function handleIncomingMessage(input: {
 
     const productId = incoming.startsWith("product:") ? incoming.slice("product:".length) : null;
     const catalog = await listProducts();
-    const product = productId
-      ? await getProduct(productId)
-      : findProductByText(catalog, normalized);
+    const product = productId ? await getProduct(productId) : findProductByText(catalog, normalized);
 
     if (!product) {
       await persist("awaiting_product", context);
@@ -2181,29 +2052,34 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_neighborhood") {
-    if (incoming === "nbhpage:back") {
-      context.neighborhoodPage = null;
-      await persist("awaiting_neighborhood", context);
-      await askNeighborhoods(input.from, store, context);
-      return;
-    }
-    if (incoming.startsWith("nbhpage:")) {
-      const page = Number(incoming.slice("nbhpage:".length));
-      if (!Number.isFinite(page) || page < 0) {
-        await resumeCurrentStep(input.from, store, state, context);
-        return;
-      }
-      context.neighborhoodPage = page;
-      await persist("awaiting_neighborhood", context);
+    const zones = store.neighborhoods ?? [];
+    const query = (input.text || incoming || "").trim();
+    if (!query || query.length < 2) {
+      await sendText(input.from, "Digite o nome do bairro com pelo menos 2 letras.");
       await askNeighborhoods(input.from, store, context);
       return;
     }
 
-    const zone = findNeighborhood(incoming, normalized, store.neighborhoods ?? []);
-    if (!zone) {
-      await resumeCurrentStep(input.from, store, state, context);
+    const result = matchNeighborhoodQuery(query, zones);
+    if (result.status === "none") {
+      await sendText(
+        input.from,
+        [
+          "😕 Não encontrei esse bairro na nossa área de entrega.",
+          "Confira a escrita e digite de novo (ex.: *Jardim América* ou *Jd América*)."
+        ].join("\n")
+      );
+      await askNeighborhoods(input.from, store, context);
       return;
     }
+
+    if (result.status === "ambiguous") {
+      await persist("awaiting_neighborhood", context);
+      await askNeighborhoodAmbiguous(input.from, result.matches);
+      return;
+    }
+
+    const zone = result.match.zone;
     context.neighborhoodId = zone.id;
     context.neighborhoodName = zone.name;
     context.neighborhoodPage = null;
