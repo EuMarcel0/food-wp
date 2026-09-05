@@ -121,9 +121,10 @@ export type ConversationContext = {
   addonOffset?: number;
   flavorOffset?: number;
   /**
-   * Lote quando "Solicitar quantidade?" está desligado:
-   * pergunta "Você vai querer quantas?" e monta cada unidade em sequência.
+   * Lote por categoria (config “Quantidade para montagem por categoria”):
+   * após escolher a categoria, pergunta quantas e monta cada item em sequência.
    */
+  batchCategoryId?: string;
   batchProductId?: string;
   batchRemaining?: number;
   batchTotal?: number;
@@ -157,6 +158,8 @@ export type Store = {
   defaultAcceptMinutes: number;
   autoAcceptOrders: boolean;
   allowCustomerCancel: boolean;
+  /** Categorias que pedem “Você vai querer quantas?” ao serem selecionadas. */
+  batchCategoryIds: string[];
   profilePhotoUrl: string | null;
   legalName: string | null;
   cnpj: string | null;
@@ -177,6 +180,7 @@ export type StorePatch = {
   defaultAcceptMinutes?: number;
   autoAcceptOrders?: boolean;
   allowCustomerCancel?: boolean;
+  batchCategoryIds?: string[];
 };
 
 export type Addon = {

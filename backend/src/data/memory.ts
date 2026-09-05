@@ -51,6 +51,7 @@ const store: Store = {
   defaultAcceptMinutes: 40,
   autoAcceptOrders: false,
   allowCustomerCancel: false,
+  batchCategoryIds: [],
   profilePhotoUrl: null,
   legalName: null,
   cnpj: null,
@@ -272,6 +273,15 @@ export const memoryStore = {
     }
     if (patch.allowCustomerCancel !== undefined) {
       store.allowCustomerCancel = Boolean(patch.allowCustomerCancel);
+    }
+    if (patch.batchCategoryIds !== undefined) {
+      store.batchCategoryIds = [
+        ...new Set(
+          patch.batchCategoryIds
+            .map((id) => String(id ?? "").trim())
+            .filter(Boolean),
+        ),
+      ];
     }
     return store;
   },

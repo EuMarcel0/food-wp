@@ -940,3 +940,7 @@ create policy "chat_media_public_read"
 alter table public.products
   add column if not exists quantity_enabled boolean not null default false;
 
+-- ========== 043_store_batch_category_ids ==========
+alter table public.stores
+  add column if not exists batch_category_ids uuid[] not null default '{}';
+

@@ -69,6 +69,7 @@ export const api = {
     defaultAcceptMinutes?: number;
     autoAcceptOrders?: boolean;
     allowCustomerCancel?: boolean;
+    batchCategoryIds?: string[];
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",

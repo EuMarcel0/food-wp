@@ -210,6 +210,7 @@ export type Store = {
   defaultAcceptMinutes: number;
   autoAcceptOrders: boolean;
   allowCustomerCancel: boolean;
+  batchCategoryIds: string[];
   profilePhotoUrl: string | null;
   legalName: string | null;
   cnpj: string | null;

@@ -211,6 +211,18 @@ catalogRouter.patch("/store", async (req, res) => {
     patch.allowCustomerCancel = Boolean(body.allowCustomerCancel);
   }
 
+  if (body.batchCategoryIds !== undefined) {
+    if (!Array.isArray(body.batchCategoryIds)) {
+      res.status(400).json({
+        error: "Selecione as categorias da montagem por quantidade.",
+      });
+      return;
+    }
+    patch.batchCategoryIds = body.batchCategoryIds
+      .map((id) => String(id ?? "").trim())
+      .filter(Boolean);
+  }
+
   if (patch.autoAcceptOrders === true) {
     const minutes =
       patch.defaultAcceptMinutes ??

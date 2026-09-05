@@ -174,6 +174,17 @@ async function propagateSizeToProductGroups(
   }
 }
 
+function parseBatchCategoryIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [
+    ...new Set(
+      raw
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 function mapStore(row: Record<string, unknown>): Store {
   return {
     id: String(row.id),
@@ -194,6 +205,7 @@ function mapStore(row: Record<string, unknown>): Store {
     ),
     autoAcceptOrders: Boolean(row.auto_accept_orders ?? false),
     allowCustomerCancel: Boolean(row.allow_customer_cancel ?? false),
+    batchCategoryIds: parseBatchCategoryIds(row.batch_category_ids),
     profilePhotoUrl: (row.profile_photo_url as string | null) ?? null,
     legalName: (row.legal_name as string | null) ?? null,
     cnpj: (row.cnpj as string | null) ?? null,
@@ -417,6 +429,9 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
   if (patch.allowCustomerCancel !== undefined) {
     payload.allow_customer_cancel = Boolean(patch.allowCustomerCancel);
   }
+  if (patch.batchCategoryIds !== undefined) {
+    payload.batch_category_ids = parseBatchCategoryIds(patch.batchCategoryIds);
+  }
   const supabase = getSupabase();
   if (!supabase) return memoryStore.updateStore(patch);
 
@@ -445,6 +460,8 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
           ? "Rode as migrations 029 e 033 no banco (aceite automático)."
         : error?.message?.includes("allow_customer_cancel")
           ? "Rode a migration 036_store_allow_customer_cancel.sql no Supabase."
+        : error?.message?.includes("batch_category_ids")
+          ? "Rode a migration 043_store_batch_category_ids.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }
