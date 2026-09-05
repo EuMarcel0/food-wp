@@ -53,7 +53,7 @@ export function BatchCategorySettingsCard({ store }: { store?: Store }) {
         }}
       >
         {({ isSubmitting, status, values, setFieldValue }) => (
-          <FormikForm>
+          <FormikForm className="flex flex-col">
             {status ? (
               <Alert
                 type="error"
@@ -77,30 +77,34 @@ export function BatchCategorySettingsCard({ store }: { store?: Store }) {
                 Categorias.
               </p>
             ) : (
-              <Checkbox.Group
-                className="mb-4 flex flex-col gap-2"
-                value={values.batchCategoryIds}
-                onChange={(next) =>
-                  setFieldValue(
-                    "batchCategoryIds",
-                    next.map((id) => String(id)),
-                  )
-                }
-                options={categories.map((category) => ({
-                  label: category.name,
-                  value: category.id,
-                }))}
-              />
+              <div className="mb-4 block w-full">
+                <Checkbox.Group
+                  className="!flex w-full flex-col gap-2"
+                  value={values.batchCategoryIds}
+                  onChange={(next) =>
+                    setFieldValue(
+                      "batchCategoryIds",
+                      next.map((id) => String(id)),
+                    )
+                  }
+                  options={categories.map((category) => ({
+                    label: category.name,
+                    value: category.id,
+                  }))}
+                />
+              </div>
             )}
 
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={isSubmitting || saveMutation.isPending}
-              disabled={!store || categoriesQuery.isPending}
-            >
-              Salvar
-            </Button>
+            <div className="block w-full">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={isSubmitting || saveMutation.isPending}
+                disabled={!store || categoriesQuery.isPending}
+              >
+                Salvar
+              </Button>
+            </div>
           </FormikForm>
         )}
       </Formik>
