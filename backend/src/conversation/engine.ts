@@ -129,7 +129,7 @@ const ACK_KEYS = [
   "rsrs",
   "de nada",
   "por nada",
-  "disponha",
+  "disponha"
 ];
 
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
@@ -148,8 +148,7 @@ function isEmojiOnlyMessage(raw: string) {
 
 function isCustomerAck(rawOrNormalized: string, normalizedMaybe?: string) {
   const raw = normalizedMaybe == null ? rawOrNormalized : rawOrNormalized;
-  const normalized =
-    normalizedMaybe == null ? normalize(rawOrNormalized) : normalizedMaybe;
+  const normalized = normalizedMaybe == null ? normalize(rawOrNormalized) : normalizedMaybe;
 
   if (isEmojiOnlyMessage(raw)) return true;
 
@@ -168,11 +167,7 @@ function isCustomerAck(rawOrNormalized: string, normalizedMaybe?: string) {
   if (ACK_KEYS.includes(text)) return true;
   if (
     ACK_KEYS.some(
-      (key) =>
-        text === key ||
-        text.startsWith(`${key} `) ||
-        text.endsWith(` ${key}`) ||
-        text.includes(` ${key} `),
+      key => text === key || text.startsWith(`${key} `) || text.endsWith(` ${key}`) || text.includes(` ${key} `)
     )
   ) {
     return true;
@@ -295,11 +290,7 @@ function clearBatch(context: ConversationContext) {
 }
 
 function isBatchActive(context: ConversationContext) {
-  return (
-    Boolean(context.batchCategoryId) &&
-    typeof context.batchRemaining === "number" &&
-    context.batchRemaining > 0
-  );
+  return Boolean(context.batchCategoryId) && typeof context.batchRemaining === "number" && context.batchRemaining > 0;
 }
 
 function categoryUsesBatch(store: Store, categoryId: string | null | undefined) {
@@ -728,8 +719,7 @@ async function resumeCurrentStep(
     case "awaiting_batch_size": {
       const categoryId = context.menuCategoryId ?? context.batchCategoryId;
       const categories = productCategories(await listProducts());
-      const categoryName =
-        categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+      const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
       const sizes = categoryId ? await sizesForCategory(categoryId) : [];
       if (!sizes.length) {
         await askBatchCount(to, categoryName);
@@ -741,8 +731,7 @@ async function resumeCurrentStep(
     case "awaiting_batch_count": {
       const categoryId = context.menuCategoryId ?? context.batchCategoryId;
       const categories = productCategories(await listProducts());
-      const categoryName =
-        categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+      const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
       await askBatchCount(to, categoryName);
       return;
     }
@@ -855,7 +844,10 @@ async function askNeighborhoods(to: string, store: Store, _context?: Conversatio
     await sendText(to, "Nenhum bairro cadastrado. Digite o endereço completo.");
     return;
   }
-  await sendText(to, ["📍 Qual o *bairro* da entrega?", "Digite o bairro corretamente", ,].join("\n"));
+  await sendText(
+    to,
+    ["📍 Qual o *bairro* da entrega?", "Digite o bairro corretamente para calcularmos a taxa de entrega"].join("\n")
+  );
 }
 
 async function askNeighborhoodAmbiguous(to: string, matches: { zone: DeliveryNeighborhood; score: number }[]) {
@@ -1021,7 +1013,7 @@ async function showMenuCategories(
   const page = categories.slice(offset, offset + pageSize);
   const rows: { id: string; title: string; description?: string }[] = page.map(category => ({
     id: `menucat:${category.id}`,
-    title: category.name.slice(0, 24),
+    title: category.name.slice(0, 24)
   }));
   if (reserveMore) {
     rows.push({
@@ -1084,7 +1076,7 @@ async function showMenu(
   intro = "📋 Escolha um item do cardápio:",
   context: ConversationContext = { cart: [] },
   persist?: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
-  store?: Store,
+  store?: Store
 ) {
   const products = await listProducts();
   if (!products.length) {
@@ -1214,12 +1206,11 @@ async function showFlavorList(
 
   const rows: { id: string; title: string; description?: string }[] = page.map(pizza => {
     const detail = pizza.description?.trim();
-    const description =
-      detail && detail.toLowerCase() !== "null" ? detail.slice(0, 72) : undefined;
+    const description = detail && detail.toLowerCase() !== "null" ? detail.slice(0, 72) : undefined;
     return {
       id: `flavor:${pizza.id}`,
       title: pizza.name.slice(0, 24),
-      ...(description ? { description } : {}),
+      ...(description ? { description } : {})
     };
   });
   if (hasMore) {
@@ -1331,15 +1322,11 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
 }
 
 async function askBatchCount(to: string, categoryName: string) {
-  await sendButtons(
-    to,
-    `*${categoryName}*\n🔢 Você vai querer quantas?\nOu digite um número.`,
-    [
-      { id: "qty:1", title: "1" },
-      { id: "qty:2", title: "2" },
-      { id: "qty:3", title: "3" },
-    ],
-  );
+  await sendButtons(to, `*${categoryName}*\n🔢 Você vai querer quantas?\nOu digite um número.`, [
+    { id: "qty:1", title: "1" },
+    { id: "qty:2", title: "2" },
+    { id: "qty:3", title: "3" }
+  ]);
 }
 
 type BatchSizeOption = {
@@ -1351,19 +1338,17 @@ type BatchSizeOption = {
 
 /** Tamanhos disponíveis nos itens customizáveis da categoria (união por nome). */
 async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> {
-  const products = (await listProducts()).filter(
-    (item) => item.categoryId === categoryId && isCustomizable(item),
-  );
+  const products = (await listProducts()).filter(item => item.categoryId === categoryId && isCustomizable(item));
   const byName = new Map<string, BatchSizeOption>();
   for (const product of products) {
-    for (const group of activeGroups(product).filter((item) => isSizeGroup(item))) {
+    for (const group of activeGroups(product).filter(item => isSizeGroup(item))) {
       const key = normalize(group.name);
       if (byName.has(key)) continue;
       byName.set(key, {
         id: group.id,
         name: group.name,
         price: group.price > 0 ? group.price : product.price,
-        sortOrder: group.sortOrder,
+        sortOrder: group.sortOrder
       });
     }
   }
@@ -1379,9 +1364,7 @@ async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> 
     }
   }
   return [...byName.values()].sort(
-    (left, right) =>
-      left.sortOrder - right.sortOrder ||
-      left.name.localeCompare(right.name, "pt-BR"),
+    (left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR")
   );
 }
 
@@ -1389,12 +1372,12 @@ async function askBatchSize(to: string, categoryName: string, sizes: BatchSizeOp
   await sendList(to, `*${categoryName}*\n📏 Escolha o tamanho.`, "Tamanhos", [
     {
       title: "Tamanhos",
-      rows: sizes.slice(0, WA_LIST_MAX_ROWS).map((size) => ({
+      rows: sizes.slice(0, WA_LIST_MAX_ROWS).map(size => ({
         id: `batchsize:${size.id}`,
         title: size.name.slice(0, 24),
-        description: formatReais(size.price),
-      })),
-    },
+        description: formatReais(size.price)
+      }))
+    }
   ]);
 }
 
@@ -1403,7 +1386,7 @@ async function startCategoryBatch(
   categoryId: string,
   categoryName: string,
   context: ConversationContext,
-  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   clearBatch(context);
   context.menuCategoryId = categoryId;
@@ -1423,12 +1406,12 @@ function applyBatchSizeToProduct(product: Product, context: ConversationContext)
   const sizeName = context.batchSizeName?.trim();
   if (!sizeName || !isCustomizable(product)) return;
   const match = activeGroups(product)
-    .filter((group) => isSizeGroup(group))
-    .find((group) => normalize(group.name) === normalize(sizeName));
+    .filter(group => isSizeGroup(group))
+    .find(group => normalize(group.name) === normalize(sizeName));
   if (!match) return;
   const drafts = context.draftSelections ?? [];
   context.draftSelections = drafts;
-  if (drafts.some((item) => item.groupId === match.id)) return;
+  if (drafts.some(item => item.groupId === match.id)) return;
   ensureDraftSelection(product, match, drafts, soleGroupPick(match));
 }
 
@@ -1542,7 +1525,7 @@ async function finishItemOrContinueBatch(
         `✅ Item adicionado!\n📋 Escolha o item da *${ordinal}ª* de *${total}*${sizeHint}:`,
         context,
         persist,
-        store,
+        store
       );
       return;
     }
@@ -1913,7 +1896,7 @@ export async function handleIncomingMessage(input: {
       context.cart.length ? "📋 Escolha o próximo item:" : "🍕 Vamos montar seu pedido. Escolha o primeiro item:",
       context,
       persist,
-      store,
+      store
     );
     return;
   }
@@ -2272,8 +2255,7 @@ export async function handleIncomingMessage(input: {
       context.menuOffset = 0;
       if (!isBatchActive(context) && categoryUsesBatch(store, categoryId)) {
         const categories = productCategories(await listProducts());
-        const categoryName =
-          categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+        const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
         await startCategoryBatch(input.from, categoryId, categoryName, context, persist);
         return;
       }
@@ -2334,16 +2316,13 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_batch_size") {
     const categoryId = context.menuCategoryId ?? context.batchCategoryId ?? null;
     const categories = productCategories(await listProducts());
-    const categoryName =
-      categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+    const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
     const sizes = categoryId ? await sizesForCategory(categoryId) : [];
 
-    const sizeId = incoming.startsWith("batchsize:")
-      ? incoming.slice("batchsize:".length)
-      : null;
+    const sizeId = incoming.startsWith("batchsize:") ? incoming.slice("batchsize:".length) : null;
     const picked =
-      (sizeId ? sizes.find((item) => item.id === sizeId) : null) ??
-      sizes.find((item) => normalize(item.name) === normalized) ??
+      (sizeId ? sizes.find(item => item.id === sizeId) : null) ??
+      sizes.find(item => normalize(item.name) === normalized) ??
       null;
 
     if (!categoryId || !picked) {
@@ -2367,14 +2346,10 @@ export async function handleIncomingMessage(input: {
     const quantity = parseQuantity(incoming);
     const categoryId = context.menuCategoryId ?? context.batchCategoryId ?? null;
     const categories = productCategories(await listProducts());
-    const categoryName =
-      categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+    const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
 
     if (!categoryId || quantity == null) {
-      await sendText(
-        input.from,
-        "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).",
-      );
+      await sendText(input.from, "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).");
       await askBatchCount(input.from, categoryName);
       return;
     }
@@ -2392,13 +2367,7 @@ export async function handleIncomingMessage(input: {
     context.menuOffset = 0;
     await persist("awaiting_product", context);
     const sizeHint = context.batchSizeName ? ` (${context.batchSizeName})` : "";
-    await showMenu(
-      input.from,
-      `📋 Escolha o item da *1ª* de *${quantity}*${sizeHint}:`,
-      context,
-      persist,
-      store,
-    );
+    await showMenu(input.from, `📋 Escolha o item da *1ª* de *${quantity}*${sizeHint}:`, context, persist, store);
     return;
   }
 
