@@ -534,32 +534,91 @@ const CART_ACTIONS = [
   { id: "clear_cart", title: "Limpar carrinho" }
 ] as const;
 
-/** Carrinho + Entrega/Retirada na mesma mensagem (máx. 3 botões no WhatsApp). */
+async function findDrinksCategory() {
+  const categories = productCategories(await listProducts());
+  return (
+    categories.find((item) => normalize(item.name) === "bebidas") ??
+    categories.find((item) => normalize(item.name).includes("bebida")) ??
+    null
+  );
+}
+
+/** Carrinho + opções de continuar (lista quando passa de 3 ações — limite do WhatsApp). */
 async function showCheckoutOptions(
   to: string,
   store: { deliveryEnabled: boolean; pickupEnabled: boolean },
   context: ConversationContext,
   intro = "✅ Item adicionado!"
 ) {
-  const buttons: { id: string; title: string }[] = [{ id: "order", title: "Adicionar mais itens" }];
+  const drinks = await findDrinksCategory();
+  const body = [
+    intro,
+    "",
+    "🛒 *Seu carrinho*",
+    "",
+    renderCart(context),
+    "",
+    "🛵 Como prefere receber?",
+  ].join("\n");
+
+  const rows: { id: string; title: string; description?: string }[] = [
+    {
+      id: "order",
+      title: "Adicionar mais itens",
+      description: "Voltar ao cardápio",
+    },
+  ];
+  if (drinks) {
+    rows.push({
+      id: "order_drinks",
+      title: "Adicionar uma bebida",
+      description: `Ver ${drinks.name}`.slice(0, 72),
+    });
+  }
   if (store.deliveryEnabled) {
-    buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
+    rows.push({
+      id: "fulfillment:delivery",
+      title: "Entrega",
+      description: "Receber no endereço",
+    });
   }
   if (store.pickupEnabled) {
-    buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
+    rows.push({
+      id: "fulfillment:pickup",
+      title: "Retirada",
+      description: "Retirar no local",
+    });
   }
-  // Sem entrega/retirada configurada: mantém Fechar + Limpar.
-  if (buttons.length === 1) {
-    buttons.push({ id: "checkout", title: "Fechar pedido" }, { id: "clear_cart", title: "Limpar carrinho" });
-  } else if (buttons.length === 2) {
-    buttons.push({ id: "clear_cart", title: "Limpar carrinho" });
+  // Sem entrega/retirada: Fechar + Limpar.
+  if (!store.deliveryEnabled && !store.pickupEnabled) {
+    rows.push(
+      { id: "checkout", title: "Fechar pedido", description: "Finalizar" },
+      { id: "clear_cart", title: "Limpar carrinho", description: "Esvaziar pedido" },
+    );
+  } else if (rows.length === 2) {
+    // Só “mais itens” + uma forma de receber: completa com Limpar.
+    rows.push({
+      id: "clear_cart",
+      title: "Limpar carrinho",
+      description: "Esvaziar pedido",
+    });
   }
 
-  await sendButtons(
-    to,
-    [intro, "", "🛒 *Seu carrinho*", "", renderCart(context), "", "🛵 Como prefere receber?"].join("\n"),
-    buttons.slice(0, 3)
-  );
+  if (rows.length <= 3) {
+    await sendButtons(
+      to,
+      body,
+      rows.slice(0, 3).map((row) => ({ id: row.id, title: row.title.slice(0, 20) })),
+    );
+    return;
+  }
+
+  await sendList(to, body, "Opções", [
+    {
+      title: "Pedido",
+      rows: rows.slice(0, WA_LIST_MAX_ROWS),
+    },
+  ]);
 }
 
 async function showCartPrompt(to: string, context: ConversationContext, intro = "✅ Item adicionado!") {
@@ -661,7 +720,7 @@ async function resumeCurrentStep(
         if (current?.options.length) {
           if (usesCatalogFlavors(openGroup)) {
             await sendHintIfNeeded();
-            await showFlavorList(to, product, openGroup, drafts, context.flavorOffset ?? 0);
+            await askGroupOptions(to, product, openGroup, drafts);
             return;
           }
           const shares =
@@ -1025,15 +1084,43 @@ async function showMenuCategories(
   await sendList(to, [intro, "📂 Escolha uma *categoria*."].join("\n"), "Categorias", [{ title: "Categorias", rows }]);
 }
 
+function menuItemsPageSize(
+  total: number,
+  offset: number,
+  canGoBack: boolean,
+) {
+  const reserveBack = canGoBack ? 1 : 0;
+  const reservePrev = offset > 0 ? 1 : 0;
+  const navReserve = reserveBack + reservePrev;
+  const tentativeMore =
+    offset + (WA_LIST_MAX_ROWS - navReserve - 1) < total ? 1 : 0;
+  return Math.max(1, WA_LIST_MAX_ROWS - navReserve - tentativeMore);
+}
+
+/** Offset da página anterior de itens (mesmo critério de paginação do Mais itens). */
+function previousMenuItemsOffset(
+  total: number,
+  offset: number,
+  canGoBack: boolean,
+) {
+  if (offset <= 0) return 0;
+  let cursor = 0;
+  let previous = 0;
+  while (cursor < offset) {
+    previous = cursor;
+    cursor += menuItemsPageSize(total, cursor, canGoBack);
+    if (cursor <= previous) break;
+  }
+  return previous;
+}
+
 async function showMenuProducts(
   to: string,
   intro: string,
   products: Product[],
   opts: { categoryName?: string | null; offset: number; canGoBack: boolean }
 ) {
-  const reserveBack = opts.canGoBack ? 1 : 0;
-  const tentativeMore = opts.offset + (WA_LIST_MAX_ROWS - reserveBack - 1) < products.length ? 1 : 0;
-  const pageSize = WA_LIST_MAX_ROWS - reserveBack - tentativeMore;
+  const pageSize = menuItemsPageSize(products.length, opts.offset, opts.canGoBack);
   const page = products.slice(opts.offset, opts.offset + pageSize);
   const hasMore = opts.offset + page.length < products.length;
 
@@ -1051,6 +1138,13 @@ async function showMenuProducts(
       id: "menu:more_items",
       title: "Mais itens",
       description: "Ver próximos"
+    });
+  }
+  if (opts.offset > 0) {
+    rows.push({
+      id: "menu:prev_items",
+      title: "← Voltar",
+      description: "Itens anteriores"
     });
   }
   if (opts.canGoBack) {
@@ -1125,7 +1219,7 @@ async function showMenu(
     await showMenuProducts(to, intro, inCategory, {
       categoryName,
       offset,
-      canGoBack: categories.length > 1 && !isBatchActive(context)
+      canGoBack: categories.length > 1
     });
     return;
   }
@@ -1247,7 +1341,16 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
     const remaining = await pizzaFlavorChoices(product.pizzaKind, [product.id, ...picked]);
     if (!remaining.length) return true;
 
-    // Já tem sabor extra: abre a lista direto (fluxo "Mais um").
+    // A partir do 2º sabor: botões Escolher sabor + Pronto (Pronto também fica na lista).
+    if (picked.length >= 2) {
+      await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
+        { id: "choose_flavor", title: "Escolher sabor" },
+        { id: "done_options", title: "Pronto" },
+      ]);
+      return false;
+    }
+
+    // Já tem 1 sabor: abre a lista direto (Pronto fica na própria lista).
     if (picked.length > 0) {
       return showFlavorList(to, product, group, drafts, 0);
     }
@@ -1415,7 +1518,13 @@ function applyBatchSizeToProduct(product: Product, context: ConversationContext)
   ensureDraftSelection(product, match, drafts, soleGroupPick(match));
 }
 
-async function askAddons(to: string, product: Product, drafts?: CartSelection[], offset = 0) {
+async function askAddons(
+  to: string,
+  product: Product,
+  drafts?: CartSelection[],
+  offset = 0,
+  openList = false,
+) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
@@ -1427,6 +1536,15 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
   ]
     .filter(Boolean)
     .join("\n");
+
+  // Primeira mensagem: botões Adicionais + Pular (sem abrir o modal).
+  if (!picked.length && offset === 0 && !openList) {
+    await sendButtons(to, prompt, [
+      { id: "choose_addon", title: "Adicionais" },
+      { id: "skip_addon", title: "Pular" },
+    ]);
+    return false;
+  }
 
   const footer = !picked.length
     ? {
@@ -1791,7 +1909,9 @@ export async function handleIncomingMessage(input: {
 
   // Atalhos globais (menu/status/pedido) não interrompem pedido em andamento.
   // No checkout unificado, "Adicionar mais" usa id "order" em cart e awaiting_fulfillment.
-  const cartAddMore = (state === "cart" || state === "awaiting_fulfillment") && incoming === "order";
+  const cartAddMore =
+    (state === "cart" || state === "awaiting_fulfillment") &&
+    (incoming === "order" || incoming === "order_drinks");
   const globalShortcut =
     ["menu", "status"].includes(incoming) ||
     ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
@@ -2060,10 +2180,26 @@ export async function handleIncomingMessage(input: {
 
       if (minReached) {
         const canAddMore = Boolean(await groupWantingMore(product, drafts));
-        // Sabores do cardápio: próxima lista direto (Pronto fica na própria lista).
+        // Sabores do cardápio: com 2+ sabores, botões Escolher sabor + Pronto.
         if (usesCatalogFlavors(group) && canAddMore) {
           context.flavorOffset = 0;
           await persist("awaiting_option", context);
+          if (current.options.length >= 2) {
+            await sendButtons(
+              input.from,
+              groupPrompt(
+                product,
+                group,
+                current.options.map((item) => item.id),
+                current.options.map((item) => item.name),
+              ),
+              [
+                { id: "choose_flavor", title: "Escolher sabor" },
+                { id: "done_options", title: "Pronto" },
+              ],
+            );
+            return;
+          }
           await showFlavorList(input.from, product, group, drafts, 0);
           return;
         }
@@ -2191,15 +2327,26 @@ export async function handleIncomingMessage(input: {
     // Só lista/botões — texto digitado (ex.: "ovo") não escolhe adicional.
     const addonAction =
       incoming.startsWith("addon:") ||
+      incoming === "choose_addon" ||
       incoming === "skip_addon" ||
       incoming === "more_addons" ||
       incoming === "done_addons" ||
       incoming === "more_options" ||
-      incoming === "done_options";
+      incoming === "done_options" ||
+      normalized === "adicionais" ||
+      normalized === "pular";
 
     if (!addonAction) {
       await persist("awaiting_addon", context);
       await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+
+    if (incoming === "choose_addon" || normalized === "adicionais") {
+      context.addonOffset = 0;
+      await persist("awaiting_addon", context);
+      const finished = await askAddons(input.from, product, drafts, 0, true);
+      if (finished) await finishAddons();
       return;
     }
 
@@ -2217,7 +2364,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    if (incoming === "skip_addon") {
+    if (incoming === "skip_addon" || normalized === "pular") {
       context.addonOffset = 0;
       context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
@@ -2270,7 +2417,39 @@ export async function handleIncomingMessage(input: {
       return;
     }
     if (incoming === "menu:more_items") {
-      context.menuOffset = (context.menuOffset ?? 0) + 8;
+      const catalog = await listProducts();
+      const inCategory = context.menuCategoryId
+        ? catalog.filter(
+            (item) =>
+              (item.categoryId || item.categoryName || "cardapio") ===
+              context.menuCategoryId,
+          )
+        : catalog;
+      const canGoBack =
+        productCategories(catalog).length > 1 && Boolean(context.menuCategoryId);
+      const offset = context.menuOffset ?? 0;
+      context.menuOffset =
+        offset + menuItemsPageSize(inCategory.length, offset, canGoBack);
+      await persist("awaiting_product", context);
+      await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
+      return;
+    }
+    if (incoming === "menu:prev_items") {
+      const catalog = await listProducts();
+      const inCategory = context.menuCategoryId
+        ? catalog.filter(
+            (item) =>
+              (item.categoryId || item.categoryName || "cardapio") ===
+              context.menuCategoryId,
+          )
+        : catalog;
+      const canGoBack =
+        productCategories(catalog).length > 1 && Boolean(context.menuCategoryId);
+      context.menuOffset = previousMenuItemsOffset(
+        inCategory.length,
+        context.menuOffset ?? 0,
+        canGoBack,
+      );
       await persist("awaiting_product", context);
       await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
       return;
@@ -2425,7 +2604,33 @@ export async function handleIncomingMessage(input: {
       await showMenu(input.from, "Seu carrinho está vazio. Escolha um item:", context, persist, store);
       return;
     }
+    if (
+      incoming === "order_drinks" ||
+      normalized === "adicionar uma bebida" ||
+      normalized === "adicionar bebida" ||
+      normalized === "bebida"
+    ) {
+      clearBatch(context);
+      const drinks = await findDrinksCategory();
+      if (!drinks) {
+        await sendText(input.from, "Não encontrei a categoria de bebidas no cardápio.");
+        await showCheckoutOptions(input.from, store, context, "🛒 Seu pedido");
+        return;
+      }
+      context.menuCategoryId = drinks.id;
+      context.menuOffset = 0;
+      await persist("awaiting_product", context);
+      await showMenu(
+        input.from,
+        `🥤 *${drinks.name}*\nEscolha uma bebida:`,
+        context,
+        persist,
+        store
+      );
+      return;
+    }
     if (incoming === "order" || normalized === "adicionar mais" || normalized === "adicionar mais itens") {
+      clearBatch(context);
       resetMenuBrowse(context);
       await persist("awaiting_product", context);
       await showMenu(input.from, "Escolha o próximo item:", context, persist, store);
