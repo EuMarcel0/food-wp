@@ -15,6 +15,7 @@ import {
   listAddons,
   listCrusts,
   listProducts,
+  listSizes,
   saveConversation,
   touchConversation,
   updateOrderStatus,
@@ -290,6 +291,7 @@ function clearBatch(context: ConversationContext) {
   context.batchProductId = undefined;
   context.batchRemaining = undefined;
   context.batchTotal = undefined;
+  context.batchSizeName = undefined;
 }
 
 function isBatchActive(context: ConversationContext) {
@@ -723,6 +725,19 @@ async function resumeCurrentStep(
       await askQuantity(to, product, context.draftSelections ?? []);
       return;
     }
+    case "awaiting_batch_size": {
+      const categoryId = context.menuCategoryId ?? context.batchCategoryId;
+      const categories = productCategories(await listProducts());
+      const categoryName =
+        categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+      const sizes = categoryId ? await sizesForCategory(categoryId) : [];
+      if (!sizes.length) {
+        await askBatchCount(to, categoryName);
+        return;
+      }
+      await askBatchSize(to, categoryName, sizes);
+      return;
+    }
     case "awaiting_batch_count": {
       const categoryId = context.menuCategoryId ?? context.batchCategoryId;
       const categories = productCategories(await listProducts());
@@ -1094,7 +1109,7 @@ async function showMenu(
   const offset = Math.max(0, context.menuOffset ?? 0);
   const resolvedStore = store ?? (await getStore());
 
-  // Uma categoria só: se estiver no lote, pergunta quantas antes dos itens.
+  // Uma categoria só: se estiver no lote, pergunta tamanho → quantas antes dos itens.
   if (
     !context.menuCategoryId &&
     categories.length === 1 &&
@@ -1104,8 +1119,7 @@ async function showMenu(
   ) {
     context.menuCategoryId = categories[0].id;
     context.menuOffset = 0;
-    await persist("awaiting_batch_count", context);
-    await askBatchCount(to, categories[0].name);
+    await startCategoryBatch(to, categories[0].id, categories[0].name, context, persist);
     return;
   }
 
@@ -1328,6 +1342,96 @@ async function askBatchCount(to: string, categoryName: string) {
   );
 }
 
+type BatchSizeOption = {
+  id: string;
+  name: string;
+  price: number;
+  sortOrder: number;
+};
+
+/** Tamanhos disponíveis nos itens customizáveis da categoria (união por nome). */
+async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> {
+  const products = (await listProducts()).filter(
+    (item) => item.categoryId === categoryId && isCustomizable(item),
+  );
+  const byName = new Map<string, BatchSizeOption>();
+  for (const product of products) {
+    for (const group of activeGroups(product).filter((item) => isSizeGroup(item))) {
+      const key = normalize(group.name);
+      if (byName.has(key)) continue;
+      byName.set(key, {
+        id: group.id,
+        name: group.name,
+        price: group.price > 0 ? group.price : product.price,
+        sortOrder: group.sortOrder,
+      });
+    }
+  }
+  // Preferir ordem/preço do catálogo global quando o nome bater.
+  const catalog = await listSizes();
+  for (const size of catalog) {
+    const key = normalize(size.name);
+    const existing = byName.get(key);
+    if (existing) {
+      existing.price = size.price;
+      existing.sortOrder = size.sortOrder;
+      existing.id = size.id;
+    }
+  }
+  return [...byName.values()].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.name.localeCompare(right.name, "pt-BR"),
+  );
+}
+
+async function askBatchSize(to: string, categoryName: string, sizes: BatchSizeOption[]) {
+  await sendList(to, `*${categoryName}*\n📏 Escolha o tamanho.`, "Tamanhos", [
+    {
+      title: "Tamanhos",
+      rows: sizes.slice(0, WA_LIST_MAX_ROWS).map((size) => ({
+        id: `batchsize:${size.id}`,
+        title: size.name.slice(0, 24),
+        description: formatReais(size.price),
+      })),
+    },
+  ]);
+}
+
+async function startCategoryBatch(
+  to: string,
+  categoryId: string,
+  categoryName: string,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+) {
+  clearBatch(context);
+  context.menuCategoryId = categoryId;
+  context.menuOffset = 0;
+  const sizes = await sizesForCategory(categoryId);
+  if (!sizes.length) {
+    await persist("awaiting_batch_count", context);
+    await askBatchCount(to, categoryName);
+    return;
+  }
+  await persist("awaiting_batch_size", context);
+  await askBatchSize(to, categoryName, sizes);
+}
+
+/** Aplica o tamanho do lote no rascunho do produto (pula a etapa de tamanho). */
+function applyBatchSizeToProduct(product: Product, context: ConversationContext) {
+  const sizeName = context.batchSizeName?.trim();
+  if (!sizeName || !isCustomizable(product)) return;
+  const match = activeGroups(product)
+    .filter((group) => isSizeGroup(group))
+    .find((group) => normalize(group.name) === normalize(sizeName));
+  if (!match) return;
+  const drafts = context.draftSelections ?? [];
+  context.draftSelections = drafts;
+  if (drafts.some((item) => item.groupId === match.id)) return;
+  ensureDraftSelection(product, match, drafts, soleGroupPick(match));
+}
+
 async function askAddons(to: string, product: Product, drafts?: CartSelection[], offset = 0) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
@@ -1431,10 +1535,11 @@ async function finishItemOrContinueBatch(
       context.flavorOffset = 0;
       context.menuCategoryId = context.batchCategoryId ?? context.menuCategoryId ?? null;
       context.menuOffset = 0;
+      const sizeHint = context.batchSizeName ? ` (${context.batchSizeName})` : "";
       await persist("awaiting_product", context);
       await showMenu(
         to,
-        `✅ Item adicionado!\n📋 Escolha o item da *${ordinal}ª* de *${total}*:`,
+        `✅ Item adicionado!\n📋 Escolha o item da *${ordinal}ª* de *${total}*${sizeHint}:`,
         context,
         persist,
         store,
@@ -1485,6 +1590,9 @@ async function continueProductFlow(
   context: ConversationContext,
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
+  if (isBatchActive(context) && context.batchSizeName) {
+    applyBatchSizeToProduct(product, context);
+  }
   if (isCustomizable(product)) {
     await persist("awaiting_option", context);
     await askAssembly(to, product, context);
@@ -2163,12 +2271,10 @@ export async function handleIncomingMessage(input: {
       context.menuCategoryId = categoryId;
       context.menuOffset = 0;
       if (!isBatchActive(context) && categoryUsesBatch(store, categoryId)) {
-        clearBatch(context);
         const categories = productCategories(await listProducts());
         const categoryName =
           categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
-        await persist("awaiting_batch_count", context);
-        await askBatchCount(input.from, categoryName);
+        await startCategoryBatch(input.from, categoryId, categoryName, context, persist);
         return;
       }
       await persist("awaiting_product", context);
@@ -2225,6 +2331,38 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  if (state === "awaiting_batch_size") {
+    const categoryId = context.menuCategoryId ?? context.batchCategoryId ?? null;
+    const categories = productCategories(await listProducts());
+    const categoryName =
+      categories.find((item) => item.id === categoryId)?.name ?? "Categoria";
+    const sizes = categoryId ? await sizesForCategory(categoryId) : [];
+
+    const sizeId = incoming.startsWith("batchsize:")
+      ? incoming.slice("batchsize:".length)
+      : null;
+    const picked =
+      (sizeId ? sizes.find((item) => item.id === sizeId) : null) ??
+      sizes.find((item) => normalize(item.name) === normalized) ??
+      null;
+
+    if (!categoryId || !picked) {
+      if (!sizes.length) {
+        await persist("awaiting_batch_count", context);
+        await askBatchCount(input.from, categoryName);
+        return;
+      }
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+
+    context.batchSizeName = picked.name;
+    context.menuCategoryId = categoryId;
+    await persist("awaiting_batch_count", context);
+    await askBatchCount(input.from, categoryName);
+    return;
+  }
+
   if (state === "awaiting_batch_count") {
     const quantity = parseQuantity(incoming);
     const categoryId = context.menuCategoryId ?? context.batchCategoryId ?? null;
@@ -2253,9 +2391,10 @@ export async function handleIncomingMessage(input: {
     context.flavorOffset = 0;
     context.menuOffset = 0;
     await persist("awaiting_product", context);
+    const sizeHint = context.batchSizeName ? ` (${context.batchSizeName})` : "";
     await showMenu(
       input.from,
-      `📋 Escolha o item da *1ª* de *${quantity}*:`,
+      `📋 Escolha o item da *1ª* de *${quantity}*${sizeHint}:`,
       context,
       persist,
       store,

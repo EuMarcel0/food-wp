@@ -65,8 +65,10 @@ export function BatchCategorySettingsCard({ store }: { store?: Store }) {
 
             <p className="mb-4 text-sm leading-normal text-food-muted">
               Nas categorias marcadas, depois que o cliente escolhe a categoria o
-              bot pergunta <strong>Você vai querer quantas?</strong> e monta
-              cada item em sequência, sem ir ao carrinho no meio do lote.
+              bot pergunta o <strong>tamanho</strong>, depois{" "}
+              <strong>Você vai querer quantas?</strong> e monta cada item em
+              sequência (com o tamanho já definido), sem ir ao carrinho no meio
+              do lote.
             </p>
 
             {categoriesQuery.isPending ? (

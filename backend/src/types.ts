@@ -16,6 +16,7 @@ export type ConversationState =
   | "awaiting_addon"
   | "awaiting_crust"
   | "awaiting_option"
+  | "awaiting_batch_size"
   | "awaiting_batch_count"
   | "awaiting_quantity"
   | "awaiting_item_note"
@@ -35,6 +36,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_addon",
   "awaiting_crust",
   "awaiting_option",
+  "awaiting_batch_size",
   "awaiting_batch_count",
   "awaiting_quantity",
   "awaiting_item_note",
@@ -122,12 +124,14 @@ export type ConversationContext = {
   flavorOffset?: number;
   /**
    * Lote por categoria (config “Quantidade para montagem por categoria”):
-   * após escolher a categoria, pergunta quantas e monta cada item em sequência.
+   * tamanho → quantas → monta cada item em sequência (tamanho já definido).
    */
   batchCategoryId?: string;
   batchProductId?: string;
   batchRemaining?: number;
   batchTotal?: number;
+  /** Nome do tamanho escolhido no lote (ex.: "M - Média"). */
+  batchSizeName?: string;
 };
 
 export type DeliveryNeighborhood = {
