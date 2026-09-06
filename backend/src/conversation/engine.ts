@@ -399,6 +399,33 @@ function isSkipNote(incoming: string, normalized: string) {
   );
 }
 
+function isSkipDrinks(incoming: string, normalized: string) {
+  const compact = normalized.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  return (
+    incoming === "skip_drinks" ||
+    compact === "pular" ||
+    compact === "nao" ||
+    compact === "nao obrigado" ||
+    compact === "nao quero" ||
+    compact === "sem bebida" ||
+    compact === "sem bebidas" ||
+    compact === "continuar"
+  );
+}
+
+function wantsDrinks(incoming: string, normalized: string) {
+  return (
+    incoming === "order_drinks" ||
+    normalized === "ver bebidas" ||
+    normalized === "bebidas" ||
+    normalized === "bebida" ||
+    normalized === "adicionar bebida" ||
+    normalized === "adicionar uma bebida" ||
+    normalized === "sim" ||
+    normalized === "quero"
+  );
+}
+
 function clipNote(raw: string) {
   return raw.replace(/\s+/g, " ").trim().slice(0, 240);
 }
@@ -543,82 +570,86 @@ async function findDrinksCategory() {
   );
 }
 
-/** Carrinho + opções de continuar (lista quando passa de 3 ações — limite do WhatsApp). */
+async function isDrinksProduct(productId: string | undefined) {
+  if (!productId) return false;
+  const drinks = await findDrinksCategory();
+  if (!drinks) return false;
+  const product = await getProduct(productId);
+  return Boolean(product && product.categoryId === drinks.id);
+}
+
+async function askDrinksUpsell(to: string) {
+  await sendButtons(to, "🥤 *Bebidas?*\nQuer adicionar alguma bebida ao pedido?", [
+    { id: "order_drinks", title: "Ver bebidas" },
+    { id: "skip_drinks", title: "Não, obrigado" },
+  ]);
+}
+
+/** Após observação (ou item sem obs.): oferece bebidas; se já for bebida / sem categoria, segue o fluxo. */
+async function offerDrinksOrFinish(
+  to: string,
+  store: Store,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
+  addedProductId?: string
+) {
+  if (await isDrinksProduct(addedProductId)) {
+    await finishItemOrContinueBatch(to, store, context, persist);
+    return;
+  }
+  const drinks = await findDrinksCategory();
+  if (!drinks) {
+    await finishItemOrContinueBatch(to, store, context, persist);
+    return;
+  }
+  await persist("awaiting_drinks_upsell", context);
+  await askDrinksUpsell(to);
+}
+
+async function openDrinksMenu(
+  to: string,
+  store: Store,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
+) {
+  const drinks = await findDrinksCategory();
+  if (!drinks) {
+    await sendText(to, "Não encontrei a categoria de bebidas no cardápio.");
+    await finishItemOrContinueBatch(to, store, context, persist);
+    return;
+  }
+  context.menuCategoryId = drinks.id;
+  context.menuOffset = 0;
+  await persist("awaiting_product", context);
+  await showMenu(to, `🥤 *${drinks.name}*\nEscolha uma bebida:`, context, persist, store);
+}
+
+/** Carrinho + Entrega/Retirada na mesma mensagem (máx. 3 botões no WhatsApp). */
 async function showCheckoutOptions(
   to: string,
   store: { deliveryEnabled: boolean; pickupEnabled: boolean },
   context: ConversationContext,
   intro = "✅ Item adicionado!"
 ) {
-  const drinks = await findDrinksCategory();
-  const body = [
-    intro,
-    "",
-    "🛒 *Seu carrinho*",
-    "",
-    renderCart(context),
-    "",
-    "🛵 Como prefere receber?",
-  ].join("\n");
-
-  const rows: { id: string; title: string; description?: string }[] = [
-    {
-      id: "order",
-      title: "Adicionar mais itens",
-      description: "Voltar ao cardápio",
-    },
-  ];
-  if (drinks) {
-    rows.push({
-      id: "order_drinks",
-      title: "Adicionar uma bebida",
-      description: `Ver ${drinks.name}`.slice(0, 72),
-    });
-  }
+  const buttons: { id: string; title: string }[] = [{ id: "order", title: "Adicionar mais itens" }];
   if (store.deliveryEnabled) {
-    rows.push({
-      id: "fulfillment:delivery",
-      title: "Entrega",
-      description: "Receber no endereço",
-    });
+    buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
   }
   if (store.pickupEnabled) {
-    rows.push({
-      id: "fulfillment:pickup",
-      title: "Retirada",
-      description: "Retirar no local",
-    });
+    buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
   }
-  // Sem entrega/retirada: Fechar + Limpar.
-  if (!store.deliveryEnabled && !store.pickupEnabled) {
-    rows.push(
-      { id: "checkout", title: "Fechar pedido", description: "Finalizar" },
-      { id: "clear_cart", title: "Limpar carrinho", description: "Esvaziar pedido" },
-    );
-  } else if (rows.length === 2) {
-    // Só “mais itens” + uma forma de receber: completa com Limpar.
-    rows.push({
-      id: "clear_cart",
-      title: "Limpar carrinho",
-      description: "Esvaziar pedido",
-    });
+  // Sem entrega/retirada configurada: mantém Fechar + Limpar.
+  if (buttons.length === 1) {
+    buttons.push({ id: "checkout", title: "Fechar pedido" }, { id: "clear_cart", title: "Limpar carrinho" });
+  } else if (buttons.length === 2) {
+    buttons.push({ id: "clear_cart", title: "Limpar carrinho" });
   }
 
-  if (rows.length <= 3) {
-    await sendButtons(
-      to,
-      body,
-      rows.slice(0, 3).map((row) => ({ id: row.id, title: row.title.slice(0, 20) })),
-    );
-    return;
-  }
-
-  await sendList(to, body, "Opções", [
-    {
-      title: "Pedido",
-      rows: rows.slice(0, WA_LIST_MAX_ROWS),
-    },
-  ]);
+  await sendButtons(
+    to,
+    [intro, "", "🛒 *Seu carrinho*", "", renderCart(context), "", "🛵 Como prefere receber?"].join("\n"),
+    buttons.slice(0, 3)
+  );
 }
 
 async function showCartPrompt(to: string, context: ConversationContext, intro = "✅ Item adicionado!") {
@@ -800,6 +831,9 @@ async function resumeCurrentStep(
         return;
       }
       await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
+      return;
+    case "awaiting_drinks_upsell":
+      await askDrinksUpsell(to);
       return;
     case "cart":
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
@@ -1613,8 +1647,9 @@ async function applyQuantityAndContinue(
     return;
   }
 
+  const addedProductId = context.draftItem?.productId;
   commitDraftToCart(context);
-  await finishItemOrContinueBatch(to, store, context, persist);
+  await offerDrinksOrFinish(to, store, context, persist, addedProductId);
 }
 
 /** Após gravar um item: se ainda há lote da categoria, deixa escolher o próximo; senão vai ao carrinho. */
@@ -1933,8 +1968,22 @@ export async function handleIncomingMessage(input: {
     }
     const added = context.draftItem;
     added.notes = notes;
+    const addedProductId = added.productId;
     commitDraftToCart(context);
-    await finishItemOrContinueBatch(input.from, store, context, persist);
+    await offerDrinksOrFinish(input.from, store, context, persist, addedProductId);
+    return;
+  }
+
+  if (state === "awaiting_drinks_upsell") {
+    if (wantsDrinks(incoming, normalized)) {
+      await openDrinksMenu(input.from, store, context, persist);
+      return;
+    }
+    if (isSkipDrinks(incoming, normalized)) {
+      await finishItemOrContinueBatch(input.from, store, context, persist);
+      return;
+    }
+    await askDrinksUpsell(input.from);
     return;
   }
 
@@ -2579,8 +2628,9 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
+    const addedProductId = context.draftItem?.productId;
     commitDraftToCart(context);
-    await finishItemOrContinueBatch(input.from, store, context, persist);
+    await offerDrinksOrFinish(input.from, store, context, persist, addedProductId);
     return;
   }
 

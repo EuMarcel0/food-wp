@@ -127,6 +127,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_batch_count: "Qtd. (lote)",
   awaiting_quantity: "Quantidade",
   awaiting_item_note: "Obs. do item",
+  awaiting_drinks_upsell: "Bebidas?",
   cart: "Carrinho",
   awaiting_order_note: "Obs. da entrega",
   awaiting_fulfillment: "Entrega ou retirada",

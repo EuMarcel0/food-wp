@@ -20,6 +20,7 @@ export type ConversationState =
   | "awaiting_batch_count"
   | "awaiting_quantity"
   | "awaiting_item_note"
+  | "awaiting_drinks_upsell"
   | "cart"
   | "awaiting_order_note"
   | "awaiting_fulfillment"
@@ -40,6 +41,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_batch_count",
   "awaiting_quantity",
   "awaiting_item_note",
+  "awaiting_drinks_upsell",
   "cart",
   "awaiting_order_note",
   "awaiting_fulfillment",
