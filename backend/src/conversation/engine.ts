@@ -620,6 +620,7 @@ async function openDrinksMenu(
   }
   context.menuCategoryId = drinks.id;
   context.menuOffset = 0;
+  context.menuLockCategory = true;
   await persist("awaiting_product", context);
   await showMenu(to, `🥤 *${drinks.name}*\nEscolha uma bebida:`, context, persist, store);
 }
@@ -1081,6 +1082,11 @@ const WA_LIST_MAX_ROWS = 10;
 function resetMenuBrowse(context: ConversationContext) {
   context.menuCategoryId = null;
   context.menuOffset = 0;
+  context.menuLockCategory = undefined;
+}
+
+function canGoBackToCategories(context: ConversationContext, categoryCount: number) {
+  return categoryCount > 1 && Boolean(context.menuCategoryId) && !context.menuLockCategory;
 }
 
 function productCategories(products: Product[]) {
@@ -1253,7 +1259,7 @@ async function showMenu(
     await showMenuProducts(to, intro, inCategory, {
       categoryName,
       offset,
-      canGoBack: categories.length > 1
+      canGoBack: canGoBackToCategories(context, categories.length)
     });
     return;
   }
@@ -2474,8 +2480,7 @@ export async function handleIncomingMessage(input: {
               context.menuCategoryId,
           )
         : catalog;
-      const canGoBack =
-        productCategories(catalog).length > 1 && Boolean(context.menuCategoryId);
+      const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
       const offset = context.menuOffset ?? 0;
       context.menuOffset =
         offset + menuItemsPageSize(inCategory.length, offset, canGoBack);
@@ -2492,8 +2497,7 @@ export async function handleIncomingMessage(input: {
               context.menuCategoryId,
           )
         : catalog;
-      const canGoBack =
-        productCategories(catalog).length > 1 && Boolean(context.menuCategoryId);
+      const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
       context.menuOffset = previousMenuItemsOffset(
         inCategory.length,
         context.menuOffset ?? 0,
@@ -2504,6 +2508,11 @@ export async function handleIncomingMessage(input: {
       return;
     }
     if (incoming === "menu:back_cats") {
+      if (context.menuLockCategory) {
+        await persist("awaiting_product", context);
+        await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
+        return;
+      }
       clearBatch(context);
       context.menuCategoryId = null;
       context.menuOffset = 0;
@@ -2669,6 +2678,7 @@ export async function handleIncomingMessage(input: {
       }
       context.menuCategoryId = drinks.id;
       context.menuOffset = 0;
+      context.menuLockCategory = true;
       await persist("awaiting_product", context);
       await showMenu(
         input.from,

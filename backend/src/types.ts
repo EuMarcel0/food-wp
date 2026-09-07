@@ -122,6 +122,8 @@ export type ConversationContext = {
   /** Categoria aberta no cardápio (navegação em etapas). */
   menuCategoryId?: string | null;
   menuOffset?: number;
+  /** Se true, oculta “← Categorias” (ex.: etapa Bebidas? / Ver bebidas). */
+  menuLockCategory?: boolean;
   addonOffset?: number;
   flavorOffset?: number;
   /**
