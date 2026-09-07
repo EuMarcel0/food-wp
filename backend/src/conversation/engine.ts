@@ -400,7 +400,10 @@ function isSkipNote(incoming: string, normalized: string) {
 }
 
 function isSkipDrinks(incoming: string, normalized: string) {
-  const compact = normalized.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  const compact = normalized
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return (
     incoming === "skip_drinks" ||
     compact === "pular" ||
@@ -564,8 +567,8 @@ const CART_ACTIONS = [
 async function findDrinksCategory() {
   const categories = productCategories(await listProducts());
   return (
-    categories.find((item) => normalize(item.name) === "bebidas") ??
-    categories.find((item) => normalize(item.name).includes("bebida")) ??
+    categories.find(item => normalize(item.name) === "bebidas") ??
+    categories.find(item => normalize(item.name).includes("bebida")) ??
     null
   );
 }
@@ -581,7 +584,7 @@ async function isDrinksProduct(productId: string | undefined) {
 async function askDrinksUpsell(to: string) {
   await sendButtons(to, "🥤 *Bebidas?*\nQuer adicionar alguma bebida ao pedido?", [
     { id: "order_drinks", title: "Ver bebidas" },
-    { id: "skip_drinks", title: "Não, obrigado" },
+    { id: "skip_drinks", title: "Não, obrigado" }
   ]);
 }
 
@@ -921,7 +924,9 @@ async function askItemNote(to: string, item: CartItem) {
   const { lines } = itemHeading(item, { withQuantity: true });
   await sendButtons(
     to,
-    ["📝 Observação deste item?", ...lines, "Ex.: sem cebola. Ou *Pular*."].filter(Boolean).join("\n"),
+    ["📝 Observação deste item?", ...lines, "*Digite* por ex.: sem cebola. Ou pode *Pular*."]
+      .filter(Boolean)
+      .join("\n"),
     [{ id: "skip_note", title: "Pular" }]
   );
 }
@@ -940,7 +945,7 @@ async function askNeighborhoods(to: string, store: Store, _context?: Conversatio
   }
   await sendText(
     to,
-    ["📍 Qual o *bairro* da entrega?", "Digite o bairro corretamente para calcularmos a taxa de entrega"].join("\n")
+    ["📍 Qual o *bairro* da entrega?", "Digite o bairro *CORRETAMENTE* para calcularmos a taxa de entrega"].join("\n")
   );
 }
 
@@ -1124,25 +1129,16 @@ async function showMenuCategories(
   await sendList(to, [intro, "📂 Escolha uma *categoria*."].join("\n"), "Categorias", [{ title: "Categorias", rows }]);
 }
 
-function menuItemsPageSize(
-  total: number,
-  offset: number,
-  canGoBack: boolean,
-) {
+function menuItemsPageSize(total: number, offset: number, canGoBack: boolean) {
   const reserveBack = canGoBack ? 1 : 0;
   const reservePrev = offset > 0 ? 1 : 0;
   const navReserve = reserveBack + reservePrev;
-  const tentativeMore =
-    offset + (WA_LIST_MAX_ROWS - navReserve - 1) < total ? 1 : 0;
+  const tentativeMore = offset + (WA_LIST_MAX_ROWS - navReserve - 1) < total ? 1 : 0;
   return Math.max(1, WA_LIST_MAX_ROWS - navReserve - tentativeMore);
 }
 
 /** Offset da página anterior de itens (mesmo critério de paginação do Mais itens). */
-function previousMenuItemsOffset(
-  total: number,
-  offset: number,
-  canGoBack: boolean,
-) {
+function previousMenuItemsOffset(total: number, offset: number, canGoBack: boolean) {
   if (offset <= 0) return 0;
   let cursor = 0;
   let previous = 0;
@@ -1385,7 +1381,7 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
     if (picked.length >= 2) {
       await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
         { id: "choose_flavor", title: "Escolher sabor" },
-        { id: "done_options", title: "Pronto" },
+        { id: "done_options", title: "Pronto" }
       ]);
       return false;
     }
@@ -1558,13 +1554,7 @@ function applyBatchSizeToProduct(product: Product, context: ConversationContext)
   ensureDraftSelection(product, match, drafts, soleGroupPick(match));
 }
 
-async function askAddons(
-  to: string,
-  product: Product,
-  drafts?: CartSelection[],
-  offset = 0,
-  openList = false,
-) {
+async function askAddons(to: string, product: Product, drafts?: CartSelection[], offset = 0, openList = false) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
@@ -1581,7 +1571,7 @@ async function askAddons(
   if (!picked.length && offset === 0 && !openList) {
     await sendButtons(to, prompt, [
       { id: "choose_addon", title: "Adicionais" },
-      { id: "skip_addon", title: "Pular" },
+      { id: "skip_addon", title: "Pular" }
     ]);
     return false;
   }
@@ -1951,8 +1941,7 @@ export async function handleIncomingMessage(input: {
   // Atalhos globais (menu/status/pedido) não interrompem pedido em andamento.
   // No checkout unificado, "Adicionar mais" usa id "order" em cart e awaiting_fulfillment.
   const cartAddMore =
-    (state === "cart" || state === "awaiting_fulfillment") &&
-    (incoming === "order" || incoming === "order_drinks");
+    (state === "cart" || state === "awaiting_fulfillment") && (incoming === "order" || incoming === "order_drinks");
   const globalShortcut =
     ["menu", "status"].includes(incoming) ||
     ["menu", "ver cardapio", "cardapio", "status", "status do pedido", "meu pedido", "rastrear"].includes(normalized) ||
@@ -2245,13 +2234,13 @@ export async function handleIncomingMessage(input: {
               groupPrompt(
                 product,
                 group,
-                current.options.map((item) => item.id),
-                current.options.map((item) => item.name),
+                current.options.map(item => item.id),
+                current.options.map(item => item.name)
               ),
               [
                 { id: "choose_flavor", title: "Escolher sabor" },
-                { id: "done_options", title: "Pronto" },
-              ],
+                { id: "done_options", title: "Pronto" }
+              ]
             );
             return;
           }
@@ -2474,16 +2463,11 @@ export async function handleIncomingMessage(input: {
     if (incoming === "menu:more_items") {
       const catalog = await listProducts();
       const inCategory = context.menuCategoryId
-        ? catalog.filter(
-            (item) =>
-              (item.categoryId || item.categoryName || "cardapio") ===
-              context.menuCategoryId,
-          )
+        ? catalog.filter(item => (item.categoryId || item.categoryName || "cardapio") === context.menuCategoryId)
         : catalog;
       const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
       const offset = context.menuOffset ?? 0;
-      context.menuOffset =
-        offset + menuItemsPageSize(inCategory.length, offset, canGoBack);
+      context.menuOffset = offset + menuItemsPageSize(inCategory.length, offset, canGoBack);
       await persist("awaiting_product", context);
       await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
       return;
@@ -2491,18 +2475,10 @@ export async function handleIncomingMessage(input: {
     if (incoming === "menu:prev_items") {
       const catalog = await listProducts();
       const inCategory = context.menuCategoryId
-        ? catalog.filter(
-            (item) =>
-              (item.categoryId || item.categoryName || "cardapio") ===
-              context.menuCategoryId,
-          )
+        ? catalog.filter(item => (item.categoryId || item.categoryName || "cardapio") === context.menuCategoryId)
         : catalog;
       const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
-      context.menuOffset = previousMenuItemsOffset(
-        inCategory.length,
-        context.menuOffset ?? 0,
-        canGoBack,
-      );
+      context.menuOffset = previousMenuItemsOffset(inCategory.length, context.menuOffset ?? 0, canGoBack);
       await persist("awaiting_product", context);
       await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
       return;
@@ -2680,13 +2656,7 @@ export async function handleIncomingMessage(input: {
       context.menuOffset = 0;
       context.menuLockCategory = true;
       await persist("awaiting_product", context);
-      await showMenu(
-        input.from,
-        `🥤 *${drinks.name}*\nEscolha uma bebida:`,
-        context,
-        persist,
-        store
-      );
+      await showMenu(input.from, `🥤 *${drinks.name}*\nEscolha uma bebida:`, context, persist, store);
       return;
     }
     if (incoming === "order" || normalized === "adicionar mais" || normalized === "adicionar mais itens") {
