@@ -1554,6 +1554,26 @@ function applyBatchSizeToProduct(product: Product, context: ConversationContext)
   ensureDraftSelection(product, match, drafts, soleGroupPick(match));
 }
 
+/** Itens por página na lista de adicionais (rodapé Pular/Pronto sempre reservado). */
+function addonsPageSize(total: number, offset: number) {
+  const navReserve = 1 + (offset > 0 ? 1 : 0);
+  const tentativeMore = offset + (WA_LIST_MAX_ROWS - navReserve - 1) < total ? 1 : 0;
+  return Math.max(1, WA_LIST_MAX_ROWS - navReserve - tentativeMore);
+}
+
+/** Offset da página anterior de adicionais (mesmo critério do "Ver mais"). */
+function previousAddonsOffset(total: number, offset: number) {
+  if (offset <= 0) return 0;
+  let cursor = 0;
+  let previous = 0;
+  while (cursor < offset) {
+    previous = cursor;
+    cursor += addonsPageSize(total, cursor);
+    if (cursor <= previous) break;
+  }
+  return previous;
+}
+
 async function askAddons(to: string, product: Product, drafts?: CartSelection[], offset = 0, openList = false) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
@@ -1588,8 +1608,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
         description: "Seguir sem mais adicionais"
       };
 
-  const tentativeMore = offset + (WA_LIST_MAX_ROWS - 2) < remaining.length ? 1 : 0;
-  const pageSize = WA_LIST_MAX_ROWS - 1 - tentativeMore;
+  const pageSize = addonsPageSize(remaining.length, offset);
   const page = remaining.slice(offset, offset + pageSize);
   const hasMore = offset + page.length < remaining.length;
 
@@ -1603,6 +1622,13 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
       id: "more_addons",
       title: "Ver mais",
       description: "Próximos adicionais"
+    });
+  }
+  if (offset > 0) {
+    rows.push({
+      id: "prev_addons",
+      title: "← Voltar",
+      description: "Adicionais anteriores"
     });
   }
   rows.push(footer);
@@ -2374,8 +2400,10 @@ export async function handleIncomingMessage(input: {
       incoming === "choose_addon" ||
       incoming === "skip_addon" ||
       incoming === "more_addons" ||
+      incoming === "prev_addons" ||
       incoming === "done_addons" ||
       incoming === "more_options" ||
+      incoming === "prev_options" ||
       incoming === "done_options" ||
       normalized === "adicionais" ||
       normalized === "pular";
@@ -2395,9 +2423,20 @@ export async function handleIncomingMessage(input: {
     }
 
     if (incoming === "more_addons" || incoming === "more_options") {
-      context.addonOffset = (context.addonOffset ?? 0) + 8;
+      const total = (await remainingAddons(product, drafts)).length;
+      const offset = context.addonOffset ?? 0;
+      context.addonOffset = offset + addonsPageSize(total, offset);
       await persist("awaiting_addon", context);
       const finished = await askAddons(input.from, product, drafts, context.addonOffset);
+      if (finished) await finishAddons();
+      return;
+    }
+
+    if (incoming === "prev_addons" || incoming === "prev_options") {
+      const total = (await remainingAddons(product, drafts)).length;
+      context.addonOffset = previousAddonsOffset(total, context.addonOffset ?? 0);
+      await persist("awaiting_addon", context);
+      const finished = await askAddons(input.from, product, drafts, context.addonOffset, true);
       if (finished) await finishAddons();
       return;
     }
