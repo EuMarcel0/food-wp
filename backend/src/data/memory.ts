@@ -71,6 +71,7 @@ const products: Product[] = [
     id: "prod-x-burguer",
     categoryId: "cat-lanches",
     categoryName: "Lanches",
+    categorySortOrder: 1,
     name: "X-Burguer",
     description: "Pão, carne e queijo",
     price: 22,
@@ -88,6 +89,7 @@ const products: Product[] = [
     id: "prod-x-salada",
     categoryId: "cat-lanches",
     categoryName: "Lanches",
+    categorySortOrder: 1,
     name: "X-Salada",
     description: "Pão, carne, queijo e salada",
     price: 25,
@@ -105,6 +107,7 @@ const products: Product[] = [
     id: "prod-batata",
     categoryId: "cat-acompanhamentos",
     categoryName: "Acompanhamentos",
+    categorySortOrder: 2,
     name: "Batata frita",
     description: "Porção média",
     price: 14,
@@ -122,6 +125,7 @@ const products: Product[] = [
     id: "prod-refri",
     categoryId: "cat-bebidas",
     categoryName: "Bebidas",
+    categorySortOrder: 3,
     name: "Refrigerante lata",
     description: "350ml",
     price: 7,
@@ -721,6 +725,7 @@ export const memoryStore = {
       id: `prod-${Date.now()}`,
       categoryId: input.categoryId,
       categoryName: category?.name ?? "Cardápio",
+      categorySortOrder: category?.sortOrder ?? 0,
       name: input.name,
       description: input.description,
       price: input.price,
@@ -761,9 +766,9 @@ export const memoryStore = {
     if (!product) return null;
     if (input.categoryId) {
       product.categoryId = input.categoryId;
-      product.categoryName =
-        categories.find((item) => item.id === input.categoryId)?.name ??
-        product.categoryName;
+      const nextCategory = categories.find((item) => item.id === input.categoryId);
+      product.categoryName = nextCategory?.name ?? product.categoryName;
+      product.categorySortOrder = nextCategory?.sortOrder ?? product.categorySortOrder;
     }
     if (input.name !== undefined) product.name = input.name;
     if (input.description !== undefined) product.description = input.description;

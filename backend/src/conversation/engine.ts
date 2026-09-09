@@ -1095,15 +1095,18 @@ function canGoBackToCategories(context: ConversationContext, categoryCount: numb
 }
 
 function productCategories(products: Product[]) {
-  const map = new Map<string, { id: string; name: string; count: number }>();
+  const map = new Map<string, { id: string; name: string; count: number; sortOrder: number }>();
   for (const product of products) {
     const id = product.categoryId || product.categoryName || "cardapio";
     const name = product.categoryName?.trim() || "Cardápio";
     const current = map.get(id);
     if (current) current.count += 1;
-    else map.set(id, { id, name, count: 1 });
+    else map.set(id, { id, name, count: 1, sortOrder: product.categorySortOrder ?? 0 });
   }
-  return [...map.values()].sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  return [...map.values()].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+  );
 }
 
 async function showMenuCategories(

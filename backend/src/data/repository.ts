@@ -43,7 +43,7 @@ import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
 
 const PRODUCT_SELECT_CORE =
-  "*, categories(name), product_option_groups(*, product_options(*))";
+  "*, categories(name, sort_order), product_option_groups(*, product_options(*))";
 const PRODUCT_SELECT = `${PRODUCT_SELECT_CORE}, product_addons(addon_id, addons(id, name, price, sort_order, active))`;
 
 function mapOptionGroups(row: Record<string, unknown>): ProductOptionGroup[] {
@@ -256,11 +256,12 @@ function missingAddonsTable(message?: string) {
 }
 
 function mapProduct(row: Record<string, unknown>): Product {
-  const category = row.categories as { name?: string } | null;
+  const category = row.categories as { name?: string; sort_order?: number } | null;
   return {
     id: String(row.id),
     categoryId: String(row.category_id),
     categoryName: category?.name ?? "Cardápio",
+    categorySortOrder: Number(category?.sort_order ?? 0),
     name: String(row.name),
     description: (() => {
       const raw = (row.description as string | null) ?? null;

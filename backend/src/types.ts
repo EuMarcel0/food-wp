@@ -225,6 +225,8 @@ export type Product = {
   id: string;
   categoryId: string;
   categoryName: string;
+  /** Ordem da categoria no cardápio (campo Ordem do admin). */
+  categorySortOrder: number;
   name: string;
   description: string | null;
   price: number;
