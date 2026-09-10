@@ -190,7 +190,7 @@ export function nextStatus(
 }
 
 export const PAYMENT_LABEL: Record<NonNullable<Order["paymentMethod"]>, string> = {
-  pix: "Pix na Entrega/Retirada",
+  pix: "Pix",
   cash: "Dinheiro",
   card: "Cartão",
   credit: "Crédito",

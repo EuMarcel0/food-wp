@@ -118,7 +118,7 @@ function formatDate(iso) {
 }
 
 const PAYMENT = {
-  pix: "Pix na Entrega/Retirada",
+  pix: "Pix",
   cash: "Dinheiro",
   card: "Cartao",
   credit: "Credito",
