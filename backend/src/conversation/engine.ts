@@ -581,10 +581,17 @@ async function isDrinksProduct(productId: string | undefined) {
   return Boolean(product && product.categoryId === drinks.id);
 }
 
-async function askDrinksUpsell(to: string) {
+async function askDrinksUpsell(to: string, more = false) {
+  if (more) {
+    await sendButtons(to, "🥤 *Deseja adicionar mais uma bebida?*", [
+      { id: "order_drinks", title: "Ver bebidas" },
+      { id: "skip_drinks", title: "Pular" },
+    ]);
+    return;
+  }
   await sendButtons(to, "🥤 *Bebidas?*\nQuer adicionar alguma bebida ao pedido?", [
     { id: "order_drinks", title: "Ver bebidas" },
-    { id: "skip_drinks", title: "Não, obrigado" }
+    { id: "skip_drinks", title: "Não, obrigado" },
   ]);
 }
 
@@ -601,17 +608,21 @@ async function offerDrinksOrFinish(
     await finishItemOrContinueBatch(to, store, context, persist);
     return;
   }
-  if (await isDrinksProduct(addedProductId)) {
-    await finishItemOrContinueBatch(to, store, context, persist);
-    return;
-  }
   const drinks = await findDrinksCategory();
   if (!drinks) {
     await finishItemOrContinueBatch(to, store, context, persist);
     return;
   }
+  // Acabou de escolher uma bebida → pergunta se quer mais uma.
+  if (await isDrinksProduct(addedProductId)) {
+    context.drinksOfferMore = true;
+    await persist("awaiting_drinks_upsell", context);
+    await askDrinksUpsell(to, true);
+    return;
+  }
+  context.drinksOfferMore = false;
   await persist("awaiting_drinks_upsell", context);
-  await askDrinksUpsell(to);
+  await askDrinksUpsell(to, false);
 }
 
 async function openDrinksMenu(
@@ -842,7 +853,7 @@ async function resumeCurrentStep(
       await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
       return;
     case "awaiting_drinks_upsell":
-      await askDrinksUpsell(to);
+      await askDrinksUpsell(to, Boolean(context.drinksOfferMore));
       return;
     case "cart":
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
@@ -1093,6 +1104,7 @@ function resetMenuBrowse(context: ConversationContext) {
   context.menuCategoryId = null;
   context.menuOffset = 0;
   context.menuLockCategory = undefined;
+  context.drinksOfferMore = undefined;
 }
 
 function canGoBackToCategories(context: ConversationContext, categoryCount: number) {
@@ -1715,6 +1727,7 @@ async function finishItemOrContinueBatch(
     clearBatch(context);
   }
 
+  context.drinksOfferMore = undefined;
   await persist("awaiting_fulfillment", context);
   await showCartAfterAdd(to, store, context);
 }
@@ -2009,10 +2022,11 @@ export async function handleIncomingMessage(input: {
       return;
     }
     if (isSkipDrinks(incoming, normalized)) {
+      context.drinksOfferMore = undefined;
       await finishItemOrContinueBatch(input.from, store, context, persist);
       return;
     }
-    await askDrinksUpsell(input.from);
+    await askDrinksUpsell(input.from, Boolean(context.drinksOfferMore));
     return;
   }
 

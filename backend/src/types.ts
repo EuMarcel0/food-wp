@@ -124,6 +124,8 @@ export type ConversationContext = {
   menuOffset?: number;
   /** Se true, oculta “← Categorias” (ex.: etapa Bebidas? / Ver bebidas). */
   menuLockCategory?: boolean;
+  /** Upsell de bebidas após já ter escolhido uma (“mais uma bebida?”). */
+  drinksOfferMore?: boolean;
   addonOffset?: number;
   flavorOffset?: number;
   /**
