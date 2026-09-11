@@ -588,7 +588,7 @@ async function askDrinksUpsell(to: string) {
   ]);
 }
 
-/** Após observação (ou item sem obs.): oferece bebidas; se já for bebida / sem categoria, segue o fluxo. */
+/** Após observação (ou item sem obs.): oferece bebidas só quando o lote acabou; no meio do loop segue a próxima pizza. */
 async function offerDrinksOrFinish(
   to: string,
   store: Store,
@@ -596,6 +596,11 @@ async function offerDrinksOrFinish(
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>,
   addedProductId?: string
 ) {
+  // Ainda faltam pizzas no lote (ex.: 1ª de 2) → não interrompe com Bebidas?
+  if (isBatchActive(context) && (context.batchRemaining ?? 0) > 1) {
+    await finishItemOrContinueBatch(to, store, context, persist);
+    return;
+  }
   if (await isDrinksProduct(addedProductId)) {
     await finishItemOrContinueBatch(to, store, context, persist);
     return;
