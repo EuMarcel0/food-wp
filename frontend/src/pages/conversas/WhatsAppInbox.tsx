@@ -489,6 +489,13 @@ export function WhatsAppInbox({
     },
   });
 
+  function keepComposerFocused() {
+    const el = draftAreaRef.current;
+    if (!el) return;
+    // preventScroll evita o iOS “pular” o chat ao reabrir o teclado.
+    el.focus({ preventScroll: true });
+  }
+
   function submitMessage() {
     const text = draft.trim();
     if (!text || !selectedId) return;
@@ -496,6 +503,11 @@ export function WhatsAppInbox({
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setDraft("");
     sendMutation.mutate({ conversationId, text, tempId });
+    // Mantém o teclado aberto no mobile após enviar.
+    requestAnimationFrame(() => {
+      keepComposerFocused();
+      requestAnimationFrame(keepComposerFocused);
+    });
   }
 
   function insertEmoji(emoji: string) {
@@ -863,6 +875,8 @@ export function WhatsAppInbox({
                   type="primary"
                   icon={<SendOutlined />}
                   disabled={!draft.trim()}
+                  // Evita o botão roubar o foco do textarea (fecha o teclado no iOS).
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={submitMessage}
                   aria-label="Enviar"
                 />
