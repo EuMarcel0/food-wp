@@ -173,12 +173,21 @@ export function WhatsAppInbox({
   /**
    * iOS PWA: ao focar o composer, o Safari desloca o visualViewport e “some”
    * com o header do cliente. Pinamos o painel do chat na área visível.
+   * Depois do resize do teclado, recolocamos o thread na última mensagem
+   * (senão o scrollTop antigo aponta para o meio do histórico).
    */
   useLayoutEffect(() => {
     if (isDesktop || !selectedId) return;
     const shell = chatShellRef.current;
     if (!shell) return;
     const vv = window.visualViewport;
+
+    const pinThreadToBottom = () => {
+      const el = threadRef.current;
+      if (!el) return;
+      stickToBottomRef.current = true;
+      el.scrollTop = el.scrollHeight;
+    };
 
     const sync = () => {
       window.scrollTo(0, 0);
@@ -187,10 +196,15 @@ export function WhatsAppInbox({
       if (!vv) {
         shell.style.top = "0px";
         shell.style.height = "100dvh";
-        return;
+      } else {
+        shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
+        shell.style.height = `${vv.height}px`;
       }
-      shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
-      shell.style.height = `${vv.height}px`;
+      // Duplo rAF: espera o flex recalcular a altura do thread após o teclado.
+      requestAnimationFrame(() => {
+        pinThreadToBottom();
+        requestAnimationFrame(pinThreadToBottom);
+      });
     };
 
     sync();
@@ -816,19 +830,26 @@ export function WhatsAppInbox({
                       node?.resizableTextArea?.textArea ?? null;
                   }}
                   onFocus={() => {
-                    // iOS tenta scrollar o input para o centro; reverte na hora.
+                    // iOS tenta scrollar o input para o centro; reverte na hora
+                    // e mantém as mensagens recentes visíveis acima do teclado.
+                    stickToBottomRef.current = true;
                     requestAnimationFrame(() => {
                       window.scrollTo(0, 0);
                       const vv = window.visualViewport;
                       const shell = chatShellRef.current;
+                      const thread = threadRef.current;
                       if (!shell || isDesktop) return;
                       if (!vv) {
                         shell.style.top = "0px";
                         shell.style.height = "100dvh";
-                        return;
+                      } else {
+                        shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
+                        shell.style.height = `${vv.height}px`;
                       }
-                      shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
-                      shell.style.height = `${vv.height}px`;
+                      if (thread) thread.scrollTop = thread.scrollHeight;
+                      requestAnimationFrame(() => {
+                        if (thread) thread.scrollTop = thread.scrollHeight;
+                      });
                     });
                   }}
                   onPressEnter={(e) => {
