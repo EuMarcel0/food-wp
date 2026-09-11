@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -129,6 +129,7 @@ export function WhatsAppInbox({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [readTick, setReadTick] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
+  const chatShellRef = useRef<HTMLElement>(null);
   const draftAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const stickToBottomRef = useRef(true);
   const loadingOlderRef = useRef(false);
@@ -166,6 +167,42 @@ export function WhatsAppInbox({
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
+    };
+  }, [isDesktop, selectedId]);
+
+  /**
+   * iOS PWA: ao focar o composer, o Safari desloca o visualViewport e “some”
+   * com o header do cliente. Pinamos o painel do chat na área visível.
+   */
+  useLayoutEffect(() => {
+    if (isDesktop || !selectedId) return;
+    const shell = chatShellRef.current;
+    if (!shell) return;
+    const vv = window.visualViewport;
+
+    const sync = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      if (!vv) {
+        shell.style.top = "0px";
+        shell.style.height = "100dvh";
+        return;
+      }
+      shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
+      shell.style.height = `${vv.height}px`;
+    };
+
+    sync();
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    window.addEventListener("focusin", sync);
+    return () => {
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("focusin", sync);
+      shell.style.top = "";
+      shell.style.height = "";
     };
   }, [isDesktop, selectedId]);
 
@@ -597,11 +634,14 @@ export function WhatsAppInbox({
       </aside>
 
       <section
+        ref={chatShellRef}
         className={cn(
           "flex min-h-0 flex-col bg-[#efeae2] dark:bg-[#0b141a]",
           selectedId || isDesktop ? "flex" : "hidden",
           !selectedId && "hidden lg:flex",
-          !isDesktop && selectedId && "h-full max-lg:flex-1",
+          !isDesktop &&
+            selectedId &&
+            "fixed inset-x-0 top-0 z-50 h-[100dvh] max-h-[100dvh] max-lg:flex",
         )}
       >
         {!selected ? (
@@ -610,7 +650,7 @@ export function WhatsAppInbox({
           </div>
         ) : (
           <>
-            <header className="flex shrink-0 flex-col gap-2 border-b border-food-border bg-food-card py-2.5 max-lg:gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:px-3 lg:py-2.5">
+            <header className="sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b border-food-border bg-food-card py-2.5 max-lg:gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:px-3 lg:py-2.5">
               <div className="flex min-w-0 items-center gap-2 px-3 lg:flex-1 lg:px-0">
                 <Button
                   type="text"
@@ -774,6 +814,22 @@ export function WhatsAppInbox({
                   ref={(node) => {
                     draftAreaRef.current =
                       node?.resizableTextArea?.textArea ?? null;
+                  }}
+                  onFocus={() => {
+                    // iOS tenta scrollar o input para o centro; reverte na hora.
+                    requestAnimationFrame(() => {
+                      window.scrollTo(0, 0);
+                      const vv = window.visualViewport;
+                      const shell = chatShellRef.current;
+                      if (!shell || isDesktop) return;
+                      if (!vv) {
+                        shell.style.top = "0px";
+                        shell.style.height = "100dvh";
+                        return;
+                      }
+                      shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
+                      shell.style.height = `${vv.height}px`;
+                    });
                   }}
                   onPressEnter={(e) => {
                     if (!e.shiftKey) {
