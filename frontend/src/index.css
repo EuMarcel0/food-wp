@@ -149,7 +149,31 @@ body,
 
   html {
     touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     -webkit-tap-highlight-color: rgba(232, 93, 4, 0.18);
+  }
+
+  /*
+   * iOS Safari/PWA: zoom automático ao focar input com font < 16px.
+   * O manifest não controla isso — manter ≥16px nos campos evita o “esticar”
+   * sem bloquear pinça voluntária (maximum-scale=1 prejudica acessibilidade).
+   */
+  @media (hover: none) and (pointer: coarse) {
+    input,
+    select,
+    textarea,
+    .ant-input,
+    .ant-input-affix-wrapper,
+    .ant-input-affix-wrapper > input.ant-input,
+    .ant-input-number-input,
+    .ant-select-selector,
+    .ant-select-selection-search-input,
+    .ant-picker-input > input,
+    .ant-mentions,
+    .ant-mentions > textarea {
+      font-size: 16px !important;
+    }
   }
 
   .skip-link:focus-visible,
