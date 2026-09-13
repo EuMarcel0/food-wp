@@ -295,11 +295,19 @@ function batchMaxFlavors(context: ConversationContext) {
   return Math.max(1, context.batchMaxFlavors ?? 1);
 }
 
+/**
+ * Total de sabores na montagem = pizza base (1º) + máx. do tamanho no cadastro.
+ * Ex.: cadastro maxSelect=2 → Combine até 3 / 1º sabor de 3.
+ */
+function batchTotalFlavors(context: ConversationContext) {
+  return batchMaxFlavors(context) + 1;
+}
+
 /** Intro da lista de sabores no lote (após “quantas?”). */
 function batchFlavorMenuIntro(context: ConversationContext, prefix?: string) {
-  const max = batchMaxFlavors(context);
-  const flavorWord = max === 1 ? "sabor" : "sabores";
-  return [prefix, `🍕 Combine até *${max}* ${flavorWord}`, `Escolha o *1º* sabor de *${max}*:`]
+  const total = batchTotalFlavors(context);
+  const flavorWord = total === 1 ? "sabor" : "sabores";
+  return [prefix, `🍕 Combine até *${total}* ${flavorWord}`, `Escolha o *1º* sabor de *${total}*:`]
     .filter(Boolean)
     .join("\n");
 }
@@ -1559,12 +1567,13 @@ async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> 
       });
     }
   }
-  // Preferir ordem/preço/máx. sabores do catálogo global quando o nome bater.
+  // Preferir ordem/preço/máx. sabores/nome do catálogo global quando o nome bater.
   const catalog = await listSizes();
   for (const size of catalog) {
     const key = normalize(size.name);
     const existing = byName.get(key);
     if (existing) {
+      existing.name = size.name;
       existing.price = size.price;
       existing.sortOrder = size.sortOrder;
       existing.id = size.id;
@@ -1609,18 +1618,49 @@ async function startCategoryBatch(
   await askBatchSize(to, categoryName, sizes);
 }
 
+/** Localiza o grupo de tamanho do produto correspondente ao tamanho do lote. */
+function findProductSizeGroup(product: Product, sizeName: string) {
+  const sizes = activeGroups(product).filter(group => isSizeGroup(group));
+  if (!sizes.length) return null;
+  const want = normalize(sizeName);
+  if (!want) return null;
+  return (
+    sizes.find(group => normalize(group.name) === want) ??
+    sizes.find(group => {
+      const name = normalize(group.name);
+      return name.startsWith(want) || want.startsWith(name) || name.includes(want) || want.includes(name);
+    }) ??
+    null
+  );
+}
+
 /** Aplica o tamanho do lote no rascunho do produto (pula a etapa de tamanho). */
 function applyBatchSizeToProduct(product: Product, context: ConversationContext) {
   const sizeName = context.batchSizeName?.trim();
-  if (!sizeName || !isCustomizable(product)) return;
-  const match = activeGroups(product)
-    .filter(group => isSizeGroup(group))
-    .find(group => normalize(group.name) === normalize(sizeName));
-  if (!match) return;
-  const drafts = context.draftSelections ?? [];
-  context.draftSelections = drafts;
-  if (drafts.some(item => item.groupId === match.id)) return;
-  ensureDraftSelection(product, match, drafts, soleGroupPick(match));
+  if (!sizeName || !isCustomizable(product)) return false;
+  const match = findProductSizeGroup(product, sizeName);
+  if (!match) return false;
+
+  const drafts = [...(context.draftSelections ?? [])];
+  const exclusive = match.exclusiveSet?.trim();
+  const next = exclusive
+    ? drafts.filter(item => {
+        const group = activeGroups(product).find(entry => entry.id === item.groupId);
+        return group?.exclusiveSet?.trim() !== exclusive || item.groupId === match.id;
+      })
+    : drafts;
+
+  context.draftSelections = next;
+  if (!next.some(item => item.groupId === match.id)) {
+    ensureDraftSelection(product, match, next, soleGroupPick(match));
+  }
+  // Garante preço-base do tamanho no rascunho.
+  const selected = next.find(item => item.groupId === match.id);
+  if (selected && !(typeof selected.basePrice === "number" && selected.basePrice > 0)) {
+    selected.basePrice = sizePrice(product, match);
+  }
+  if (selected && !selected.groupName) selected.groupName = match.name;
+  return true;
 }
 
 /** Itens por página na lista de adicionais (rodapé Pular/Pronto sempre reservado). */
@@ -1819,8 +1859,34 @@ async function continueProductFlow(
     applyBatchSizeToProduct(product, context);
   }
   if (isCustomizable(product)) {
+    // Segurança: com tamanho do lote já definido, nunca reabre “Escolha o tamanho”.
+    let next = nextAssembly(product, context.draftSelections ?? []);
+    if (next.type === "variant" && context.batchSizeName?.trim()) {
+      applyBatchSizeToProduct(product, context);
+      next = nextAssembly(product, context.draftSelections ?? []);
+      if (next.type === "variant") {
+        const locked = findProductSizeGroup(product, context.batchSizeName);
+        if (locked) {
+          const drafts = context.draftSelections ?? [];
+          context.draftSelections = drafts.filter(item => {
+            const group = activeGroups(product).find(entry => entry.id === item.groupId);
+            return !isSizeGroup(group) || item.groupId === locked.id;
+          });
+          ensureDraftSelection(product, locked, context.draftSelections, soleGroupPick(locked));
+          next = nextAssembly(product, context.draftSelections ?? []);
+        }
+      }
+    }
     await persist("awaiting_option", context);
-    await askAssembly(to, product, context);
+    if (next.type === "done") {
+      await askQuantityStage(to, product, context, persist);
+      return;
+    }
+    if (next.type === "variant") {
+      await askAssembly(to, product, context);
+      return;
+    }
+    await askGroupOptions(to, product, next.group, context.draftSelections ?? []);
     return;
   }
   await askQuantityStage(to, product, context, persist);
