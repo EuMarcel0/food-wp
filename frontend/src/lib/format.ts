@@ -135,6 +135,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_address: "Endereço",
   awaiting_payment: "Pagamento",
   awaiting_change: "Troco",
+  awaiting_contact_name: "Nome p/ contato",
   awaiting_order_code: "Consultando pedido",
   awaiting_new_order: "Novo pedido?",
 };

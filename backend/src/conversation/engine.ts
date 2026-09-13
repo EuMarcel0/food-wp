@@ -18,6 +18,7 @@ import {
   listSizes,
   saveConversation,
   touchConversation,
+  updateCustomerName,
   updateOrderStatus,
   upsertCustomer
 } from "../data/repository.js";
@@ -287,6 +288,28 @@ function clearBatch(context: ConversationContext) {
   context.batchRemaining = undefined;
   context.batchTotal = undefined;
   context.batchSizeName = undefined;
+  context.batchMaxFlavors = undefined;
+}
+
+function batchMaxFlavors(context: ConversationContext) {
+  return Math.max(1, context.batchMaxFlavors ?? 1);
+}
+
+/** Intro da lista de sabores no lote (após “quantas?”). */
+function batchFlavorMenuIntro(context: ConversationContext, prefix?: string) {
+  const max = batchMaxFlavors(context);
+  const flavorWord = max === 1 ? "sabor" : "sabores";
+  return [prefix, `🍕 Combine até *${max}* ${flavorWord}`, `Escolha o *1º* sabor de *${max}*:`]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function isBatchFlavorMenu(context: ConversationContext) {
+  return isBatchActive(context) && Boolean(context.batchSizeName?.trim());
+}
+
+function productMenuIntro(context: ConversationContext, fallback = "📋 Escolha um item:") {
+  return isBatchFlavorMenu(context) ? batchFlavorMenuIntro(context) : fallback;
 }
 
 function isBatchActive(context: ConversationContext) {
@@ -756,7 +779,7 @@ async function resumeCurrentStep(
 
   switch (state) {
     case "awaiting_product":
-      await showMenu(to, withHint("Escolha um item do cardápio:"), context);
+      await showMenu(to, withHint(productMenuIntro(context, "Escolha um item do cardápio:")), context);
       return;
     case "awaiting_option": {
       const product = context.selectedProductId ? await getProduct(context.selectedProductId) : null;
@@ -885,6 +908,10 @@ async function resumeCurrentStep(
       return;
     case "awaiting_change":
       await askChange(to, orderTotalCents(store, context));
+      return;
+    case "awaiting_contact_name":
+      await sendHintIfNeeded();
+      await askContactName(to);
       return;
     case "awaiting_order_code":
       await sendText(to, "Me envie o código do pedido (ex.: A7K2).");
@@ -1017,6 +1044,14 @@ const PAYMENT_ROWS = [
 
 async function askPayment(to: string, intro = "💳 Como deseja pagar?") {
   await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows: PAYMENT_ROWS }]);
+}
+
+async function askContactName(to: string) {
+  await sendText(to, "Informe seu nome para contato:");
+}
+
+function clipContactName(raw: string) {
+  return raw.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 function parsePayment(incoming: string, normalized: string): PaymentMethod | "card_ambiguous" | null {
@@ -1174,7 +1209,12 @@ async function showMenuProducts(
   to: string,
   intro: string,
   products: Product[],
-  opts: { categoryName?: string | null; offset: number; canGoBack: boolean }
+  opts: {
+    categoryName?: string | null;
+    offset: number;
+    canGoBack: boolean;
+    listButton?: string;
+  }
 ) {
   const pageSize = menuItemsPageSize(products.length, opts.offset, opts.canGoBack);
   const page = products.slice(opts.offset, opts.offset + pageSize);
@@ -1213,7 +1253,7 @@ async function showMenuProducts(
 
   const heading = [intro, opts.categoryName ? `📂 *${opts.categoryName}*` : null].filter(Boolean).join("\n");
 
-  await sendList(to, heading, "Ver itens", [
+  await sendList(to, heading, opts.listButton?.trim() || "Ver itens", [
     {
       title: opts.categoryName?.slice(0, 24) || "Cardápio",
       rows: rows.slice(0, WA_LIST_MAX_ROWS)
@@ -1272,10 +1312,12 @@ async function showMenu(
     );
     const categoryName =
       inCategory[0]?.categoryName ?? categories.find(item => item.id === context.menuCategoryId)?.name ?? "Cardápio";
+    const flavorMenu = isBatchFlavorMenu(context);
     await showMenuProducts(to, intro, inCategory, {
       categoryName,
       offset,
-      canGoBack: canGoBackToCategories(context, categories.length)
+      canGoBack: canGoBackToCategories(context, categories.length),
+      listButton: flavorMenu ? "Escolher sabor" : "Ver itens"
     });
     return;
   }
@@ -1397,7 +1439,7 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
     const remaining = await pizzaFlavorChoices(product.pizzaKind, [product.id, ...picked]);
     if (!remaining.length) return true;
 
-    // A partir do 2º sabor: botões Escolher sabor + Pronto (Pronto também fica na lista).
+    // A partir do 2º sabor extra: botões Escolher sabor + Pronto (Pronto também fica na lista).
     if (picked.length >= 2) {
       await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
         { id: "choose_flavor", title: "Escolher sabor" },
@@ -1406,12 +1448,16 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
       return false;
     }
 
-    // Já tem 1 sabor: abre a lista direto (Pronto fica na própria lista).
+    // Já escolheu 1 sabor extra: Escolher sabor + Só este sabor.
     if (picked.length > 0) {
-      return showFlavorList(to, product, group, drafts, 0);
+      await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
+        { id: "choose_flavor", title: "Escolher sabor" },
+        { id: "skip_group", title: "Só este sabor" }
+      ]);
+      return false;
     }
 
-    // Primeira decisão: botões lado a lado — "Escolher sabor" por último (mais clicado).
+    // Primeira decisão (só o sabor do item): Só este sabor + Escolher sabor.
     await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
       { id: "skip_group", title: "Só este sabor" },
       { id: "choose_flavor", title: "Escolher sabor" }
@@ -1493,6 +1539,7 @@ type BatchSizeOption = {
   name: string;
   price: number;
   sortOrder: number;
+  maxSelect: number;
 };
 
 /** Tamanhos disponíveis nos itens customizáveis da categoria (união por nome). */
@@ -1507,11 +1554,12 @@ async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> 
         id: group.id,
         name: group.name,
         price: group.price > 0 ? group.price : product.price,
-        sortOrder: group.sortOrder
+        sortOrder: group.sortOrder,
+        maxSelect: Math.max(1, group.maxSelect ?? 1)
       });
     }
   }
-  // Preferir ordem/preço do catálogo global quando o nome bater.
+  // Preferir ordem/preço/máx. sabores do catálogo global quando o nome bater.
   const catalog = await listSizes();
   for (const size of catalog) {
     const key = normalize(size.name);
@@ -1520,6 +1568,7 @@ async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> 
       existing.price = size.price;
       existing.sortOrder = size.sortOrder;
       existing.id = size.id;
+      existing.maxSelect = Math.max(1, size.maxSelect ?? existing.maxSelect);
     }
   }
   return [...byName.values()].sort(
@@ -1704,8 +1753,6 @@ async function finishItemOrContinueBatch(
   if (isBatchActive(context)) {
     context.batchRemaining = (context.batchRemaining ?? 1) - 1;
     if ((context.batchRemaining ?? 0) > 0) {
-      const total = context.batchTotal ?? context.batchRemaining + 1;
-      const ordinal = total - (context.batchRemaining ?? 0) + 1;
       context.selectedProductId = undefined;
       context.draftSelections = [];
       context.optionGroupIndex = undefined;
@@ -1713,11 +1760,10 @@ async function finishItemOrContinueBatch(
       context.flavorOffset = 0;
       context.menuCategoryId = context.batchCategoryId ?? context.menuCategoryId ?? null;
       context.menuOffset = 0;
-      const sizeHint = context.batchSizeName ? ` (${context.batchSizeName})` : "";
       await persist("awaiting_product", context);
       await showMenu(
         to,
-        `✅ Item adicionado!\n📋 Escolha o item da *${ordinal}ª* de *${total}*${sizeHint}:`,
+        batchFlavorMenuIntro(context, "✅ Item adicionado!"),
         context,
         persist,
         store
@@ -1809,6 +1855,7 @@ async function finishOrder(
     fulfillment: context.fulfillment,
     paymentMethod: context.paymentMethod,
     changeForCents: context.paymentMethod === "cash" ? (context.changeForCents ?? 0) : null,
+    contactName: context.contactName ?? customer.name,
     addressText: context.addressText,
     notes: context.orderNotes ?? null,
     deliveryFeeCents: context.fulfillment === "delivery" ? deliveryFee.cents : 0,
@@ -2292,7 +2339,20 @@ export async function handleIncomingMessage(input: {
             );
             return;
           }
-          await showFlavorList(input.from, product, group, drafts, 0);
+          // 1 sabor extra já escolhido → Escolher sabor + Só este sabor.
+          await sendButtons(
+            input.from,
+            groupPrompt(
+              product,
+              group,
+              current.options.map(item => item.id),
+              current.options.map(item => item.name)
+            ),
+            [
+              { id: "choose_flavor", title: "Escolher sabor" },
+              { id: "skip_group", title: "Só este sabor" }
+            ]
+          );
           return;
         }
         const shares =
@@ -2512,7 +2572,7 @@ export async function handleIncomingMessage(input: {
         return;
       }
       await persist("awaiting_product", context);
-      await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
+      await showMenu(input.from, productMenuIntro(context), context, persist, store);
       return;
     }
     if (incoming === "menu:more_cats") {
@@ -2530,7 +2590,7 @@ export async function handleIncomingMessage(input: {
       const offset = context.menuOffset ?? 0;
       context.menuOffset = offset + menuItemsPageSize(inCategory.length, offset, canGoBack);
       await persist("awaiting_product", context);
-      await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
+      await showMenu(input.from, productMenuIntro(context), context, persist, store);
       return;
     }
     if (incoming === "menu:prev_items") {
@@ -2541,13 +2601,13 @@ export async function handleIncomingMessage(input: {
       const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
       context.menuOffset = previousMenuItemsOffset(inCategory.length, context.menuOffset ?? 0, canGoBack);
       await persist("awaiting_product", context);
-      await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
+      await showMenu(input.from, productMenuIntro(context), context, persist, store);
       return;
     }
     if (incoming === "menu:back_cats") {
       if (context.menuLockCategory) {
         await persist("awaiting_product", context);
-        await showMenu(input.from, "📋 Escolha um item:", context, persist, store);
+        await showMenu(input.from, productMenuIntro(context), context, persist, store);
         return;
       }
       clearBatch(context);
@@ -2610,6 +2670,7 @@ export async function handleIncomingMessage(input: {
     }
 
     context.batchSizeName = picked.name;
+    context.batchMaxFlavors = Math.max(1, picked.maxSelect ?? 1);
     context.menuCategoryId = categoryId;
     await persist("awaiting_batch_count", context);
     await askBatchCount(input.from, categoryName);
@@ -2640,8 +2701,7 @@ export async function handleIncomingMessage(input: {
     context.flavorOffset = 0;
     context.menuOffset = 0;
     await persist("awaiting_product", context);
-    const sizeHint = context.batchSizeName ? ` (${context.batchSizeName})` : "";
-    await showMenu(input.from, `📋 Escolha o item da *1ª* de *${quantity}*${sizeHint}:`, context, persist, store);
+    await showMenu(input.from, batchFlavorMenuIntro(context), context, persist, store);
     return;
   }
 
@@ -2878,7 +2938,8 @@ export async function handleIncomingMessage(input: {
     }
     context.changeForCents = change;
     context.paymentMethod = "cash";
-    await finishOrder(input.from, store, customer, context, persist);
+    await persist("awaiting_contact_name", context);
+    await askContactName(input.from);
     return;
   }
 
@@ -2907,6 +2968,24 @@ export async function handleIncomingMessage(input: {
     }
 
     context.changeForCents = undefined;
+    await persist("awaiting_contact_name", context);
+    await askContactName(input.from);
+    return;
+  }
+
+  if (state === "awaiting_contact_name") {
+    const name = clipContactName(input.text);
+    if (!name || incoming.startsWith("pay:") || incoming.startsWith("fulfillment:")) {
+      await askContactName(input.from);
+      return;
+    }
+    context.contactName = name;
+    const updated = await updateCustomerName(customer.id, name);
+    if (updated) {
+      customer.name = updated.name;
+    } else {
+      customer.name = name;
+    }
     await finishOrder(input.from, store, customer, context, persist);
     return;
   }

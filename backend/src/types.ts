@@ -28,6 +28,7 @@ export type ConversationState =
   | "awaiting_address"
   | "awaiting_payment"
   | "awaiting_change"
+  | "awaiting_contact_name"
   | "awaiting_order_code"
   | "awaiting_new_order";
 
@@ -49,6 +50,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_address",
   "awaiting_payment",
   "awaiting_change",
+  "awaiting_contact_name",
 ]);
 
 export function isOrderFlowState(state: ConversationState) {
@@ -118,6 +120,8 @@ export type ConversationContext = {
   addressText?: string;
   paymentMethod?: PaymentMethod;
   changeForCents?: number;
+  /** Nome informado no checkout para contato/cupom. */
+  contactName?: string;
   orderNotes?: string | null;
   /** Categoria aberta no cardápio (navegação em etapas). */
   menuCategoryId?: string | null;
@@ -138,6 +142,8 @@ export type ConversationContext = {
   batchTotal?: number;
   /** Nome do tamanho escolhido no lote (ex.: "M - Média"). */
   batchSizeName?: string;
+  /** Máx. de sabores do tamanho do lote (cadastro de tamanhos). */
+  batchMaxFlavors?: number;
 };
 
 export type DeliveryNeighborhood = {

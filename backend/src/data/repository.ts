@@ -319,7 +319,10 @@ function mapOrder(row: Record<string, unknown>): Order {
     storeId: String(row.store_id),
     customerId: String(row.customer_id),
     customerPhone: customer?.wa_phone,
-    customerName: customer?.name ?? null,
+    customerName:
+      (row.contact_name != null && String(row.contact_name).trim()) ||
+      customer?.name ||
+      null,
     code: String(row.code),
     status: row.status as OrderStatus,
     fulfillment: row.fulfillment as Fulfillment,
@@ -1638,6 +1641,22 @@ export async function upsertCustomer(
   return mapCustomer(data as Record<string, unknown>);
 }
 
+export async function updateCustomerName(customerId: string, name: string) {
+  const trimmed = name.replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!trimmed) return null;
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updateCustomerName(customerId, trimmed);
+
+  const { data, error } = await supabase
+    .from("customers")
+    .update({ name: trimmed })
+    .eq("id", customerId)
+    .select("*")
+    .single();
+  if (error || !data) return memoryStore.updateCustomerName(customerId, trimmed);
+  return mapCustomer(data as Record<string, unknown>);
+}
+
 function mapConversation(data: Record<string, unknown>): Conversation {
   return {
     id: String(data.id),
@@ -2563,6 +2582,7 @@ export async function createOrder(input: {
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod;
   changeForCents?: number | null;
+  contactName?: string | null;
   addressText?: string;
   notes?: string | null;
   items: {
@@ -2580,6 +2600,7 @@ export async function createOrder(input: {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.createOrder(input);
 
+  const contactName = input.contactName?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
   const subtotalCents = input.items.reduce(
     (sum, item) => sum + item.quantity * item.unitPriceCents,
     0,
@@ -2593,6 +2614,7 @@ export async function createOrder(input: {
     payment_method: input.paymentMethod,
     change_for_cents:
       input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
+    contact_name: contactName,
     address_text: input.addressText ?? null,
     neighborhood_id: input.neighborhoodId ?? null,
     neighborhood_name: input.neighborhoodName?.trim() || null,
@@ -2608,17 +2630,35 @@ export async function createOrder(input: {
     .select("*")
     .single();
   let row = data;
-  if (
-    (error || !row) &&
-    (error?.message?.includes("neighborhood_name") ||
-      error?.message?.includes("neighborhood_id"))
-  ) {
-    const { neighborhood_id: _id, neighborhood_name: _name, ...legacy } = payload;
-    const retry = await supabase.from("orders").insert(legacy).select("*").single();
-    row = retry.data;
-    if (retry.error || !row) return memoryStore.createOrder(input);
-  } else if (error || !row) {
-    return memoryStore.createOrder(input);
+  if (error || !row) {
+    const missingContact = Boolean(error?.message?.includes("contact_name"));
+    const missingNeighborhood = Boolean(
+      error?.message?.includes("neighborhood_name") ||
+        error?.message?.includes("neighborhood_id"),
+    );
+    if (missingContact || missingNeighborhood) {
+      const {
+        neighborhood_id: _id,
+        neighborhood_name: _name,
+        contact_name: _contact,
+        ...base
+      } = payload;
+      const legacy = {
+        ...base,
+        ...(missingNeighborhood
+          ? {}
+          : {
+              neighborhood_id: payload.neighborhood_id,
+              neighborhood_name: payload.neighborhood_name,
+            }),
+        ...(missingContact ? {} : { contact_name: payload.contact_name }),
+      };
+      const retry = await supabase.from("orders").insert(legacy).select("*").single();
+      row = retry.data;
+      if (retry.error || !row) return memoryStore.createOrder(input);
+    } else {
+      return memoryStore.createOrder(input);
+    }
   }
 
   await supabase.from("order_items").insert(
@@ -2635,11 +2675,16 @@ export async function createOrder(input: {
 
   const order = mapOrder({
     ...row,
+    contact_name:
+      (row as Record<string, unknown>).contact_name ?? contactName ?? null,
     neighborhood_name:
       (row as Record<string, unknown>).neighborhood_name ??
       input.neighborhoodName ??
       null,
-    customers: { wa_phone: input.customer.waPhone, name: input.customer.name },
+    customers: {
+      wa_phone: input.customer.waPhone,
+      name: contactName || input.customer.name,
+    },
     order_items: input.items,
   });
   await createNotification({
@@ -2649,7 +2694,7 @@ export async function createOrder(input: {
     orderCode: order.code,
     title: `Pedido #${order.code} criado`,
     changeSummary: null,
-    actorName: input.customer.name?.trim() || "Cliente WhatsApp",
+    actorName: contactName || input.customer.name?.trim() || "Cliente WhatsApp",
   });
   return order;
 }

@@ -812,6 +812,18 @@ export const memoryStore = {
     return customer;
   },
 
+  updateCustomerName(customerId: string, name: string) {
+    const trimmed = name.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!trimmed) return null;
+    for (const customer of customers.values()) {
+      if (customer.id === customerId) {
+        customer.name = trimmed;
+        return customer;
+      }
+    }
+    return null;
+  },
+
   findCustomerPhone(customerId: string) {
     for (const customer of customers.values()) {
       if (customer.id === customerId) return customer.waPhone;
@@ -1196,6 +1208,7 @@ export const memoryStore = {
     fulfillment: Fulfillment;
     paymentMethod: PaymentMethod;
     changeForCents?: number | null;
+    contactName?: string | null;
     addressText?: string;
     notes?: string | null;
     items: {
@@ -1213,12 +1226,16 @@ export const memoryStore = {
       (sum, item) => sum + item.quantity * item.unitPriceCents,
       0,
     );
+    const contactName = input.contactName?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+    if (contactName) {
+      this.updateCustomerName(input.customer.id, contactName);
+    }
     const order: Order = {
       id: `order-${Date.now()}`,
       storeId: input.customer.storeId,
       customerId: input.customer.id,
       customerPhone: input.customer.waPhone,
-      customerName: input.customer.name,
+      customerName: contactName || input.customer.name,
       code: createOrderCode(),
       status: "received",
       fulfillment: input.fulfillment,

@@ -944,3 +944,7 @@ alter table public.products
 alter table public.stores
   add column if not exists batch_category_ids uuid[] not null default '{}';
 
+-- ========== 044_order_contact_name ==========
+alter table public.orders
+  add column if not exists contact_name text;
+
