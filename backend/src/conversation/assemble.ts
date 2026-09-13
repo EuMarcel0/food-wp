@@ -493,21 +493,21 @@ export function groupPrompt(
   const heading = catalogFlavors
     ? `*${productBaseLabel(product.name)} ${group.name}*`
     : `*${product.name}*`;
+
+  // Pizza base (1º) + sabores extras do tamanho (maxSelect).
+  const totalFlavors = Math.max(1, group.maxSelect) + 1;
+  // Próximo a escolher: base já conta como 1º.
+  const nextFlavor = chosen.length + 2;
+
   const lines = [
     heading,
     catalogFlavors
-      ? chosen.length
-        ? `📏 Tamanho *${group.name}* — escolha o sabor`
-        : `📏 Tamanho *${group.name}*`
+      ? `📏 Tamanho *${group.name}*`
       : `✨ Escolha: *${group.name}*`,
     catalogFlavors
-      ? chosen.length
-        ? group.maxSelect > 1
-          ? `🍕 Pode marcar até ${group.maxSelect} sabores.`
-          : "🍕 Pode marcar 1 sabor."
-        : group.maxSelect > 1
-          ? `🍕 Só este sabor ou combine até ${group.maxSelect}.`
-          : "🍕 Só este sabor ou escolha outro."
+      ? nextFlavor <= totalFlavors
+        ? `🍕 Escolha o *${nextFlavor}º* sabor de *${totalFlavors}*:`
+        : `🍕 Combine até *${totalFlavors}* sabores.`
       : group.maxSelect > 1
         ? `Pode marcar até ${group.maxSelect}${group.minSelect > 1 ? ` (mínimo ${group.minSelect})` : ""}.`
         : group.required
