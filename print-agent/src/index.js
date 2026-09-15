@@ -10,6 +10,17 @@ const config = loadConfig();
 const app = express();
 const paths = configPaths();
 
+/** Uma impressão por vez — abas/PCs concorrentes não brigam pelo spooler. */
+let printChain = Promise.resolve();
+function enqueuePrint(task) {
+  const run = printChain.then(task, task);
+  printChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 app.use(
   cors({
     origin: true,
@@ -122,8 +133,11 @@ app.post("/print", auth, async (req, res) => {
       order,
       columns,
     });
-    await rawPrintWindows(printerName, buffer);
-    res.json({ ok: true, printer: printerName, bytes: buffer.length });
+    const result = await enqueuePrint(async () => {
+      await rawPrintWindows(printerName, buffer);
+      return { ok: true, printer: printerName, bytes: buffer.length };
+    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao imprimir.",

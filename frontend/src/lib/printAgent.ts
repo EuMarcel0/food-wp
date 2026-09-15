@@ -2,6 +2,8 @@ import type { Order, Store } from "../types";
 
 const BASE_KEY = "food-wp-print-agent-base";
 const TOKEN_KEY = "food-wp-print-agent-token";
+/** Só o PC da cozinha deve imprimir automaticamente (aceite automático). */
+const AUTO_PRINT_STATION_KEY = "food-wp-auto-print-station";
 const DEFAULT_BASE = "http://127.0.0.1:19100";
 
 export type PrintAgentHealth = {
@@ -39,6 +41,29 @@ export function setPrintAgentAuth(base: string, token: string) {
   try {
     localStorage.setItem(BASE_KEY, base.replace(/\/$/, ""));
     localStorage.setItem(TOKEN_KEY, token.trim());
+    // Ao emparelhar, este PC vira a estação de impressão.
+    localStorage.setItem(AUTO_PRINT_STATION_KEY, "1");
+  } catch {
+    // storage bloqueado
+  }
+}
+
+/** Este navegador/PC deve imprimir no aceite automático? */
+export function isAutoPrintStation() {
+  try {
+    const raw = localStorage.getItem(AUTO_PRINT_STATION_KEY);
+    if (raw === "0") return false;
+    if (raw === "1") return true;
+    // Compat: se já está conectado ao agente e nunca configurou, assume que sim.
+    return Boolean(getPrintAgentToken());
+  } catch {
+    return false;
+  }
+}
+
+export function setAutoPrintStation(enabled: boolean) {
+  try {
+    localStorage.setItem(AUTO_PRINT_STATION_KEY, enabled ? "1" : "0");
   } catch {
     // storage bloqueado
   }

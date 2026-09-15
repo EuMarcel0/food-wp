@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Select, Tag } from "antd";
+import { Alert, Button, Card, Select, Switch, Tag } from "antd";
 import {
   fetchPrintAgentHealth,
   fetchPrintAgentPrinters,
   getPrintAgentBase,
   getPrintAgentToken,
+  isAutoPrintStation,
   pairPrintAgent,
   savePrintAgentPrinter,
+  setAutoPrintStation,
   type PrintAgentPrinter
 } from "../../lib/printAgent";
 import { toast } from "../../lib/toast";
@@ -23,6 +25,7 @@ export function PrinterSettingsCard() {
   const [printers, setPrinters] = useState<PrintAgentPrinter[]>([]);
   const [selected, setSelected] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [autoPrintHere, setAutoPrintHere] = useState(() => isAutoPrintStation());
   const connected = Boolean(getPrintAgentToken());
 
   async function refreshHealth() {
@@ -97,6 +100,7 @@ export function PrinterSettingsCard() {
             setError(null);
             try {
               const paired = await pairPrintAgent();
+              setAutoPrintHere(true);
               toast.success("Agente conectado neste navegador.");
               setOnline(true);
               if (paired.printerName) setSelected(paired.printerName);
@@ -130,6 +134,31 @@ export function PrinterSettingsCard() {
           ? `Conectado em ${getPrintAgentBase()}${host ? ` · ${host}` : ""}`
           : "Ainda não conectado neste navegador."}
       </p>
+
+      <div className='mb-4 flex items-start justify-between gap-4 rounded-xl border border-food-border bg-food-bg/40 px-3 py-3'>
+        <div className='min-w-0'>
+          <p className='m-0 text-sm font-semibold text-food-ink'>
+            Imprimir automaticamente neste computador
+          </p>
+          <p className='m-0 mt-1 text-xs leading-normal text-food-muted'>
+            Deixe ligado só no PC da cozinha (com o agente). Nos outros computadores
+            com a retaguarda aberta, desligue — senão todos tentam imprimir juntos.
+          </p>
+        </div>
+        <Switch
+          checked={autoPrintHere}
+          disabled={!connected}
+          onChange={checked => {
+            setAutoPrintStation(checked);
+            setAutoPrintHere(checked);
+            toast.success(
+              checked
+                ? "Este PC vai imprimir no aceite automático."
+                : "Impressão automática desligada neste PC.",
+            );
+          }}
+        />
+      </div>
 
       <div className='flex flex-wrap items-center gap-2'>
         <Select
