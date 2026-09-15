@@ -2148,7 +2148,20 @@ export async function appendConversationMessage(input: {
   const preview = previewText(
     msgType === "location"
       ? "📍 Localização"
-      : body || (msgType === "audio" ? "🎤 Áudio" : hasMedia ? "[mídia]" : "[mídia]"),
+      : body ||
+          (msgType === "audio"
+            ? "🎤 Áudio"
+            : msgType === "image"
+              ? "📷 Imagem"
+              : msgType === "document"
+                ? "📎 Documento"
+                : msgType === "video"
+                  ? "🎬 Vídeo"
+                  : msgType === "sticker"
+                    ? "🧩 Figurinha"
+                    : hasMedia
+                      ? "[mídia]"
+                      : "[mídia]"),
   );
   const now = new Date().toISOString();
 

@@ -1054,10 +1054,26 @@ function LocationMessageBody({
   );
 }
 
+function isImageMessage(message: ConversationMessage) {
+  return (
+    Boolean(message.mediaUrl) &&
+    (message.msgType === "image" ||
+      message.msgType === "sticker" ||
+      message.mediaMime?.startsWith("image/"))
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
   const pending = message.id.startsWith("temp-");
   const isAudio = message.msgType === "audio" && Boolean(message.mediaUrl);
+  const isImage = isImageMessage(message);
+  const isVideo =
+    message.msgType === "video" &&
+    Boolean(message.mediaUrl) &&
+    !isImage;
+  const isDocument =
+    message.msgType === "document" && Boolean(message.mediaUrl);
   const isLocation = isLocationMessage(message);
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
@@ -1100,6 +1116,49 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             >
               Seu navegador não reproduz áudio.
             </audio>
+          </div>
+        ) : isImage ? (
+          <div className="space-y-1.5">
+            <a
+              href={message.mediaUrl!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block overflow-hidden rounded-xl"
+            >
+              <img
+                src={message.mediaUrl!}
+                alt=""
+                className="max-h-64 w-full object-cover"
+                loading="lazy"
+              />
+            </a>
+            {message.body && !/^📷|^🧩/.test(message.body.trim()) ? (
+              <MessageBodyText body={message.body} />
+            ) : null}
+          </div>
+        ) : isVideo ? (
+          <div className="space-y-1.5">
+            <video
+              controls
+              preload="metadata"
+              src={message.mediaUrl!}
+              className="max-h-64 w-full rounded-xl"
+            />
+            {message.body && !/^🎬/.test(message.body.trim()) ? (
+              <MessageBodyText body={message.body} />
+            ) : null}
+          </div>
+        ) : isDocument ? (
+          <div className="space-y-1.5">
+            <MessageBodyText body={message.body} />
+            <a
+              href={message.mediaUrl!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex text-xs font-semibold text-food-accent underline-offset-2 hover:underline"
+            >
+              Abrir / baixar arquivo
+            </a>
           </div>
         ) : isLocation ? (
           <LocationMessageBody

@@ -373,9 +373,30 @@ export type WhatsAppMediaDownload = {
   fileName: string;
 };
 
+function extFromMime(mime: string, fileName?: string) {
+  const fromName = fileName?.includes(".")
+    ? fileName.split(".").pop()?.toLowerCase()
+    : "";
+  if (fromName && fromName.length <= 6) return fromName;
+  const m = mime.toLowerCase();
+  if (m.includes("jpeg") || m.includes("jpg")) return "jpg";
+  if (m.includes("png")) return "png";
+  if (m.includes("webp")) return "webp";
+  if (m.includes("gif")) return "gif";
+  if (m.includes("pdf")) return "pdf";
+  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+  if (m.includes("mp4") || m.includes("m4a")) return "m4a";
+  if (m.includes("amr")) return "amr";
+  if (m.includes("ogg")) return "ogg";
+  if (m.includes("word") || m.includes("document")) return "docx";
+  if (m.includes("sheet") || m.includes("excel")) return "xlsx";
+  return "bin";
+}
+
 /** Baixa mídia (áudio/imagem/…) pelo media id do webhook. */
 export async function downloadWhatsAppMedia(
   mediaId: string,
+  options?: { fileName?: string; mimeHint?: string },
 ): Promise<WhatsAppMediaDownload> {
   if (!flags.whatsappReady) {
     throw new Error("WhatsApp não configurado.");
@@ -405,21 +426,26 @@ export async function downloadWhatsAppMedia(
     throw new Error(`Falha ao baixar mídia (${fileResponse.status}).`);
   }
   const mime =
+    options?.mimeHint?.trim() ||
     meta.mime_type?.trim() ||
     fileResponse.headers.get("content-type")?.split(";")[0]?.trim() ||
-    "audio/ogg";
+    "application/octet-stream";
   const bytes = Buffer.from(await fileResponse.arrayBuffer());
-  const ext =
-    mime.includes("mpeg") || mime.includes("mp3")
-      ? "mp3"
-      : mime.includes("mp4") || mime.includes("m4a")
-        ? "m4a"
-        : mime.includes("amr")
-          ? "amr"
-          : "ogg";
+  const hintName = options?.fileName?.trim();
+  const safeHint =
+    hintName && !hintName.includes("..")
+      ? hintName.replace(/[^a-zA-Z0-9._-]/g, "_")
+      : "";
+  const ext = extFromMime(mime, safeHint);
+  const fileName =
+    safeHint && safeHint.includes(".")
+      ? safeHint
+      : safeHint
+        ? `${safeHint}.${ext}`
+        : `${id}.${ext}`;
   return {
     bytes,
     mime,
-    fileName: `${id}.${ext}`,
+    fileName,
   };
 }

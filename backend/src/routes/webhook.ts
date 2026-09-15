@@ -5,15 +5,15 @@ import {
   handleIncomingMessage,
   handleUnsupportedInbound,
 } from "../conversation/engine.js";
-import {
-  findConversationByCustomerPhone,
-  saveChatMedia,
-  upsertCustomer,
-} from "../data/repository.js";
 import { logInboundByPhone } from "../lib/messageLog.js";
+import {
+  describeInboundWithoutMedia,
+  parseInboundMedia,
+  persistInboundWhatsAppMedia,
+  type WhatsAppInboundMessage,
+} from "../lib/inboundWhatsAppMedia.js";
 import { enqueueByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { noteWebhook } from "../lib/webhookStats.js";
-import { downloadWhatsAppMedia } from "../lib/whatsapp.js";
 
 const SILENT_TYPES = new Set(["reaction", "system"]);
 
@@ -22,24 +22,22 @@ export const webhookRouter = Router();
 type WhatsAppChange = {
   field?: string;
   value?: {
-    messages?: Array<{
-      from: string;
-      id?: string;
-      type?: string;
-      text?: { body?: string };
-      audio?: { id?: string; mime_type?: string; voice?: boolean };
-      location?: {
-        latitude?: number;
-        longitude?: number;
-        name?: string;
-        address?: string;
-      };
-      interactive?: {
-        type?: string;
-        button_reply?: { id?: string; title?: string };
-        list_reply?: { id?: string; title?: string };
-      };
-    }>;
+    messages?: Array<
+      WhatsAppInboundMessage & {
+        from: string;
+        location?: {
+          latitude?: number;
+          longitude?: number;
+          name?: string;
+          address?: string;
+        };
+        interactive?: {
+          type?: string;
+          button_reply?: { id?: string; title?: string };
+          list_reply?: { id?: string; title?: string };
+        };
+      }
+    >;
     contacts?: Array<{
       profile?: { name?: string; picture?: string };
       wa_id?: string;
@@ -73,37 +71,6 @@ function validSignature(rawBody: string | undefined, header: string | undefined)
   } catch {
     return false;
   }
-}
-
-async function persistInboundAudio(input: {
-  to: string;
-  mediaId: string;
-  waMessageId?: string;
-  name?: string;
-  avatarUrl?: string;
-}) {
-  const downloaded = await downloadWhatsAppMedia(input.mediaId);
-  const customer = await upsertCustomer(input.to, input.name, input.avatarUrl);
-  const found = await findConversationByCustomerPhone(input.to);
-  const conversationId = found?.conversation.id ?? `pending-${customer.id}`;
-  const mediaUrl = await saveChatMedia({
-    storeId: customer.storeId,
-    conversationId,
-    bytes: downloaded.bytes,
-    mime: downloaded.mime,
-    fileName: downloaded.fileName,
-  });
-  await logInboundByPhone(
-    input.to,
-    "🎤 Áudio",
-    "audio",
-    { name: input.name, avatarUrl: input.avatarUrl },
-    {
-      url: mediaUrl,
-      mime: downloaded.mime,
-      waMessageId: input.waMessageId ?? null,
-    },
-  );
 }
 
 webhookRouter.post("/whatsapp", (req, res) => {
@@ -150,27 +117,20 @@ webhookRouter.post("/whatsapp", (req, res) => {
         if (!to) continue;
         const queueKey = queueKeyForPhone(to);
 
-        if (message.type === "audio" && message.audio?.id) {
+        const inboundMedia = parseInboundMedia(message);
+        if (inboundMedia) {
           incoming += 1;
-          console.log(`WhatsApp inbound audio from=${message.from} wa_id=${waId ?? "-"}`);
+          console.log(
+            `WhatsApp inbound media type=${inboundMedia.msgType} from=${message.from} wa_id=${waId ?? "-"}`,
+          );
           enqueueByUser(queueKey, async () => {
-            try {
-              await persistInboundAudio({
-                to,
-                mediaId: message.audio!.id!,
-                waMessageId: message.id,
-                name,
-                avatarUrl,
-              });
-            } catch (error) {
-              console.error("Falha ao salvar áudio WhatsApp", error);
-              await logInboundByPhone(
-                to,
-                "🎤 Áudio (falha ao baixar)",
-                "audio",
-                { name, avatarUrl },
-              );
-            }
+            await persistInboundWhatsAppMedia({
+              to,
+              parsed: inboundMedia,
+              waMessageId: message.id,
+              name,
+              avatarUrl,
+            });
             await handleUnsupportedInbound({
               from: to,
               name,
@@ -178,7 +138,7 @@ webhookRouter.post("/whatsapp", (req, res) => {
               waMessageId: message.id,
             });
           }).catch((error) => {
-            console.error("Falha ao processar áudio WhatsApp", error);
+            console.error("Falha ao processar mídia WhatsApp", error);
           });
           continue;
         }
@@ -190,10 +150,12 @@ webhookRouter.post("/whatsapp", (req, res) => {
             `WhatsApp inbound unsupported type=${message.type ?? "?"} from=${message.from}`,
           );
           enqueueByUser(queueKey, async () => {
+            const described = describeInboundWithoutMedia(message);
             await logInboundByPhone(
               to,
-              `[${message.type ?? "mídia"} não suportado]`,
-              message.type ?? "unsupported",
+              described?.body ??
+                `📎 Arquivo (não processado pelo bot — veja no WhatsApp ou ligue para o cliente)`,
+              described?.msgType ?? message.type ?? "unsupported",
               { name, avatarUrl },
             );
             await handleUnsupportedInbound({
