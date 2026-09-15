@@ -285,6 +285,8 @@ export type Conversation = {
   lastMessageDirection?: ConversationMessageDirection | null;
   /** Última mensagem do cliente — não muda quando o bot responde. */
   lastInboundAt?: string | null;
+  /** Quando o bot avisou “ainda está aí?” (metade do tempo ocioso). */
+  idleWarningAt?: string | null;
 };
 
 export type LiveConversation = {

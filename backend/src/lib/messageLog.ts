@@ -83,6 +83,7 @@ export async function logOutboundByPhone(
   to: string,
   payload: Record<string, unknown>,
   author: ConversationMessageAuthor = "bot",
+  options?: { bumpLastMessageAt?: boolean },
 ) {
   try {
     const found = await findConversationByCustomerPhone(to);
@@ -98,6 +99,7 @@ export async function logOutboundByPhone(
       body,
       msgType,
       actions,
+      bumpLastMessageAt: options?.bumpLastMessageAt,
     });
   } catch (error) {
     console.warn(

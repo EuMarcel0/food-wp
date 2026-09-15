@@ -86,12 +86,18 @@ async function sendTo(to: string, payload: Record<string, unknown>) {
 
 async function send(
   payload: Record<string, unknown>,
-  opts?: { author?: ConversationMessageAuthor; skipLog?: boolean },
+  opts?: {
+    author?: ConversationMessageAuthor;
+    skipLog?: boolean;
+    bumpLastMessageAt?: boolean;
+  },
 ) {
   const author = opts?.author ?? "bot";
   const log = async () => {
     if (opts?.skipLog) return;
-    await logOutboundByPhone(String(payload.to ?? ""), payload, author);
+    await logOutboundByPhone(String(payload.to ?? ""), payload, author, {
+      bumpLastMessageAt: opts?.bumpLastMessageAt,
+    });
   };
 
   if (!flags.whatsappReady) {
@@ -159,7 +165,11 @@ export async function subscribeWhatsAppApp() {
 export async function sendText(
   to: string,
   body: string,
-  opts?: { author?: ConversationMessageAuthor; skipLog?: boolean },
+  opts?: {
+    author?: ConversationMessageAuthor;
+    skipLog?: boolean;
+    bumpLastMessageAt?: boolean;
+  },
 ) {
   return send(
     {

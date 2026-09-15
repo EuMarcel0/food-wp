@@ -1,9 +1,14 @@
 import {
   claimCloseIdleConversation,
+  claimIdleWarningConversation,
   getStore,
   listIdleOpenConversations,
+  listIdleWarningConversations,
 } from "../data/repository.js";
 import { sendText } from "../lib/whatsapp.js";
+
+export const IDLE_WARNING_MESSAGE =
+  "👋 Ainda está aí?\nSe quiser continuar o pedido, é só responder. Em breve encerramos por falta de resposta.";
 
 export const IDLE_TIMEOUT_MESSAGE =
   "⏰ Encerramos seu atendimento por falta de resposta.\nQuando quiser pedir de novo, é só mandar uma mensagem. 👋";
@@ -19,9 +24,30 @@ async function sweepIdleConversations() {
   try {
     const store = await getStore();
     const idleMinutes = store.idleTimeoutMinutes ?? 60;
+
+    // 1) Metade do tempo: aviso “ainda está aí?” (sem reiniciar o relógio).
+    const warningCandidates = await listIdleWarningConversations(idleMinutes);
+    for (const candidate of warningCandidates) {
+      const claimed = await claimIdleWarningConversation(
+        candidate.id,
+        idleMinutes,
+      );
+      if (!claimed) continue;
+      try {
+        await sendText(candidate.customerPhone, IDLE_WARNING_MESSAGE, {
+          bumpLastMessageAt: false,
+        });
+      } catch (error) {
+        console.error(
+          `[idle-timeout] falha no aviso ${candidate.customerPhone}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
+    // 2) Tempo completo: reinicia fluxo (mantém Ativas) + avisa.
     const candidates = await listIdleOpenConversations(idleMinutes);
     for (const candidate of candidates) {
-      // Reinicia o fluxo (atômico) sem ir para Histórico; evita corrida com nova mensagem.
       const reset = await claimCloseIdleConversation(candidate.id, idleMinutes);
       if (!reset) continue;
       try {
@@ -43,7 +69,7 @@ async function sweepIdleConversations() {
   }
 }
 
-/** Checa conversas ociosas: reinicia fluxo (mantém Ativas) + avisa no WhatsApp. */
+/** Checa conversas ociosas: aviso na metade + reinício no limite. */
 export function startIdleTimeoutJob() {
   if (timer) return;
   console.log(

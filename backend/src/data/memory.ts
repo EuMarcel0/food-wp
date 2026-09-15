@@ -902,6 +902,7 @@ export const memoryStore = {
     mediaUrl?: string | null;
     mediaMime?: string | null;
     waMessageId?: string | null;
+    bumpLastMessageAt?: boolean;
     preview: string;
     now: string;
   }) {
@@ -925,13 +926,18 @@ export const memoryStore = {
 
     const current = this.getConversationById(input.conversationId);
     if (current) {
+      const bumpLastMessageAt = input.bumpLastMessageAt !== false;
       conversations.set(current.customerId, {
         ...current,
-        lastMessageAt: input.now,
+        ...(bumpLastMessageAt
+          ? { lastMessageAt: input.now, idleWarningAt: null }
+          : {}),
         lastMessagePreview: input.preview,
         lastMessageDirection: input.direction,
         lastInboundAt:
-          input.direction === "inbound" ? input.now : current.lastInboundAt ?? null,
+          input.direction === "inbound" && bumpLastMessageAt
+            ? input.now
+            : current.lastInboundAt ?? null,
       });
     }
     return message;
@@ -954,6 +960,7 @@ export const memoryStore = {
     const next = {
       ...current,
       lastMessageAt: new Date().toISOString(),
+      idleWarningAt: null,
     };
     conversations.set(customerId, next);
     return next;
@@ -977,6 +984,7 @@ export const memoryStore = {
       lastOrderId: order.id,
       lastOrderCode: order.code,
       lastMessageAt: now,
+      idleWarningAt: null,
     };
     conversations.set(customerId, next);
     return next;
@@ -997,6 +1005,7 @@ export const memoryStore = {
       handoffBy: null,
       closedAt: now,
       lastMessageAt: now,
+      idleWarningAt: null,
     };
     conversations.set(current.customerId, next);
     return next;
@@ -1044,6 +1053,86 @@ export const memoryStore = {
       );
   },
 
+  listIdleWarningConversations(idleMinutes: number) {
+    const full = Math.max(1, idleMinutes);
+    const half = Math.floor(full / 2);
+    if (half < 1 || half >= full) return [];
+    const halfCutoff = Date.now() - half * 60 * 1000;
+    const fullCutoff = Date.now() - full * 60 * 1000;
+    return [...conversations.values()]
+      .filter((item) => !item.closedAt)
+      .filter((item) => !item.idleWarningAt)
+      .filter((item) => item.handoffMode !== "human")
+      .filter((item) => item.state !== "welcome")
+      .filter((item) => {
+        if (!item.lastMessageAt) return false;
+        const last = Date.parse(item.lastMessageAt);
+        return (
+          Number.isFinite(last) && last < halfCutoff && last >= fullCutoff
+        );
+      })
+      .sort(
+        (left, right) =>
+          new Date(left.lastMessageAt ?? 0).getTime() -
+          new Date(right.lastMessageAt ?? 0).getTime(),
+      )
+      .map((item) => {
+        const customer = [...customers.values()].find(
+          (row) => row.id === item.customerId,
+        );
+        const phone = customer?.waPhone?.trim();
+        if (!phone || !item.lastMessageAt) return null;
+        return {
+          id: item.id,
+          customerId: item.customerId,
+          customerPhone: phone,
+          lastMessageAt: item.lastMessageAt,
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          id: string;
+          customerId: string;
+          customerPhone: string;
+          lastMessageAt: string;
+        } => item != null,
+      );
+  },
+
+  claimIdleWarningConversation(conversationId: string, idleMinutes: number) {
+    const current = [...conversations.values()].find(
+      (item) => item.id === conversationId,
+    );
+    if (
+      !current ||
+      current.closedAt ||
+      current.idleWarningAt ||
+      current.handoffMode === "human" ||
+      current.state === "welcome"
+    ) {
+      return null;
+    }
+    if (!current.lastMessageAt) return null;
+    const full = Math.max(1, idleMinutes);
+    const half = Math.floor(full / 2);
+    if (half < 1 || half >= full) return null;
+    const last = Date.parse(current.lastMessageAt);
+    const halfCutoff = Date.now() - half * 60 * 1000;
+    const fullCutoff = Date.now() - full * 60 * 1000;
+    if (!Number.isFinite(last) || last >= halfCutoff || last < fullCutoff) {
+      return null;
+    }
+
+    const next: Conversation = {
+      ...current,
+      idleWarningAt: new Date().toISOString(),
+    };
+    conversations.set(current.customerId, next);
+    return next;
+  },
+
   claimCloseIdleConversation(conversationId: string, idleMinutes: number) {
     const current = [...conversations.values()].find(
       (item) => item.id === conversationId,
@@ -1072,6 +1161,7 @@ export const memoryStore = {
       handoffBy: null,
       closedAt: null,
       lastMessageAt: now,
+      idleWarningAt: null,
     };
     conversations.set(current.customerId, next);
     return next;
@@ -1162,6 +1252,7 @@ export const memoryStore = {
       handoffBy: mode === "human" ? by?.trim() || null : null,
       lastMessageAt: now,
       closedAt: null,
+      idleWarningAt: null,
       activatedAt:
         current.closedAt || !current.activatedAt
           ? now
@@ -1202,6 +1293,7 @@ export const memoryStore = {
       handoffAt: current?.handoffAt ?? null,
       handoffBy: current?.handoffBy ?? null,
       closedAt,
+      idleWarningAt: null,
       lastOrderId: current?.lastOrderId ?? null,
       lastOrderCode: current?.lastOrderCode ?? null,
       lastMessagePreview: current?.lastMessagePreview ?? null,

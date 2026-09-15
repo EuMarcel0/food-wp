@@ -1679,6 +1679,7 @@ function mapConversation(data: Record<string, unknown>): Conversation {
         ? data.last_message_direction
         : null,
     lastInboundAt: data.last_inbound_at ? String(data.last_inbound_at) : null,
+    idleWarningAt: data.idle_warning_at ? String(data.idle_warning_at) : null,
   };
 }
 
@@ -1779,7 +1780,7 @@ export async function touchConversation(customerId: string) {
   // Só atualiza atividade — não reabre conversa encerrada (closed_at).
   await supabase
     .from("conversations")
-    .update({ last_message_at: now })
+    .update({ last_message_at: now, idle_warning_at: null })
     .eq("customer_id", customerId);
 }
 
@@ -1803,6 +1804,7 @@ export async function recordConversationOrder(
       last_order_id: order.id,
       last_order_code: order.code,
       last_message_at: now,
+      idle_warning_at: null,
     })
     .eq("customer_id", customerId)
     .select("*")
@@ -1836,6 +1838,7 @@ export async function closeConversationByAgent(conversationId: string) {
       handoff_by: null,
       closed_at: now,
       last_message_at: now,
+      idle_warning_at: null,
     })
     .eq("id", conversationId)
     .is("closed_at", null)
@@ -1927,6 +1930,7 @@ export async function claimCloseIdleConversation(
       handoff_at: null,
       handoff_by: null,
       last_message_at: now,
+      idle_warning_at: null,
     })
     .eq("id", conversationId)
     .is("closed_at", null)
@@ -1937,8 +1941,127 @@ export async function claimCloseIdleConversation(
     .maybeSingle();
 
   if (error) {
+    if (
+      error.message?.includes("closed_at") ||
+      error.message?.includes("idle_warning_at")
+    ) {
+      throw new Error(
+        error.message?.includes("idle_warning_at")
+          ? "Rode a migration 045_conversation_idle_warning.sql no Supabase."
+          : "Rode a migration 031_conversation_closed.sql no Supabase.",
+      );
+    }
+    throw new Error(error.message);
+  }
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
+/** Minutos até o aviso “ainda está aí?” (metade do limite), ou null se não cabe. */
+export function idleWarningMinutes(idleMinutes: number) {
+  const full = Math.max(1, Math.round(idleMinutes));
+  const half = Math.floor(full / 2);
+  return half >= 1 && half < full ? half : null;
+}
+
+/**
+ * Conversas abertas ociosas além da metade do limite, ainda sem aviso,
+ * e ainda antes do encerramento completo.
+ */
+export async function listIdleWarningConversations(idleMinutes: number) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listIdleWarningConversations(idleMinutes);
+
+  const warningMinutes = idleWarningMinutes(idleMinutes);
+  if (warningMinutes == null) return [];
+
+  const full = Math.max(1, idleMinutes);
+  const halfCutoff = new Date(
+    Date.now() - warningMinutes * 60 * 1000,
+  ).toISOString();
+  const fullCutoff = new Date(Date.now() - full * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, customer_id, last_message_at, customers(wa_phone)")
+    .is("closed_at", null)
+    .is("idle_warning_at", null)
+    .neq("handoff_mode", "human")
+    .neq("state", "welcome")
+    .lt("last_message_at", halfCutoff)
+    .gte("last_message_at", fullCutoff)
+    .order("last_message_at", { ascending: true })
+    .limit(50);
+
+  if (error) {
+    if (error.message?.includes("idle_warning_at")) {
+      throw new Error(
+        "Rode a migration 045_conversation_idle_warning.sql no Supabase.",
+      );
+    }
     if (error.message?.includes("closed_at")) {
       throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+
+  return (data ?? [])
+    .map((row) => {
+      const customer = row.customers as { wa_phone?: string } | null;
+      const phone = customer?.wa_phone?.trim();
+      const lastMessageAt = row.last_message_at
+        ? String(row.last_message_at)
+        : "";
+      if (!phone || !lastMessageAt) return null;
+      return {
+        id: String(row.id),
+        customerId: String(row.customer_id),
+        customerPhone: phone,
+        lastMessageAt,
+      } satisfies IdleConversationCandidate;
+    })
+    .filter((item): item is IdleConversationCandidate => item != null);
+}
+
+/**
+ * Marca o aviso de ociosidade de forma atômica (não mexe em last_message_at).
+ */
+export async function claimIdleWarningConversation(
+  conversationId: string,
+  idleMinutes: number,
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.claimIdleWarningConversation(conversationId, idleMinutes);
+  }
+
+  const warningMinutes = idleWarningMinutes(idleMinutes);
+  if (warningMinutes == null) return null;
+
+  const full = Math.max(1, idleMinutes);
+  const now = new Date().toISOString();
+  const halfCutoff = new Date(
+    Date.now() - warningMinutes * 60 * 1000,
+  ).toISOString();
+  const fullCutoff = new Date(Date.now() - full * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ idle_warning_at: now })
+    .eq("id", conversationId)
+    .is("closed_at", null)
+    .is("idle_warning_at", null)
+    .neq("handoff_mode", "human")
+    .neq("state", "welcome")
+    .lt("last_message_at", halfCutoff)
+    .gte("last_message_at", fullCutoff)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("idle_warning_at")) {
+      throw new Error(
+        "Rode a migration 045_conversation_idle_warning.sql no Supabase.",
+      );
     }
     throw new Error(error.message);
   }
@@ -2139,6 +2262,8 @@ export async function appendConversationMessage(input: {
   mediaUrl?: string | null;
   mediaMime?: string | null;
   waMessageId?: string | null;
+  /** false = grava no chat sem reiniciar o relógio de ociosidade (aviso idle). */
+  bumpLastMessageAt?: boolean;
 }) {
   const supabase = getSupabase();
   const body = String(input.body ?? "").trim();
@@ -2317,31 +2442,88 @@ export async function appendConversationMessage(input: {
 
   if (!messageRow) return null;
 
+  const bumpLastMessageAt = input.bumpLastMessageAt !== false;
+  const conversationPatch: Record<string, unknown> = {
+    last_message_preview: preview,
+    last_message_direction: input.direction,
+    ...(bumpLastMessageAt
+      ? { last_message_at: now, idle_warning_at: null }
+      : {}),
+    ...(input.direction === "inbound" && bumpLastMessageAt
+      ? { last_inbound_at: now }
+      : {}),
+  };
+
   const { error: convError } = await supabase
     .from("conversations")
-    .update({
-      last_message_at: now,
-      last_message_preview: preview,
-      last_message_direction: input.direction,
-      ...(input.direction === "inbound" ? { last_inbound_at: now } : {}),
-    })
+    .update(conversationPatch)
     .eq("id", input.conversationId);
 
-  if (convError?.message?.includes("last_inbound_at")) {
+  if (convError?.message?.includes("idle_warning_at")) {
+    delete conversationPatch.idle_warning_at;
+    const { error: retryError } = await supabase
+      .from("conversations")
+      .update(conversationPatch)
+      .eq("id", input.conversationId);
+    if (retryError?.message?.includes("last_inbound_at")) {
+      delete conversationPatch.last_inbound_at;
+      const { error: directionFallbackError } = await supabase
+        .from("conversations")
+        .update(conversationPatch)
+        .eq("id", input.conversationId);
+      if (directionFallbackError?.message?.includes("last_message_direction")) {
+        const minimal: Record<string, unknown> = {
+          last_message_preview: preview,
+          ...(bumpLastMessageAt ? { last_message_at: now } : {}),
+        };
+        const { error: fallbackError } = await supabase
+          .from("conversations")
+          .update(minimal)
+          .eq("id", input.conversationId);
+        if (fallbackError) {
+          console.warn(
+            "[message-log] falha ao atualizar conversa:",
+            fallbackError.message,
+          );
+        } else {
+          console.warn(
+            "Rode a migration 038_conversation_last_message_direction.sql no Supabase.",
+          );
+        }
+      } else if (directionFallbackError) {
+        console.warn(
+          "[message-log] falha ao atualizar conversa:",
+          directionFallbackError.message,
+        );
+      } else {
+        console.warn(
+          "Rode a migration 040_conversation_last_inbound_at.sql no Supabase.",
+        );
+      }
+    } else if (retryError) {
+      console.warn("[message-log] falha ao atualizar conversa:", retryError.message);
+    } else {
+      console.warn(
+        "Rode a migration 045_conversation_idle_warning.sql no Supabase.",
+      );
+    }
+  } else if (convError?.message?.includes("last_inbound_at")) {
     const { error: directionFallbackError } = await supabase
       .from("conversations")
       .update({
-        last_message_at: now,
         last_message_preview: preview,
         last_message_direction: input.direction,
+        ...(bumpLastMessageAt
+          ? { last_message_at: now, idle_warning_at: null }
+          : {}),
       })
       .eq("id", input.conversationId);
     if (directionFallbackError?.message?.includes("last_message_direction")) {
       const { error: fallbackError } = await supabase
         .from("conversations")
         .update({
-          last_message_at: now,
           last_message_preview: preview,
+          ...(bumpLastMessageAt ? { last_message_at: now } : {}),
         })
         .eq("id", input.conversationId);
       if (fallbackError) {
@@ -2365,8 +2547,8 @@ export async function appendConversationMessage(input: {
     const { error: fallbackError } = await supabase
       .from("conversations")
       .update({
-        last_message_at: now,
         last_message_preview: preview,
+        ...(bumpLastMessageAt ? { last_message_at: now } : {}),
       })
       .eq("id", input.conversationId);
     if (fallbackError) {
@@ -2485,12 +2667,16 @@ export async function setConversationHandoff(
           handoff_at: now,
           handoff_by: by?.trim() || null,
           last_message_at: now,
+          idle_warning_at: null,
+          closed_at: null,
         }
       : {
           handoff_mode: "bot",
           handoff_at: null,
           handoff_by: null,
           last_message_at: now,
+          idle_warning_at: null,
+          closed_at: null,
         };
 
   const { data, error } = await supabase
@@ -2501,6 +2687,29 @@ export async function setConversationHandoff(
     .maybeSingle();
 
   if (error) {
+    if (error.message?.includes("idle_warning_at")) {
+      const { idle_warning_at: _drop, ...withoutWarning } = payload as Record<
+        string,
+        unknown
+      > & { idle_warning_at?: unknown };
+      void _drop;
+      const { data: retryData, error: retryError } = await supabase
+        .from("conversations")
+        .update(withoutWarning)
+        .eq("id", id)
+        .select("*")
+        .maybeSingle();
+      if (retryError?.message?.includes("handoff_mode")) {
+        throw new Error("Rode a migration 030_conversation_handoff.sql no Supabase.");
+      }
+      if (retryError) throw new Error(retryError.message);
+      console.warn(
+        "Rode a migration 045_conversation_idle_warning.sql no Supabase.",
+      );
+      return retryData
+        ? mapConversation(retryData as Record<string, unknown>)
+        : null;
+    }
     if (error.message?.includes("handoff_mode")) {
       throw new Error("Rode a migration 030_conversation_handoff.sql no Supabase.");
     }
@@ -2538,13 +2747,33 @@ export async function saveConversation(
         last_message_at: now,
         closed_at: closedAt,
         activated_at: activatedAt,
+        idle_warning_at: null,
       })
       .eq("id", current.id);
     if (error) {
-      if (error.message?.includes("activated_at")) {
+      if (error.message?.includes("idle_warning_at")) {
+        const { error: retryError } = await supabase
+          .from("conversations")
+          .update({
+            state,
+            context,
+            last_message_at: now,
+            closed_at: closedAt,
+            activated_at: activatedAt,
+          })
+          .eq("id", current.id);
+        if (retryError?.message?.includes("activated_at")) {
+          throw new Error("Rode a migration 035_conversation_activated_at.sql no Supabase.");
+        }
+        if (retryError) throw new Error(retryError.message);
+        console.warn(
+          "Rode a migration 045_conversation_idle_warning.sql no Supabase.",
+        );
+      } else if (error.message?.includes("activated_at")) {
         throw new Error("Rode a migration 035_conversation_activated_at.sql no Supabase.");
+      } else {
+        throw new Error(error.message);
       }
-      throw new Error(error.message);
     }
     return {
       ...current,
@@ -2553,6 +2782,7 @@ export async function saveConversation(
       lastMessageAt: now,
       activatedAt,
       closedAt,
+      idleWarningAt: null,
     };
   }
 

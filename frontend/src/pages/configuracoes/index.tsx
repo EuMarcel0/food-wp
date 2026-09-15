@@ -110,10 +110,10 @@ export function SettingsPage() {
                   />
                 ) : null}
                 <p className="mb-4 text-sm leading-normal text-food-muted">
-                  Se o cliente não responder nesse prazo, o bot reinicia o
-                  atendimento, descarta o pedido em montagem e avisa no
-                  WhatsApp. A conversa continua em Ativas; a próxima mensagem
-                  dele inicia o pedido de novo.
+                  Se o cliente não responder, na metade desse prazo o bot pergunta
+                  “Ainda está aí?”. No tempo total, reinicia o atendimento, descarta
+                  o pedido em montagem e avisa no WhatsApp. A conversa continua em
+                  Ativas; a próxima mensagem dele inicia o pedido de novo.
                 </p>
                 <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
                   <FormControl name="idleTimeoutMinutes" label="Tempo limite">
