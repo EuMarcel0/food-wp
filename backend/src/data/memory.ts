@@ -1007,6 +1007,8 @@ export const memoryStore = {
     return [...conversations.values()]
       .filter((item) => !item.closedAt)
       .filter((item) => item.handoffMode !== "human")
+      // Já em welcome = fluxo já reiniciado; evita reavisar a cada ciclo.
+      .filter((item) => item.state !== "welcome")
       .filter((item) => {
         if (!item.lastMessageAt) return false;
         const last = Date.parse(item.lastMessageAt);
@@ -1046,7 +1048,12 @@ export const memoryStore = {
     const current = [...conversations.values()].find(
       (item) => item.id === conversationId,
     );
-    if (!current || current.closedAt || current.handoffMode === "human") {
+    if (
+      !current ||
+      current.closedAt ||
+      current.handoffMode === "human" ||
+      current.state === "welcome"
+    ) {
       return null;
     }
     if (!current.lastMessageAt) return null;
@@ -1055,6 +1062,7 @@ export const memoryStore = {
     if (!Number.isFinite(last) || last >= cutoff) return null;
 
     const now = new Date().toISOString();
+    // Reinicia o fluxo do bot, mas mantém em Ativas (sem closedAt).
     const next: Conversation = {
       ...current,
       state: "welcome",
@@ -1062,7 +1070,7 @@ export const memoryStore = {
       handoffMode: "bot",
       handoffAt: null,
       handoffBy: null,
-      closedAt: now,
+      closedAt: null,
       lastMessageAt: now,
     };
     conversations.set(current.customerId, next);

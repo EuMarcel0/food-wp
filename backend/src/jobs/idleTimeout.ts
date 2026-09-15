@@ -21,9 +21,9 @@ async function sweepIdleConversations() {
     const idleMinutes = store.idleTimeoutMinutes ?? 60;
     const candidates = await listIdleOpenConversations(idleMinutes);
     for (const candidate of candidates) {
-      // Fecha primeiro (atômico) para não competir com nova mensagem do cliente.
-      const closed = await claimCloseIdleConversation(candidate.id, idleMinutes);
-      if (!closed) continue;
+      // Reinicia o fluxo (atômico) sem ir para Histórico; evita corrida com nova mensagem.
+      const reset = await claimCloseIdleConversation(candidate.id, idleMinutes);
+      if (!reset) continue;
       try {
         await sendText(candidate.customerPhone, IDLE_TIMEOUT_MESSAGE);
       } catch (error) {
@@ -43,7 +43,7 @@ async function sweepIdleConversations() {
   }
 }
 
-/** Checa conversas ociosas: encerra + avisa no WhatsApp. */
+/** Checa conversas ociosas: reinicia fluxo (mantém Ativas) + avisa no WhatsApp. */
 export function startIdleTimeoutJob() {
   if (timer) return;
   console.log(

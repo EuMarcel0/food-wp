@@ -1871,6 +1871,7 @@ export async function listIdleOpenConversations(idleMinutes: number) {
     .select("id, customer_id, last_message_at, customers(wa_phone)")
     .is("closed_at", null)
     .neq("handoff_mode", "human")
+    .neq("state", "welcome")
     .lt("last_message_at", cutoff)
     .order("last_message_at", { ascending: true })
     .limit(50);
@@ -1901,8 +1902,8 @@ export async function listIdleOpenConversations(idleMinutes: number) {
 }
 
 /**
- * Encerra por ociosidade de forma atômica.
- * Só fecha se ainda estiver aberta e sem atividade recente (evita corrida com nova mensagem).
+ * Reinicia fluxo por ociosidade de forma atômica (mantém em Ativas).
+ * Só aplica se ainda estiver aberta, fora de welcome e sem atividade recente.
  */
 export async function claimCloseIdleConversation(
   conversationId: string,
@@ -1925,12 +1926,12 @@ export async function claimCloseIdleConversation(
       handoff_mode: "bot",
       handoff_at: null,
       handoff_by: null,
-      closed_at: now,
       last_message_at: now,
     })
     .eq("id", conversationId)
     .is("closed_at", null)
     .neq("handoff_mode", "human")
+    .neq("state", "welcome")
     .lt("last_message_at", cutoff)
     .select("*")
     .maybeSingle();
