@@ -922,6 +922,19 @@ values (
     'audio/aac',
     'audio/amr',
     'audio/opus',
+    'audio/webm',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'video/mp4',
+    'video/3gpp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
     'application/octet-stream'
   ]
 )
@@ -955,4 +968,30 @@ alter table public.conversations
 create index if not exists conversations_idle_warning_idx
   on public.conversations (last_message_at)
   where closed_at is null and idle_warning_at is null;
+
+-- ========== 046_chat_media_mime_types ==========
+update storage.buckets
+set allowed_mime_types = array[
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/aac',
+  'audio/amr',
+  'audio/opus',
+  'audio/webm',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'video/mp4',
+  'video/3gpp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+  'application/octet-stream'
+]
+where id = 'chat-media';
 

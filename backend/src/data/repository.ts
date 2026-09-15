@@ -2230,14 +2230,19 @@ export async function saveChatMedia(input: {
   fileName: string;
 }) {
   const supabase = getSupabase();
+  // WhatsApp manda "audio/ogg; codecs=opus" — o Storage só aceita o tipo base.
+  const mime = String(input.mime ?? "")
+    .split(";")[0]
+    ?.trim()
+    .toLowerCase() || "application/octet-stream";
   if (!supabase) {
-    return `data:${input.mime};base64,${input.bytes.toString("base64")}`;
+    return `data:${mime};base64,${input.bytes.toString("base64")}`;
   }
   const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const path = `${input.storeId}/${input.conversationId}/${Date.now()}-${safeName}`;
   const { error } = await supabase.storage.from("chat-media").upload(path, input.bytes, {
     upsert: false,
-    contentType: input.mime,
+    contentType: mime,
   });
   if (error) {
     throw new Error(

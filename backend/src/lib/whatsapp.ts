@@ -383,6 +383,14 @@ export type WhatsAppMediaDownload = {
   fileName: string;
 };
 
+function normalizeMime(raw: string | undefined | null, fallback = "application/octet-stream") {
+  const base = String(raw ?? "")
+    .split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  return base || fallback;
+}
+
 function extFromMime(mime: string, fileName?: string) {
   const fromName = fileName?.includes(".")
     ? fileName.split(".").pop()?.toLowerCase()
@@ -435,11 +443,12 @@ export async function downloadWhatsAppMedia(
   if (!fileResponse.ok) {
     throw new Error(`Falha ao baixar mídia (${fileResponse.status}).`);
   }
-  const mime =
-    options?.mimeHint?.trim() ||
-    meta.mime_type?.trim() ||
-    fileResponse.headers.get("content-type")?.split(";")[0]?.trim() ||
-    "application/octet-stream";
+  const mime = normalizeMime(
+    options?.mimeHint ||
+      meta.mime_type ||
+      fileResponse.headers.get("content-type"),
+    "application/octet-stream",
+  );
   const bytes = Buffer.from(await fileResponse.arrayBuffer());
   const hintName = options?.fileName?.trim();
   const safeHint =
