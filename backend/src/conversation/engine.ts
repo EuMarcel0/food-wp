@@ -1152,14 +1152,10 @@ async function showWelcome(to: string, storeName: string) {
     to,
     [
       `Olá! 👋 Bem-vindo à *${storeName}*.`,
-      "Posso te ajudar com o cardápio, um novo pedido ou o status de um pedido. 🍕",
+      "Posso te ajudar com o cardápio. 🍕",
       "Caso queira encerrar a conversa sem finalizar o pedido, digite *Sair*."
     ].join("\n"),
-    [
-      { id: "menu", title: "Ver cardápio" },
-      { id: "order", title: "Fazer pedido" },
-      { id: "status", title: "Status do pedido" }
-    ]
+    [{ id: "menu", title: "Ver cardápio" }]
   );
 }
 
@@ -1193,7 +1189,6 @@ function productCategories(products: Product[]) {
 
 async function showMenuCategories(
   to: string,
-  intro: string,
   categories: { id: string; name: string; count: number }[],
   offset: number
 ) {
@@ -1211,7 +1206,7 @@ async function showMenuCategories(
       description: "Ver próximas"
     });
   }
-  await sendList(to, [intro, "📂 Escolha uma *categoria*."].join("\n"), "Categorias", [{ title: "Categorias", rows }]);
+  await sendList(to, "📂 Escolha uma *categoria*.", "Categorias", [{ title: "Categorias", rows }]);
 }
 
 function menuItemsPageSize(total: number, offset: number, canGoBack: boolean) {
@@ -1354,7 +1349,7 @@ async function showMenu(
 
   // Muitos itens e várias categorias → escolhe categoria primeiro.
   if (categories.length > 1 && products.length > WA_LIST_MAX_ROWS) {
-    await showMenuCategories(to, intro, categories, offset);
+    await showMenuCategories(to, categories, offset);
     return;
   }
 
@@ -1762,7 +1757,9 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
       description: "Adicionais anteriores"
     });
   }
-  rows.push(footer);
+  // Com adicionais já escolhidos, "Pronto" no topo (celulares pequenos não veem o fim da lista).
+  if (picked.length) rows.unshift(footer);
+  else rows.push(footer);
 
   await sendList(to, prompt, "Adicionais", [
     {

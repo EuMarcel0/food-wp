@@ -7,7 +7,7 @@ import {
   listConversationHistory,
   listConversationMessages,
   listLiveConversations,
-  setConversationHandoff,
+  setConversationHandoff
 } from "../data/repository.js";
 import { getSupabase } from "../lib/supabase.js";
 import { sendText } from "../lib/whatsapp.js";
@@ -28,7 +28,7 @@ conversationsRouter.get("/", async (req, res) => {
     res.json(await listLiveConversations(24));
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Falha ao listar conversas.",
+      error: error instanceof Error ? error.message : "Falha ao listar conversas."
     });
   }
 });
@@ -43,20 +43,18 @@ conversationsRouter.get("/:id/messages", async (req, res) => {
     }
     const rawLimit = Number(req.query.limit);
     const limit = Number.isFinite(rawLimit) ? rawLimit : 40;
-    const beforeAt =
-      typeof req.query.beforeAt === "string" ? req.query.beforeAt : null;
-    const beforeId =
-      typeof req.query.beforeId === "string" ? req.query.beforeId : null;
+    const beforeAt = typeof req.query.beforeAt === "string" ? req.query.beforeAt : null;
+    const beforeId = typeof req.query.beforeId === "string" ? req.query.beforeId : null;
     res.json(
       await listConversationMessages(id, {
         limit,
         beforeAt,
-        beforeId,
-      }),
+        beforeId
+      })
     );
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Falha ao listar mensagens.",
+      error: error instanceof Error ? error.message : "Falha ao listar mensagens."
     });
   }
 });
@@ -83,10 +81,7 @@ conversationsRouter.post("/:id/messages", async (req, res) => {
     // Resposta humana só com handoff; se ainda estiver no bot, assume automaticamente.
     let conversation = current;
     if (conversation.handoffMode !== "human") {
-      const by =
-        typeof req.body?.by === "string" && req.body.by.trim()
-          ? req.body.by.trim().slice(0, 80)
-          : "Atendente";
+      const by = typeof req.body?.by === "string" && req.body.by.trim() ? req.body.by.trim().slice(0, 80) : "Atendente";
       const updated = await setConversationHandoff(id, "human", by);
       if (!updated) {
         res.status(404).json({ error: "Conversa não encontrada." });
@@ -109,13 +104,13 @@ conversationsRouter.post("/:id/messages", async (req, res) => {
       direction: "outbound",
       author: "agent",
       body: text,
-      msgType: "text",
+      msgType: "text"
     });
 
     res.json({ conversation, message: saved });
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Falha ao enviar mensagem.",
+      error: error instanceof Error ? error.message : "Falha ao enviar mensagem."
     });
   }
 });
@@ -123,10 +118,7 @@ conversationsRouter.post("/:id/messages", async (req, res) => {
 conversationsRouter.post("/:id/takeover", async (req, res) => {
   try {
     const id = String(req.params.id);
-    const by =
-      typeof req.body?.by === "string" && req.body.by.trim()
-        ? req.body.by.trim().slice(0, 80)
-        : null;
+    const by = typeof req.body?.by === "string" && req.body.by.trim() ? req.body.by.trim().slice(0, 80) : null;
 
     const current = await getConversationById(id);
     if (!current) {
@@ -142,16 +134,13 @@ conversationsRouter.post("/:id/takeover", async (req, res) => {
 
     const phone = await customerPhoneFor(updated.customerId);
     if (phone) {
-      await sendText(
-        phone,
-        "Um atendente da loja vai continuar este atendimento por aqui. Pode falar normalmente.",
-      );
+      await sendText(phone, "Um atendente vai continuar este atendimento por aqui. Pode falar normalmente.");
     }
 
     res.json(updated);
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Falha ao assumir conversa.",
+      error: error instanceof Error ? error.message : "Falha ao assumir conversa."
     });
   }
 });
@@ -178,14 +167,14 @@ conversationsRouter.post("/:id/release", async (req, res) => {
         phone,
         customerId: current.customerId,
         state: current.state,
-        context: current.context,
+        context: current.context
       });
     }
 
     res.json(updated);
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Falha ao devolver ao bot.",
+      error: error instanceof Error ? error.message : "Falha ao devolver ao bot."
     });
   }
 });
@@ -212,7 +201,7 @@ conversationsRouter.post("/:id/close", async (req, res) => {
         storeId: current.storeId,
         direction: "outbound",
         author: "bot",
-        body: AGENT_CLOSE_MESSAGE,
+        body: AGENT_CLOSE_MESSAGE
       });
     }
 
@@ -225,7 +214,7 @@ conversationsRouter.post("/:id/close", async (req, res) => {
     res.json(updated);
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Falha ao encerrar atendimento.",
+      error: error instanceof Error ? error.message : "Falha ao encerrar atendimento."
     });
   }
 });
@@ -235,10 +224,6 @@ async function customerPhoneFor(customerId: string) {
   if (!supabase) {
     return memoryStore.findCustomerPhone(customerId);
   }
-  const { data } = await supabase
-    .from("customers")
-    .select("wa_phone")
-    .eq("id", customerId)
-    .maybeSingle();
+  const { data } = await supabase.from("customers").select("wa_phone").eq("id", customerId).maybeSingle();
   return data?.wa_phone ? String(data.wa_phone) : null;
 }
