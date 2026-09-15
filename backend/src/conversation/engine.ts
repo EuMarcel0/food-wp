@@ -908,7 +908,7 @@ async function resumeCurrentStep(
     case "awaiting_address": {
       const zone = (store.neighborhoods ?? []).find(item => item.id === context.neighborhoodId) ?? null;
       await sendHintIfNeeded();
-      await goToAddress(to, zone);
+      await goToAddress(to, zone, { pickupEnabled: store.pickupEnabled });
       return;
     }
     case "awaiting_payment":
@@ -1011,16 +1011,38 @@ async function askNeighborhoodAmbiguous(to: string, matches: { zone: DeliveryNei
   ]);
 }
 
-async function goToAddress(to: string, zone?: DeliveryNeighborhood | null) {
+async function goToAddress(
+  to: string,
+  zone?: DeliveryNeighborhood | null,
+  opts?: { pickupEnabled?: boolean }
+) {
   const intro = [
     zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
     "🏠 Qual o endereço completo da entrega?",
     "*Pode digitar o endereço*.",
-    "*Por favor, informe também a referência da entrega*."
+    "*Por favor, informe também a referência da entrega*.",
+    opts?.pickupEnabled ? "Caso queira, pode mudar para *retirada*." : null
   ]
     .filter(Boolean)
     .join("\n");
+
+  if (opts?.pickupEnabled) {
+    await sendButtons(to, intro, [{ id: "switch_pickup", title: "Quero retirar" }]);
+    return;
+  }
   await sendText(to, intro);
+}
+
+function wantsSwitchToPickup(incoming: string, normalized: string) {
+  return (
+    incoming === "switch_pickup" ||
+    incoming === "fulfillment:pickup" ||
+    normalized === "quero retirar" ||
+    normalized === "retirar" ||
+    normalized === "retirada" ||
+    normalized === "quero retirada" ||
+    normalized === "mudar para retirada"
+  );
 }
 
 function formatLocation(location: { latitude: number; longitude: number; name?: string; address?: string }) {
@@ -2890,7 +2912,7 @@ export async function handleIncomingMessage(input: {
           return;
         }
         await persist("awaiting_address", context);
-        await goToAddress(input.from);
+        await goToAddress(input.from, null, { pickupEnabled: store.pickupEnabled });
         return;
       }
       await persist("awaiting_payment", context);
@@ -2927,7 +2949,7 @@ export async function handleIncomingMessage(input: {
         return;
       }
       await persist("awaiting_address", context);
-      await goToAddress(input.from);
+      await goToAddress(input.from, null, { pickupEnabled: store.pickupEnabled });
       return;
     }
 
@@ -2969,11 +2991,27 @@ export async function handleIncomingMessage(input: {
     context.neighborhoodName = zone.name;
     context.neighborhoodPage = null;
     await persist("awaiting_address", context);
-    await goToAddress(input.from, zone);
+    await goToAddress(input.from, zone, { pickupEnabled: store.pickupEnabled });
     return;
   }
 
   if (state === "awaiting_address") {
+    if (wantsSwitchToPickup(incoming, normalized)) {
+      if (!store.pickupEnabled) {
+        await sendText(input.from, "No momento a retirada não está disponível.");
+        await resumeCurrentStep(input.from, store, state, context);
+        return;
+      }
+      context.fulfillment = "pickup";
+      context.neighborhoodId = undefined;
+      context.neighborhoodName = undefined;
+      context.neighborhoodPage = null;
+      context.addressText = undefined;
+      await persist("awaiting_payment", context);
+      await askPayment(input.from);
+      return;
+    }
+
     const address = resolveAddress(input);
     if (!address) {
       await resumeCurrentStep(input.from, store, state, context);
