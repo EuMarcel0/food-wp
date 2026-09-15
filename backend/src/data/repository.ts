@@ -2620,7 +2620,7 @@ export async function listConversationHistory(limit = 100) {
   const { data, error } = await supabase
     .from("conversations")
     .select(
-      "id, customer_id, closed_at, last_order_id, last_order_code, customers(id, name, wa_phone, avatar_url), orders!last_order_id(id, code, status, total_cents)",
+      "*, customers(id, name, wa_phone, avatar_url), orders!last_order_id(id, code, status, total_cents)",
     )
     .not("closed_at", "is", null)
     .order("closed_at", { ascending: false })
@@ -2633,15 +2633,52 @@ export async function listConversationHistory(limit = 100) {
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((row) => {
+  const rows = data ?? [];
+  const missingDirectionIds = rows
+    .filter((row) => !parseLastMessageDirection(row.last_message_direction))
+    .map((row) => String(row.id));
+  const fallbackDirections = await latestMessageDirectionsForConversations(
+    missingDirectionIds,
+  );
+
+  return rows.map((row) => {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
+    const context = (row.context ?? { cart: [] }) as ConversationContext;
+    const lastMessageAt = String(
+      row.last_message_at ?? row.closed_at ?? new Date().toISOString(),
+    );
+    const id = String(row.id);
     return {
-      id: String(row.id),
+      id,
       customerId: String(row.customer_id ?? customer?.id ?? ""),
       customerName: customer?.name ?? null,
       customerPhone: String(customer?.wa_phone ?? ""),
-      customerAvatarUrl: customer?.avatar_url != null ? String(customer.avatar_url) : null,
+      customerAvatarUrl:
+        customer?.avatar_url != null ? String(customer.avatar_url) : null,
+      state: String(row.state ?? "welcome"),
+      handoffMode:
+        row.handoff_mode === "human" ? ("human" as const) : ("bot" as const),
+      handoffAt: row.handoff_at ? String(row.handoff_at) : null,
+      handoffBy: row.handoff_by != null ? String(row.handoff_by) : null,
+      lastMessageAt,
+      activatedAt: String(row.activated_at ?? lastMessageAt),
+      cartItemCount: Array.isArray(context.cart) ? context.cart.length : 0,
+      lastOrderCode:
+        order?.code != null
+          ? String(order.code)
+          : row.last_order_code != null
+            ? String(row.last_order_code)
+            : null,
+      lastMessagePreview:
+        row.last_message_preview != null
+          ? String(row.last_message_preview)
+          : null,
+      lastMessageDirection:
+        parseLastMessageDirection(row.last_message_direction) ??
+        fallbackDirections.get(id) ??
+        null,
+      lastInboundAt: row.last_inbound_at ? String(row.last_inbound_at) : null,
       orderId: order?.id != null ? String(order.id) : null,
       orderCode:
         order?.code != null

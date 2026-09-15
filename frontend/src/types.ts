@@ -68,6 +68,17 @@ export type ConversationHistoryItem = {
   customerName: string | null;
   customerPhone: string;
   customerAvatarUrl?: string | null;
+  state: string;
+  handoffMode: HandoffMode;
+  handoffAt: string | null;
+  handoffBy: string | null;
+  lastMessageAt: string;
+  activatedAt: string;
+  cartItemCount: number;
+  lastOrderCode?: string | null;
+  lastMessagePreview?: string | null;
+  lastMessageDirection?: "inbound" | "outbound" | null;
+  lastInboundAt?: string | null;
   orderId: string | null;
   orderCode: string | null;
   orderStatus: OrderStatus | null;

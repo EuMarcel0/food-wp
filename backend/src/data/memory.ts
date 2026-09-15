@@ -1226,12 +1226,27 @@ export const memoryStore = {
         const order = item.lastOrderId
           ? [...orders.values()].find((row) => row.id === item.lastOrderId)
           : null;
+        const lastMessageAt = item.lastMessageAt ?? item.closedAt ?? new Date().toISOString();
+        const messages = conversationMessages.get(item.id) ?? [];
+        const lastMessage = messages[messages.length - 1];
         return {
           id: item.id,
           customerId: item.customerId,
           customerName: customer?.name ?? null,
           customerPhone: customer?.waPhone ?? "",
           customerAvatarUrl: customer?.avatarUrl ?? null,
+          state: item.state,
+          handoffMode: item.handoffMode === "human" ? ("human" as const) : ("bot" as const),
+          handoffAt: item.handoffAt ?? null,
+          handoffBy: item.handoffBy ?? null,
+          lastMessageAt,
+          activatedAt: item.activatedAt ?? lastMessageAt,
+          cartItemCount: item.context.cart?.length ?? 0,
+          lastOrderCode: order?.code ?? item.lastOrderCode ?? null,
+          lastMessagePreview: item.lastMessagePreview ?? lastMessage?.body ?? null,
+          lastMessageDirection:
+            item.lastMessageDirection ?? lastMessage?.direction ?? null,
+          lastInboundAt: item.lastInboundAt ?? null,
           orderId: order?.id ?? null,
           orderCode: order?.code ?? item.lastOrderCode ?? null,
           orderStatus: order?.status ?? null,

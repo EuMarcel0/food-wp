@@ -1,29 +1,19 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Empty, Skeleton, Table, Tabs, Tag } from "antd";
+import { Tag, Tabs } from "antd";
 import { CommentOutlined } from "@ant-design/icons";
-import { FillTable } from "../../components/FillTable";
 import { PageHeader } from "../../components/PageHeader";
 import { useDialog } from "../../dialog";
 import { useAuth } from "../../auth/AuthProvider";
 import { api } from "../../lib/api";
-import {
-  STATUS_COLOR,
-  STATUS_LABEL,
-  formatBRL,
-  formatDate,
-  formatPhoneDisplay,
-} from "../../lib/format";
 import { useMediaQuery } from "../../lib/hooks";
-import { displayName, generatedAvatar } from "../../lib/profile";
+import { displayName } from "../../lib/profile";
 import { queryKeys } from "../../lib/queryKeys";
 import { supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
-import { useInfiniteSlice } from "../../lib/useInfiniteSlice";
-import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import { cn } from "../../lib/cn";
-import { entityCard, listPage, tableClass, tableGridFill } from "../../ui";
-import type { ConversationHistoryItem, LiveConversation } from "../../types";
+import { listPage } from "../../ui";
+import type { LiveConversation } from "../../types";
 import { WhatsAppInbox } from "./WhatsAppInbox";
 
 type TabKey = "active" | "history";
@@ -35,11 +25,6 @@ export function ConversationsPage() {
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [tab, setTab] = useState<TabKey>("active");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-  const listMode = tab === "history" && isDesktop;
-  const { shellRef, tableAreaRef, bodyHeight } = useTableGridHeight(
-    listMode,
-    tab,
-  );
 
   const activeQuery = useQuery({
     queryKey: queryKeys.conversations.live,
@@ -169,7 +154,7 @@ export function ConversationsPage() {
   }
 
   const activeItems = activeQuery.data ?? [];
-  const historyItems = historyQuery.data ?? [];
+  const historyItems = (historyQuery.data ?? []) as LiveConversation[];
   const humanCount = activeItems.filter((item) => item.handoffMode === "human").length;
 
   return (
@@ -201,7 +186,10 @@ export function ConversationsPage() {
       >
         <Tabs
           activeKey={tab}
-          onChange={(key) => setTab(key as TabKey)}
+          onChange={(key) => {
+            setTab(key as TabKey);
+            setMobileChatOpen(false);
+          }}
           className={cn(
             "mb-0 [&_.ant-tabs-nav]:mb-3 [&_.ant-tabs-content-holder]:hidden",
             "[@media(max-height:800px)]:[&_.ant-tabs-nav]:mb-2",
@@ -239,323 +227,44 @@ export function ConversationsPage() {
         />
       </div>
 
-      {tab === "history" ? (
-        <HistoryPane
-          items={historyItems}
-          error={historyQuery.error}
-          loading={historyQuery.isLoading}
-          isDesktop={isDesktop}
-          listMode={listMode}
-          shellRef={shellRef}
-          tableAreaRef={tableAreaRef}
-          bodyHeight={bodyHeight}
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex min-h-0 flex-1 flex-col",
-            !isDesktop && "max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
-            isDesktop && "max-[1440px]:min-h-0",
-          )}
-        >
-          <WhatsAppInbox
-          items={activeItems}
-          error={activeQuery.error}
-          loading={activeQuery.isLoading}
-          busyId={
-            takeoverMutation.isPending
-              ? takeoverMutation.variables
-              : releaseMutation.isPending
-                ? releaseMutation.variables
-                : closeMutation.isPending
-                  ? closeMutation.variables
-                  : null
-          }
-          onTakeover={askTakeover}
-          onRelease={(item) => releaseMutation.mutate(item.id)}
-          onClose={askClose}
-          onMobileChatOpenChange={setMobileChatOpen}
-        />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HistoryPane({
-  items,
-  error,
-  loading,
-  isDesktop,
-  listMode,
-  shellRef,
-  tableAreaRef,
-  bodyHeight,
-}: {
-  items: ConversationHistoryItem[];
-  error: unknown;
-  loading: boolean;
-  isDesktop: boolean;
-  listMode: boolean;
-  shellRef: RefObject<HTMLDivElement | null>;
-  tableAreaRef: RefObject<HTMLDivElement | null>;
-  bodyHeight: number;
-}) {
-  const { visibleItems, hasMore, loadingMore, loadMore, sentinelRef } = useInfiniteSlice(
-    items,
-    undefined,
-    (item) => item.id,
-  );
-
-  useEffect(() => {
-    if (!listMode) return;
-    const area = tableAreaRef.current;
-    if (!area) return;
-
-    const body = area.querySelector<HTMLElement>(".ant-table-body");
-    if (!body) return;
-
-    const onScroll = () => {
-      if (body.scrollHeight - body.scrollTop - body.clientHeight < 96) {
-        loadMore();
-      }
-    };
-
-    body.addEventListener("scroll", onScroll, { passive: true });
-    return () => body.removeEventListener("scroll", onScroll);
-  }, [bodyHeight, listMode, loadMore, tableAreaRef, visibleItems.length]);
-
-  if (error) {
-    return (
-      <Alert
-        type="error"
-        showIcon
-        className="mx-3 max-lg:mt-0"
-        message="Não foi possível carregar o histórico"
-        description={
-          error instanceof Error ? error.message : "Tente de novo em instantes."
-        }
-      />
-    );
-  }
-
-  if (!loading && items.length === 0) {
-    return (
-      <Empty
-        className="rounded-2xl border border-food-border bg-food-surface py-16 max-lg:mx-3 max-lg:rounded-none max-lg:border-x-0"
-        description="Ainda não há atendimentos encerrados."
-      />
-    );
-  }
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {listMode ? (
-        <FillTable
-          shellRef={shellRef}
-          tableAreaRef={tableAreaRef}
-          footer={
-            loadingMore ? (
-              <div className="border-t border-food-border px-4 py-3">
-                <Skeleton active title={false} paragraph={{ rows: 1, width: "100%" }} />
-              </div>
-            ) : null
-          }
-        >
-          <Table<ConversationHistoryItem>
-            rowKey="id"
-            loading={loading}
-            dataSource={visibleItems}
-            pagination={false}
-            scroll={{ x: 720, y: bodyHeight }}
-            className={`${tableClass} ${tableGridFill}`}
-            columns={[
-              {
-                title: "Pedido",
-                dataIndex: "orderCode",
-                width: 110,
-                render: (code: string | null) =>
-                  code ? (
-                    <span className="font-bold">#{code}</span>
-                  ) : (
-                    <span className="text-food-muted">—</span>
-                  ),
-              },
-              {
-                title: "Cliente",
-                key: "customer",
-                render: (_, item) => (
-                  <CustomerIdentity
-                    name={item.customerName?.trim() || "Cliente"}
-                    phone={formatPhoneDisplay(item.customerPhone)}
-                    avatarUrl={item.customerAvatarUrl}
-                    seed={item.customerId}
-                  />
-                ),
-              },
-              {
-                title: "Status",
-                dataIndex: "orderStatus",
-                width: 140,
-                render: (status: ConversationHistoryItem["orderStatus"]) =>
-                  status ? (
-                    <Tag color={STATUS_COLOR[status]}>{STATUS_LABEL[status]}</Tag>
-                  ) : (
-                    <span className="text-food-muted">—</span>
-                  ),
-              },
-              {
-                title: "Total",
-                dataIndex: "totalCents",
-                width: 120,
-                render: (cents: number | null) => (
-                  <span className="font-semibold tabular-nums">
-                    {cents != null ? formatBRL(cents) : "—"}
-                  </span>
-                ),
-              },
-              {
-                title: "Quando",
-                dataIndex: "closedAt",
-                width: 160,
-                render: (value: string) => formatDate(value),
-              },
-            ]}
-          />
-        </FillTable>
-      ) : null}
-
       <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-hidden",
-          isDesktop && "hidden",
+          "flex min-h-0 flex-1 flex-col",
+          !isDesktop && "max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-hidden",
+          isDesktop && "max-[1440px]:min-h-0",
         )}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
-          {loading ? (
-            <HistoryCardsSkeleton count={5} />
-          ) : (
-            <div className="grid gap-3">
-              {visibleItems.map((item) => (
-                <HistoryCard key={item.id} item={item} />
-              ))}
-              {loadingMore ? <HistoryCardsSkeleton count={2} /> : null}
-              {hasMore ? <div ref={sentinelRef} className="h-px w-full" aria-hidden /> : null}
-              {!hasMore && visibleItems.length > 0 ? (
-                <p className="m-0 py-2 text-center text-xs text-food-muted">
-                  Fim do histórico
-                </p>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HistoryCardsSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <div key={index} className={entityCard}>
-          <Skeleton active title={{ width: "40%" }} paragraph={{ rows: 2, width: ["100%", "60%"] }} />
-        </div>
-      ))}
-    </>
-  );
-}
-
-function customerAvatarSrc(item: {
-  customerAvatarUrl?: string | null;
-  customerName?: string | null;
-  customerPhone?: string;
-  customerId?: string;
-}) {
-  if (item.customerAvatarUrl?.trim()) return item.customerAvatarUrl.trim();
-  return generatedAvatar(
-    item.customerPhone || item.customerName || item.customerId || "cliente",
-  );
-}
-
-function CustomerIdentity({
-  name,
-  phone,
-  avatarUrl,
-  seed,
-  size = 40,
-}: {
-  name: string;
-  phone: string;
-  avatarUrl?: string | null;
-  seed: string;
-  size?: number;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2.5">
-      <Avatar
-        size={size}
-        src={customerAvatarSrc({
-          customerAvatarUrl: avatarUrl,
-          customerName: name,
-          customerPhone: phone,
-          customerId: seed,
-        })}
-        alt=""
-        className="shrink-0 border border-food-border bg-food-chip"
-      />
-      <div className="min-w-0">
-        <p className="m-0 truncate text-[13px] font-semibold leading-tight text-food-text">
-          {name}
-        </p>
-        <p className="m-0 truncate text-xs leading-tight text-food-muted tabular-nums">
-          {phone}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-const compactCard =
-  "relative overflow-hidden rounded-2xl border border-food-border bg-food-card px-3 py-2.5 shadow-food-soft before:absolute before:inset-y-2 before:left-0 before:w-[2px] before:rounded-full before:content-['']";
-
-function HistoryCard({ item }: { item: ConversationHistoryItem }) {
-  const name = item.customerName?.trim() || "Cliente";
-  const phone = formatPhoneDisplay(item.customerPhone);
-  return (
-    <article className={cn(compactCard, "before:bg-zinc-400")}>
-      <div className="flex items-start justify-between gap-2 pl-1">
-        <div className="min-w-0">
-          <p className="m-0 mb-1.5 text-[13px] font-bold leading-tight text-food-text">
-            {item.orderCode ? `Pedido #${item.orderCode}` : "Atendimento encerrado"}
-          </p>
-          <CustomerIdentity
-            name={name}
-            phone={phone}
-            avatarUrl={item.customerAvatarUrl}
-            seed={item.customerId}
-            size={34}
+        {tab === "history" ? (
+          <WhatsAppInbox
+            key="history"
+            items={historyItems}
+            error={historyQuery.error}
+            loading={historyQuery.isLoading}
+            readOnly
+            onMobileChatOpenChange={setMobileChatOpen}
           />
-        </div>
-        {item.orderStatus ? (
-          <Tag
-            className="m-0 shrink-0 text-[11px] leading-none"
-            color={STATUS_COLOR[item.orderStatus]}
-          >
-            {STATUS_LABEL[item.orderStatus]}
-          </Tag>
-        ) : null}
+        ) : (
+          <WhatsAppInbox
+            key="active"
+            items={activeItems}
+            error={activeQuery.error}
+            loading={activeQuery.isLoading}
+            busyId={
+              takeoverMutation.isPending
+                ? takeoverMutation.variables
+                : releaseMutation.isPending
+                  ? releaseMutation.variables
+                  : closeMutation.isPending
+                    ? closeMutation.variables
+                    : null
+            }
+            onTakeover={askTakeover}
+            onRelease={(item) => releaseMutation.mutate(item.id)}
+            onClose={askClose}
+            onMobileChatOpenChange={setMobileChatOpen}
+          />
+        )}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2 pl-1">
-        <span className="text-xs text-food-muted tabular-nums">
-          {formatDate(item.closedAt)}
-        </span>
-        {item.totalCents != null ? (
-          <span className="text-sm font-extrabold tabular-nums text-food-accent">
-            {formatBRL(item.totalCents)}
-          </span>
-        ) : null}
-      </div>
-    </article>
+    </div>
   );
 }

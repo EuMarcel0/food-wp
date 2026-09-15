@@ -104,7 +104,8 @@ export function WhatsAppInbox({
   items,
   loading,
   error,
-  busyId,
+  busyId = null,
+  readOnly = false,
   onTakeover,
   onRelease,
   onClose,
@@ -113,10 +114,12 @@ export function WhatsAppInbox({
   items: LiveConversation[];
   loading: boolean;
   error: unknown;
-  busyId: string | null;
-  onTakeover: (item: LiveConversation) => void;
-  onRelease: (item: LiveConversation) => void;
-  onClose: (item: LiveConversation) => void;
+  busyId?: string | null;
+  /** Histórico: vê mensagens, sem composer nem Assumir/Encerrar. */
+  readOnly?: boolean;
+  onTakeover?: (item: LiveConversation) => void;
+  onRelease?: (item: LiveConversation) => void;
+  onClose?: (item: LiveConversation) => void;
   onMobileChatOpenChange?: (open: boolean) => void;
 }) {
   const { user } = useAuth();
@@ -634,13 +637,27 @@ export function WhatsAppInbox({
                   <div className="mt-0.5 flex flex-wrap items-center gap-1">
                     <Tag
                       className="!m-0 !text-[10px]"
-                      color={human ? "purple" : "default"}
-                      icon={human ? <UserSwitchOutlined /> : <RobotOutlined />}
+                      color={readOnly ? "default" : human ? "purple" : "default"}
+                      icon={
+                        readOnly ? undefined : human ? (
+                          <UserSwitchOutlined />
+                        ) : (
+                          <RobotOutlined />
+                        )
+                      }
                     >
-                      {human ? "Em atendimento" : "Bot"}
+                      {readOnly
+                        ? "Encerrada"
+                        : human
+                          ? "Em atendimento"
+                          : "Bot"}
                     </Tag>
                     <span className="truncate text-[11px] text-food-muted">
-                      {conversationStateLabel(item.state)}
+                      {readOnly
+                        ? item.lastOrderCode
+                          ? `Pedido #${item.lastOrderCode}`
+                          : "Atendimento encerrado"
+                        : conversationStateLabel(item.state)}
                     </span>
                   </div>
                   <p
@@ -672,7 +689,13 @@ export function WhatsAppInbox({
       >
         {!selected ? (
           <div className="flex flex-1 items-center justify-center p-6">
-            <Empty description="Selecione uma conversa para atender" />
+            <Empty
+              description={
+                readOnly
+                  ? "Selecione uma conversa do histórico"
+                  : "Selecione uma conversa para atender"
+              }
+            />
           </div>
         ) : (
           <>
@@ -703,46 +726,56 @@ export function WhatsAppInbox({
                   </div>
                   <div className="truncate text-xs text-food-muted">
                     {formatPhoneDisplay(selected.customerPhone)}
-                    {selected.handoffMode === "human" && selected.handoffBy
-                      ? ` · ${selected.handoffBy}`
-                      : ""}
+                    {readOnly && selected.lastOrderCode
+                      ? ` · Pedido #${selected.lastOrderCode}`
+                      : !readOnly &&
+                          selected.handoffMode === "human" &&
+                          selected.handoffBy
+                        ? ` · ${selected.handoffBy}`
+                        : ""}
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0 sm:gap-2">
-                {selected.handoffMode === "human" ? (
+              {!readOnly ? (
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0 sm:gap-2">
+                  {selected.handoffMode === "human" ? (
+                    <Button
+                      size="small"
+                      loading={busyId === selected.id}
+                      onClick={() => onRelease?.(selected)}
+                      className="max-lg:!px-2 max-lg:!text-xs"
+                    >
+                      <span className="hidden sm:inline">Devolver ao bot</span>
+                      <span className="sm:hidden">Devolver</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={busyId === selected.id}
+                      onClick={() => onTakeover?.(selected)}
+                      className="max-lg:!px-2 max-lg:!text-xs"
+                    >
+                      Assumir
+                    </Button>
+                  )}
                   <Button
                     size="small"
+                    danger
+                    icon={<CloseCircleOutlined />}
                     loading={busyId === selected.id}
-                    onClick={() => onRelease(selected)}
+                    onClick={() => onClose?.(selected)}
                     className="max-lg:!px-2 max-lg:!text-xs"
                   >
-                    <span className="hidden sm:inline">Devolver ao bot</span>
-                    <span className="sm:hidden">Devolver</span>
+                    <span className="hidden sm:inline">Encerrar atendimento</span>
+                    <span className="sm:hidden">Encerrar</span>
                   </Button>
-                ) : (
-                  <Button
-                    type="primary"
-                    size="small"
-                    loading={busyId === selected.id}
-                    onClick={() => onTakeover(selected)}
-                    className="max-lg:!px-2 max-lg:!text-xs"
-                  >
-                    Assumir
-                  </Button>
-                )}
-                <Button
-                  size="small"
-                  danger
-                  icon={<CloseCircleOutlined />}
-                  loading={busyId === selected.id}
-                  onClick={() => onClose(selected)}
-                  className="max-lg:!px-2 max-lg:!text-xs"
-                >
-                  <span className="hidden sm:inline">Encerrar atendimento</span>
-                  <span className="sm:hidden">Encerrar</span>
-                </Button>
-              </div>
+                </div>
+              ) : (
+                <div className="flex shrink-0 items-center px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0">
+                  <Tag className="!m-0">Somente leitura</Tag>
+                </div>
+              )}
             </header>
 
             <div
@@ -787,6 +820,7 @@ export function WhatsAppInbox({
               ))}
             </div>
 
+            {!readOnly ? (
             <footer className="shrink-0 border-t border-food-border bg-food-card p-3 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {selected.handoffMode !== "human" ? (
                 <p className="mb-2 text-xs text-food-muted">
@@ -882,6 +916,13 @@ export function WhatsAppInbox({
                 />
               </div>
             </footer>
+            ) : (
+              <div className="shrink-0 border-t border-food-border bg-food-card px-3 py-2.5 max-lg:pb-[max(0.65rem,env(safe-area-inset-bottom))]">
+                <p className="m-0 text-center text-xs text-food-muted">
+                  Conversa encerrada — só visualização das mensagens.
+                </p>
+              </div>
+            )}
           </>
         )}
       </section>
