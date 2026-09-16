@@ -266,6 +266,21 @@ export function OrdersPage() {
               ),
           },
           {
+            title: "Impressão",
+            width: 96,
+            align: "center",
+            render: (_, order) => (
+              <Tooltip title="Ver cupom">
+                <Button
+                  type="text"
+                  aria-label={`Ver cupom do pedido ${order.code}`}
+                  icon={<FileTextOutlined />}
+                  onClick={() => setReceiptOrder(order)}
+                />
+              </Tooltip>
+            ),
+          },
+          {
             title: "Tipo",
             dataIndex: "fulfillment",
             width: 108,
@@ -316,21 +331,6 @@ export function OrdersPage() {
             width: 112,
             align: "center",
             render: (value: string) => formatDate(value),
-          },
-          {
-            title: "Impressão",
-            width: 96,
-            align: "center",
-            render: (_, order) => (
-              <Tooltip title="Ver cupom">
-                <Button
-                  type="text"
-                  aria-label={`Ver cupom do pedido ${order.code}`}
-                  icon={<FileTextOutlined />}
-                  onClick={() => setReceiptOrder(order)}
-                />
-              </Tooltip>
-            ),
           },
           {
             title: "Ações",
