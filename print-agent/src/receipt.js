@@ -3,6 +3,8 @@
 const ESC = 0x1b;
 const GS = 0x1d;
 
+const FISCAL_DISCLAIMER = "Nao e valido como documento fiscal.";
+
 function encodeText(text) {
   // Térmicas ESC/POS costumam falhar com NBSP/unicode — vira "?".
   const normalized = String(text ?? "")
@@ -56,6 +58,15 @@ function wrap(text, columns) {
   return rows;
 }
 
+function sectionTitle(columns, label) {
+  const text = ` ${String(label).trim()} `;
+  if (text.length >= columns) return text.slice(0, columns);
+  const dashCount = columns - text.length;
+  const left = Math.floor(dashCount / 2);
+  const right = dashCount - left;
+  return `${"-".repeat(left)}${text}${"-".repeat(right)}`;
+}
+
 function formatBRL(cents) {
   const value = Number(cents || 0) / 100;
   // ASCII puro: evita NBSP do toLocaleString ("R$\u00A077,00" → "R$?77,00").
@@ -107,7 +118,6 @@ function formatDate(iso) {
     if (day && month && year) {
       return `${day}/${month}/${year} ${hour}:${minute}`;
     }
-    // Fallback manual se formatToParts falhar.
     const local = new Date(
       date.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }),
     );
@@ -154,33 +164,40 @@ export function buildReceiptEscPos(input) {
   const emit = (text = "") => {
     chunks.push(encodeText(`${text}\n`));
   };
-  const dash = () => emit("-".repeat(columns));
+  const section = (label) => emit(sectionTitle(columns, label));
 
-  chunks.push(Buffer.from([ESC, 0x40])); // init
+  // init + negrito + altura dupla + espaçamento maior entre linhas
+  chunks.push(Buffer.from([ESC, 0x40]));
+  chunks.push(Buffer.from([ESC, 0x33, 48])); // line spacing
+  chunks.push(Buffer.from([ESC, 0x45, 1])); // bold on
+  chunks.push(Buffer.from([GS, 0x21, 0x01])); // double height
+
+  // ~60px de margem no topo (alimentação em branco)
+  emit("");
+  emit("");
+  emit("");
+
   chunks.push(Buffer.from([ESC, 0x61, 1])); // center
-
   emit(store.name || "Estabelecimento");
   if (store.legalName) emit(String(store.legalName));
   if (store.cnpj) emit(`CNPJ ${store.cnpj}`);
 
   chunks.push(Buffer.from([ESC, 0x61, 0])); // left
-  dash();
-  chunks.push(Buffer.from([ESC, 0x45, 1])); // bold on
+  emit("");
+  section("Pedido");
   emit(`Pedido #${order.code ?? ""}`);
-  chunks.push(Buffer.from([ESC, 0x45, 0]));
   emit(formatDate(order.createdAt));
 
-  const customer = [order.customerName, formatPhone(order.customerPhone)]
-    .filter(Boolean)
-    .join(" · ");
-  if (customer) emit(customer);
-
+  emit("");
+  section("Cliente");
+  const customerName =
+    String(order.contactName ?? order.customerName ?? "").trim() ||
+    "Cliente";
+  emit(customerName);
+  const phone = formatPhone(order.customerPhone);
+  if (phone) emit(phone);
   const fulfillment = order.fulfillment === "delivery" ? "Entrega" : "Retirada";
-  const payment = order.paymentMethod
-    ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
-    : "";
-  emit(fulfillment);
-  if (payment) emit(payment);
+  emit(`Tipo: ${fulfillment}`);
   if (order.fulfillment === "delivery" && order.neighborhoodName) {
     emit(`Bairro: ${order.neighborhoodName}`);
   }
@@ -188,8 +205,8 @@ export function buildReceiptEscPos(input) {
     for (const row of wrap(String(order.addressText), columns)) emit(row);
   }
 
-  dash();
-
+  emit("");
+  section("Itens do pedido");
   for (const item of items) {
     const qty = Number(item.quantity) || 1;
     const unit = Number(item.unitPriceCents) || 0;
@@ -213,7 +230,11 @@ export function buildReceiptEscPos(input) {
     emit("");
   }
 
-  dash();
+  section("Pagamento");
+  const payment = order.paymentMethod
+    ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
+    : "";
+  if (payment) emit(`Forma: ${payment}`);
   emit(line(columns, "Subtotal", formatBRL(order.subtotalCents)));
   if (order.fulfillment === "delivery") {
     const feeLabel = order.neighborhoodName
@@ -221,9 +242,7 @@ export function buildReceiptEscPos(input) {
       : "Taxa de entrega";
     emit(line(columns, feeLabel, formatBRL(order.deliveryFeeCents)));
   }
-  chunks.push(Buffer.from([ESC, 0x45, 1]));
-  emit(line(columns, "Total", formatBRL(order.totalCents)));
-  chunks.push(Buffer.from([ESC, 0x45, 0]));
+  emit(line(columns, "TOTAL", formatBRL(order.totalCents)));
 
   if (order.paymentMethod === "cash" && order.changeForCents != null) {
     const changeFor = Number(order.changeForCents) || 0;
@@ -235,20 +254,30 @@ export function buildReceiptEscPos(input) {
   }
 
   if (order.notes) {
-    dash();
-    for (const row of wrap(`Obs. da entrega: ${order.notes}`, columns)) emit(row);
+    emit("");
+    section("Observacoes");
+    for (const row of wrap(String(order.notes), columns)) emit(row);
   }
+
   if (store.receiptFooter) {
-    dash();
+    emit("");
     chunks.push(Buffer.from([ESC, 0x61, 1]));
     for (const row of wrap(String(store.receiptFooter), columns)) emit(row);
     chunks.push(Buffer.from([ESC, 0x61, 0]));
   }
 
   emit("");
+  chunks.push(Buffer.from([ESC, 0x61, 1]));
+  chunks.push(Buffer.from([GS, 0x21, 0x00])); // normal height for disclaimer
+  for (const row of wrap(FISCAL_DISCLAIMER, columns)) emit(row);
+  chunks.push(Buffer.from([ESC, 0x61, 0]));
+  chunks.push(Buffer.from([ESC, 0x45, 0])); // bold off
+
+  // ~60px de margem na base antes do corte
   emit("");
-  // Full cut
-  chunks.push(Buffer.from([GS, 0x56, 0x00]));
+  emit("");
+  emit("");
+  chunks.push(Buffer.from([GS, 0x56, 0x00])); // full cut
 
   return push(...chunks);
 }

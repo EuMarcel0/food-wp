@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   PAYMENT_LABEL,
   addonLabel,
@@ -9,6 +10,8 @@ import {
   formatReceiptDate
 } from "../../lib/format";
 import type { Order, Store } from "../../types";
+
+const FISCAL_DISCLAIMER = "Não é válido como documento fiscal.";
 
 function receiptCustomerLine(order: Order) {
   const name = order.customerName?.trim();
@@ -31,15 +34,30 @@ function receiptNeighborhood(order: Order, store?: Store) {
   return null;
 }
 
-function Dash() {
+function SectionTitle({ label }: { label: string }) {
   return (
     <div
-      aria-hidden
       style={{
-        borderTop: "1px dashed #111",
-        margin: "8px 0"
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        margin: "10px 0 6px",
+        fontWeight: 800,
+        letterSpacing: 0.2,
+        textTransform: "uppercase",
+        fontSize: 13,
       }}
-    />
+    >
+      <span
+        aria-hidden
+        style={{ flex: 1, borderTop: "1px dashed #111", minWidth: 12 }}
+      />
+      <span style={{ flexShrink: 0 }}>{label}</span>
+      <span
+        aria-hidden
+        style={{ flex: 1, borderTop: "1px dashed #111", minWidth: 12 }}
+      />
+    </div>
   );
 }
 
@@ -50,7 +68,9 @@ function Line({ left, right, strong }: { left: string; right?: string; strong?: 
         display: "flex",
         alignItems: "baseline",
         gap: 8,
-        fontWeight: strong ? 700 : 400
+        fontWeight: strong ? 800 : 700,
+        lineHeight: 1.55,
+        marginBottom: 2,
       }}
     >
       <span style={{ minWidth: 0, wordBreak: "break-word" }}>{left}</span>
@@ -62,13 +82,19 @@ function Line({ left, right, strong }: { left: string; right?: string; strong?: 
               flex: 1,
               minWidth: 12,
               borderBottom: "1px dotted #111",
-              marginBottom: 3
+              marginBottom: 3,
             }}
           />
           <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{right}</span>
         </>
       ) : null}
     </div>
+  );
+}
+
+function Block({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ display: "block", lineHeight: 1.55, marginBottom: 4 }}>{children}</div>
   );
 }
 
@@ -83,41 +109,47 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
 
   return (
     <article
-      className='receipt-ticket'
+      className="receipt-ticket"
       style={{
         width: "80mm",
         maxWidth: "100%",
         background: "#fff",
         color: "#111",
         fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace',
-        fontSize: 12,
-        lineHeight: 1.35,
-        padding: "10px 8px 14px",
-        boxSizing: "border-box"
+        fontSize: 14,
+        fontWeight: 700,
+        lineHeight: 1.55,
+        padding: "60px 8px 60px",
+        boxSizing: "border-box",
       }}
     >
-      <header style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: 0.3 }}>{name}</div>
-        {legalName ? <div style={{ marginTop: 2 }}>{legalName}</div> : null}
-        {cnpj ? <div>CNPJ {cnpj}</div> : null}
+      <header style={{ textAlign: "center", lineHeight: 1.5 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 0.3 }}>{name}</div>
+        {legalName ? <div style={{ marginTop: 4 }}>{legalName}</div> : null}
+        {cnpj ? <div style={{ marginTop: 2 }}>CNPJ {cnpj}</div> : null}
       </header>
 
-      <Dash />
+      <SectionTitle label="Pedido" />
+      <section>
+        <Block>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>Pedido #{order.code}</div>
+        </Block>
+        <Block>{formatReceiptDate(order.createdAt)}</Block>
+      </section>
 
-      <section style={{ display: "block" }}>
-        <div style={{ display: "block", fontSize: 14, fontWeight: 800 }}>Pedido #{order.code}</div>
-        <div style={{ display: "block" }}>{formatReceiptDate(order.createdAt)}</div>
-        <div style={{ display: "block" }}>{receiptCustomerLine(order)}</div>
-        <div style={{ display: "block" }}>Tipo: {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}</div>
-        {payment ? <div style={{ display: "block" }}>Forma de pagamento: {payment}</div> : null}
-        {neighborhood ? <div style={{ display: "block" }}>Bairro: {neighborhood}</div> : null}
+      <SectionTitle label="Cliente" />
+      <section>
+        <Block>{receiptCustomerLine(order)}</Block>
+        <Block>Tipo: {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}</Block>
+        {neighborhood ? <Block>Bairro: {neighborhood}</Block> : null}
         {order.fulfillment === "delivery" && order.addressText ? (
-          <div style={{ display: "block", marginTop: 4, whiteSpace: "pre-wrap" }}>{order.addressText}</div>
+          <Block>
+            <div style={{ whiteSpace: "pre-wrap" }}>{order.addressText}</div>
+          </Block>
         ) : null}
       </section>
 
-      <Dash />
-
+      <SectionTitle label="Itens do pedido" />
       <section>
         {items.length ? (
           items.map((item, index) => {
@@ -126,56 +158,80 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
             const lineTotal = item.quantity * item.unitPriceCents;
             const unit = formatBRL(item.unitPriceCents);
             return (
-              <div key={item.id ?? `${item.name}-${index}`} style={{ marginBottom: 8 }}>
-                <Line left={`${item.quantity}x ${item.name} (un ${unit})`} right={formatBRL(lineTotal)} />
-                {item.notes ? <div style={{ paddingLeft: 8, opacity: 0.85 }}>obs.: {item.notes}</div> : null}
-                {crust ? <div style={{ paddingLeft: 8, opacity: 0.85 }}>{crust}</div> : null}
-                {addons ? <div style={{ paddingLeft: 8, opacity: 0.85 }}>{addons}</div> : null}
+              <div
+                key={item.id ?? `${item.name}-${index}`}
+                style={{ marginBottom: 10, lineHeight: 1.55 }}
+              >
+                <Line
+                  left={`${item.quantity}x ${item.name} (un ${unit})`}
+                  right={formatBRL(lineTotal)}
+                />
+                {item.notes ? (
+                  <div style={{ paddingLeft: 8, marginTop: 2 }}>obs.: {item.notes}</div>
+                ) : null}
+                {crust ? <div style={{ paddingLeft: 8, marginTop: 2 }}>{crust}</div> : null}
+                {addons ? <div style={{ paddingLeft: 8, marginTop: 2 }}>{addons}</div> : null}
               </div>
             );
           })
         ) : (
-          <div>Sem itens</div>
+          <Block>Sem itens</Block>
         )}
       </section>
 
-      <Dash />
-
+      <SectionTitle label="Pagamento" />
       <section>
-        <Line left='Subtotal' right={formatBRL(order.subtotalCents)} />
+        {payment ? <Block>Forma: {payment}</Block> : null}
+        <Line left="Subtotal" right={formatBRL(order.subtotalCents)} />
         {order.fulfillment === "delivery" ? (
           <Line
             left={neighborhood ? `Taxa de entrega (${neighborhood})` : "Taxa de entrega"}
             right={formatBRL(order.deliveryFeeCents)}
           />
         ) : null}
-        <Line left='Total' right={formatBRL(order.totalCents)} strong />
+        <Line left="TOTAL" right={formatBRL(order.totalCents)} strong />
         {order.paymentMethod === "cash" && order.changeForCents != null ? (
-          <div style={{ marginTop: 4 }}>{cashChangeLabel(order.changeForCents, order.totalCents)}</div>
+          <div style={{ marginTop: 6, lineHeight: 1.55 }}>
+            {cashChangeLabel(order.changeForCents, order.totalCents)}
+          </div>
         ) : null}
       </section>
 
-      {order.notes?.trim() || footer ? (
+      {order.notes?.trim() ? (
         <>
-          <Dash />
+          <SectionTitle label="Observações" />
           <footer>
-            {order.notes?.trim() ? (
-              <div style={{ whiteSpace: "pre-wrap" }}>Obs. da entrega: {order.notes.trim()}</div>
-            ) : null}
-            {footer ? (
-              <div
-                style={{
-                  marginTop: order.notes?.trim() ? 8 : 0,
-                  textAlign: "center",
-                  whiteSpace: "pre-wrap"
-                }}
-              >
-                {footer}
-              </div>
-            ) : null}
+            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{order.notes.trim()}</div>
           </footer>
         </>
       ) : null}
+
+      {footer ? (
+        <div
+          style={{
+            marginTop: 12,
+            textAlign: "center",
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.55,
+          }}
+        >
+          {footer}
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          marginTop: 14,
+          paddingTop: 8,
+          borderTop: "1px dashed #111",
+          textAlign: "center",
+          fontSize: 12,
+          fontWeight: 700,
+          lineHeight: 1.5,
+        }}
+      >
+        {FISCAL_DISCLAIMER}
+      </div>
     </article>
   );
 }
