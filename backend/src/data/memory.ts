@@ -1039,6 +1039,7 @@ export const memoryStore = {
           customerId: item.customerId,
           customerPhone: phone,
           lastMessageAt: item.lastMessageAt,
+          state: item.state,
         };
       })
       .filter(
@@ -1049,6 +1050,7 @@ export const memoryStore = {
           customerId: string;
           customerPhone: string;
           lastMessageAt: string;
+          state: ConversationState;
         } => item != null,
       );
   },
@@ -1064,6 +1066,7 @@ export const memoryStore = {
       .filter((item) => !item.idleWarningAt)
       .filter((item) => item.handoffMode !== "human")
       .filter((item) => item.state !== "welcome")
+      .filter((item) => item.state !== "awaiting_new_order")
       .filter((item) => {
         if (!item.lastMessageAt) return false;
         const last = Date.parse(item.lastMessageAt);
@@ -1087,6 +1090,7 @@ export const memoryStore = {
           customerId: item.customerId,
           customerPhone: phone,
           lastMessageAt: item.lastMessageAt,
+          state: item.state,
         };
       })
       .filter(
@@ -1097,6 +1101,7 @@ export const memoryStore = {
           customerId: string;
           customerPhone: string;
           lastMessageAt: string;
+          state: ConversationState;
         } => item != null,
       );
   },
@@ -1110,7 +1115,8 @@ export const memoryStore = {
       current.closedAt ||
       current.idleWarningAt ||
       current.handoffMode === "human" ||
-      current.state === "welcome"
+      current.state === "welcome" ||
+      current.state === "awaiting_new_order"
     ) {
       return null;
     }
@@ -1141,7 +1147,8 @@ export const memoryStore = {
       !current ||
       current.closedAt ||
       current.handoffMode === "human" ||
-      current.state === "welcome"
+      current.state === "welcome" ||
+      current.state === "awaiting_new_order"
     ) {
       return null;
     }
@@ -1160,6 +1167,39 @@ export const memoryStore = {
       handoffAt: null,
       handoffBy: null,
       closedAt: null,
+      lastMessageAt: now,
+      idleWarningAt: null,
+    };
+    conversations.set(current.customerId, next);
+    return next;
+  },
+
+  claimCloseIdleAfterDelivered(conversationId: string, idleMinutes: number) {
+    const current = [...conversations.values()].find(
+      (item) => item.id === conversationId,
+    );
+    if (
+      !current ||
+      current.closedAt ||
+      current.handoffMode === "human" ||
+      current.state !== "awaiting_new_order"
+    ) {
+      return null;
+    }
+    if (!current.lastMessageAt) return null;
+    const last = Date.parse(current.lastMessageAt);
+    const cutoff = Date.now() - Math.max(1, idleMinutes) * 60 * 1000;
+    if (!Number.isFinite(last) || last >= cutoff) return null;
+
+    const now = new Date().toISOString();
+    const next: Conversation = {
+      ...current,
+      state: "welcome",
+      context: { cart: [] },
+      handoffMode: "bot",
+      handoffAt: null,
+      handoffBy: null,
+      closedAt: now,
       lastMessageAt: now,
       idleWarningAt: null,
     };

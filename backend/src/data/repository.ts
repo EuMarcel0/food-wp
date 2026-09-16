@@ -1859,6 +1859,7 @@ export type IdleConversationCandidate = {
   customerId: string;
   customerPhone: string;
   lastMessageAt: string;
+  state: string;
 };
 
 /** Conversas abertas (Ativas) do bot ociosas além do limite — sem handoff humano. */
@@ -1871,7 +1872,7 @@ export async function listIdleOpenConversations(idleMinutes: number) {
   ).toISOString();
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, customer_id, last_message_at, customers(wa_phone)")
+    .select("id, customer_id, last_message_at, state, customers(wa_phone)")
     .is("closed_at", null)
     .neq("handoff_mode", "human")
     .neq("state", "welcome")
@@ -1899,6 +1900,7 @@ export async function listIdleOpenConversations(idleMinutes: number) {
         customerId: String(row.customer_id),
         customerPhone: phone,
         lastMessageAt,
+        state: String(row.state ?? ""),
       } satisfies IdleConversationCandidate;
     })
     .filter((item): item is IdleConversationCandidate => item != null);
@@ -1936,6 +1938,59 @@ export async function claimCloseIdleConversation(
     .is("closed_at", null)
     .neq("handoff_mode", "human")
     .neq("state", "welcome")
+    .neq("state", "awaiting_new_order")
+    .lt("last_message_at", cutoff)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (
+      error.message?.includes("closed_at") ||
+      error.message?.includes("idle_warning_at")
+    ) {
+      throw new Error(
+        error.message?.includes("idle_warning_at")
+          ? "Rode a migration 045_conversation_idle_warning.sql no Supabase."
+          : "Rode a migration 031_conversation_closed.sql no Supabase.",
+      );
+    }
+    throw new Error(error.message);
+  }
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
+/**
+ * Pós-entrega (Sim/Não): encerra de fato (Histórico) sem a mensagem de ociosidade.
+ */
+export async function claimCloseIdleAfterDelivered(
+  conversationId: string,
+  idleMinutes: number,
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.claimCloseIdleAfterDelivered(conversationId, idleMinutes);
+  }
+
+  const now = new Date().toISOString();
+  const cutoff = new Date(
+    Date.now() - Math.max(1, idleMinutes) * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({
+      state: "welcome",
+      context: { cart: [] },
+      handoff_mode: "bot",
+      handoff_at: null,
+      handoff_by: null,
+      closed_at: now,
+      last_message_at: now,
+      idle_warning_at: null,
+    })
+    .eq("id", conversationId)
+    .eq("state", "awaiting_new_order")
+    .is("closed_at", null)
+    .neq("handoff_mode", "human")
     .lt("last_message_at", cutoff)
     .select("*")
     .maybeSingle();
@@ -1982,11 +2037,12 @@ export async function listIdleWarningConversations(idleMinutes: number) {
 
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, customer_id, last_message_at, customers(wa_phone)")
+    .select("id, customer_id, last_message_at, state, customers(wa_phone)")
     .is("closed_at", null)
     .is("idle_warning_at", null)
     .neq("handoff_mode", "human")
     .neq("state", "welcome")
+    .neq("state", "awaiting_new_order")
     .lt("last_message_at", halfCutoff)
     .gte("last_message_at", fullCutoff)
     .order("last_message_at", { ascending: true })
@@ -2017,6 +2073,7 @@ export async function listIdleWarningConversations(idleMinutes: number) {
         customerId: String(row.customer_id),
         customerPhone: phone,
         lastMessageAt,
+        state: String(row.state ?? ""),
       } satisfies IdleConversationCandidate;
     })
     .filter((item): item is IdleConversationCandidate => item != null);
@@ -2052,6 +2109,7 @@ export async function claimIdleWarningConversation(
     .is("idle_warning_at", null)
     .neq("handoff_mode", "human")
     .neq("state", "welcome")
+    .neq("state", "awaiting_new_order")
     .lt("last_message_at", halfCutoff)
     .gte("last_message_at", fullCutoff)
     .select("*")

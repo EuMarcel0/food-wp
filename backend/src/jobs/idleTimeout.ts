@@ -1,10 +1,12 @@
 import {
+  claimCloseIdleAfterDelivered,
   claimCloseIdleConversation,
   claimIdleWarningConversation,
   getStore,
   listIdleOpenConversations,
   listIdleWarningConversations,
 } from "../data/repository.js";
+import { dayPeriodWish } from "../lib/businessHours.js";
 import { sendText } from "../lib/whatsapp.js";
 
 export const IDLE_WARNING_MESSAGE =
@@ -12,6 +14,14 @@ export const IDLE_WARNING_MESSAGE =
 
 export const IDLE_TIMEOUT_MESSAGE =
   "⏰ Encerramos seu atendimento por falta de resposta.\nQuando quiser pedir de novo, é só mandar uma mensagem. 👋";
+
+function idleDeliveredCloseMessage(timezone: string) {
+  return [
+    "😊 Agradecemos pela preferência!",
+    "Esperamos você novamente. 🍕",
+    dayPeriodWish(timezone),
+  ].join("\n");
+}
 
 const CHECK_EVERY_MS = 60_000;
 
@@ -25,7 +35,7 @@ async function sweepIdleConversations() {
     const store = await getStore();
     const idleMinutes = store.idleTimeoutMinutes ?? 60;
 
-    // 1) Metade do tempo: aviso “ainda está aí?” (sem reiniciar o relógio).
+    // 1) Metade do tempo: aviso “ainda está aí?” (não na etapa pós-entrega).
     const warningCandidates = await listIdleWarningConversations(idleMinutes);
     for (const candidate of warningCandidates) {
       const claimed = await claimIdleWarningConversation(
@@ -45,9 +55,29 @@ async function sweepIdleConversations() {
       }
     }
 
-    // 2) Tempo completo: reinicia fluxo (mantém Ativas) + avisa.
+    // 2) Tempo completo.
     const candidates = await listIdleOpenConversations(idleMinutes);
     for (const candidate of candidates) {
+      if (candidate.state === "awaiting_new_order") {
+        const closed = await claimCloseIdleAfterDelivered(
+          candidate.id,
+          idleMinutes,
+        );
+        if (!closed) continue;
+        try {
+          await sendText(
+            candidate.customerPhone,
+            idleDeliveredCloseMessage(store.timezone),
+          );
+        } catch (error) {
+          console.error(
+            `[idle-timeout] falha na despedida ${candidate.customerPhone}:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+        continue;
+      }
+
       const reset = await claimCloseIdleConversation(candidate.id, idleMinutes);
       if (!reset) continue;
       try {
@@ -69,7 +99,7 @@ async function sweepIdleConversations() {
   }
 }
 
-/** Checa conversas ociosas: aviso na metade + reinício no limite. */
+/** Checa conversas ociosas: aviso na metade + encerramento no limite. */
 export function startIdleTimeoutJob() {
   if (timer) return;
   console.log(
