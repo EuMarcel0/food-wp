@@ -86,6 +86,13 @@ export type ConversationHistoryItem = {
   closedAt: string;
 };
 
+export type ConversationHistoryPage = {
+  items: ConversationHistoryItem[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  total: number;
+};
+
 export type OrderItem = {
   id?: string;
   name: string;

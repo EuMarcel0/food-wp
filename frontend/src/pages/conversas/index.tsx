@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Tag, Tabs } from "antd";
 import { CommentOutlined } from "@ant-design/icons";
 import { PageHeader } from "../../components/PageHeader";
@@ -18,6 +23,9 @@ import { WhatsAppInbox } from "./WhatsAppInbox";
 
 type TabKey = "active" | "history";
 
+const HISTORY_FIRST_PAGE = 30;
+const HISTORY_PAGE_SIZE = 15;
+
 export function ConversationsPage() {
   const dialog = useDialog();
   const { user } = useAuth();
@@ -33,9 +41,18 @@ export function ConversationsPage() {
     networkMode: "always",
   });
 
-  const historyQuery = useQuery({
+  const historyQuery = useInfiniteQuery({
     queryKey: queryKeys.conversations.history,
-    queryFn: () => api.conversationHistory(true),
+    queryFn: ({ pageParam }) =>
+      api.conversationHistory(true, {
+        limit: pageParam === 0 ? HISTORY_FIRST_PAGE : HISTORY_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextOffset != null
+        ? lastPage.nextOffset
+        : undefined,
     refetchInterval: supabase ? false : 8000,
   });
 
@@ -154,7 +171,20 @@ export function ConversationsPage() {
   }
 
   const activeItems = activeQuery.data ?? [];
-  const historyItems = (historyQuery.data ?? []) as LiveConversation[];
+  const historyItems = useMemo(() => {
+    const seen = new Set<string>();
+    const items: LiveConversation[] = [];
+    for (const page of historyQuery.data?.pages ?? []) {
+      for (const item of page.items) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        items.push(item);
+      }
+    }
+    return items;
+  }, [historyQuery.data]);
+  const historyTotal =
+    historyQuery.data?.pages[0]?.total ?? historyItems.length;
   const humanCount = activeItems.filter((item) => item.handoffMode === "human").length;
 
   return (
@@ -219,7 +249,7 @@ export function ConversationsPage() {
               label: (
                 <span className="inline-flex items-center gap-1.5">
                   Histórico
-                  <Tag className="!m-0">{historyItems.length}</Tag>
+                  <Tag className="!m-0">{historyTotal}</Tag>
                 </span>
               ),
             },
@@ -241,6 +271,14 @@ export function ConversationsPage() {
             error={historyQuery.error}
             loading={historyQuery.isLoading}
             readOnly
+            listTotal={historyTotal}
+            hasMore={Boolean(historyQuery.hasNextPage)}
+            loadingMore={historyQuery.isFetchingNextPage}
+            onLoadMore={() => {
+              if (historyQuery.hasNextPage && !historyQuery.isFetchingNextPage) {
+                void historyQuery.fetchNextPage();
+              }
+            }}
             onMobileChatOpenChange={setMobileChatOpen}
           />
         ) : (

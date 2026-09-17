@@ -5,7 +5,7 @@ import type {
   Addon,
   AppNotification,
   Category,
-  ConversationHistoryItem,
+  ConversationHistoryPage,
   ConversationMessage,
   ConversationMessagesPage,
   Crust,
@@ -277,9 +277,16 @@ export const api = {
     request<LiveConversation[]>(withQuery("/api/conversations", { tab }), {
       silent
     }),
-  conversationHistory: (silent = true) =>
-    request<ConversationHistoryItem[]>(
-      withQuery("/api/conversations", { tab: "history" }),
+  conversationHistory: (
+    silent = true,
+    options: { limit?: number; offset?: number } = {},
+  ) =>
+    request<ConversationHistoryPage>(
+      withQuery("/api/conversations", {
+        tab: "history",
+        limit: options.limit,
+        offset: options.offset,
+      }),
       { silent }
     ),
   conversationMessages: (

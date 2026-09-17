@@ -22,7 +22,11 @@ conversationsRouter.get("/", async (req, res) => {
   try {
     const tab = String(req.query.tab ?? "active");
     if (tab === "history") {
-      res.json(await listConversationHistory(100));
+      const rawLimit = Number(req.query.limit);
+      const rawOffset = Number(req.query.offset);
+      const limit = Number.isFinite(rawLimit) ? rawLimit : 30;
+      const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
+      res.json(await listConversationHistory({ limit, offset }));
       return;
     }
     res.json(await listLiveConversations(24));

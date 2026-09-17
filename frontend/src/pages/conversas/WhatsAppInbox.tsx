@@ -1,9 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Avatar, Badge, Button, Empty, Input, Popover, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
@@ -14,7 +10,7 @@ import {
   SendOutlined,
   SmileOutlined,
   UnorderedListOutlined,
-  UserSwitchOutlined,
+  UserSwitchOutlined
 } from "@ant-design/icons";
 import { useAuth } from "../../auth/AuthProvider";
 import { api } from "../../lib/api";
@@ -29,24 +25,59 @@ import {
   CONVERSATION_READ_EVENT,
   conversationReadCursor,
   isConversationUnread,
-  markConversationRead,
+  markConversationRead
 } from "../../lib/conversationBadge";
 import { useConversationViewing, CONVERSATIONS_LIVE_EVENT } from "../../conversations/ConversationAlerts";
 import {
   mapRealtimeConversationMessage,
   upsertMessageInCache,
-  type MessagesInfinite,
+  type MessagesInfinite
 } from "../../conversations/realtimeCache";
 import type { ConversationMessage, ConversationMessageActions, LiveConversation } from "../../types";
 
 const MESSAGE_PAGE_SIZE = 40;
 
 const CHAT_EMOJIS = [
-  "😀", "😁", "😂", "🥹", "😊", "😍", "🥰", "😘",
-  "😉", "😎", "🤔", "😅", "😢", "😭", "😤", "🙏",
-  "👍", "👎", "👏", "👋", "✌️", "🤝", "💪", "❤️",
-  "🔥", "✨", "🎉", "🍕", "🍔", "🍟", "🥤", "🍺",
-  "✅", "❌", "⏰", "📍", "💬", "📦", "🛵", "🏠",
+  "😀",
+  "😁",
+  "😂",
+  "🥹",
+  "😊",
+  "😍",
+  "🥰",
+  "😘",
+  "😉",
+  "😎",
+  "🤔",
+  "😅",
+  "😢",
+  "😭",
+  "😤",
+  "🙏",
+  "👍",
+  "👎",
+  "👏",
+  "👋",
+  "✌️",
+  "🤝",
+  "💪",
+  "❤️",
+  "🔥",
+  "✨",
+  "🎉",
+  "🍕",
+  "🍔",
+  "🍟",
+  "🥤",
+  "🍺",
+  "✅",
+  "❌",
+  "⏰",
+  "📍",
+  "💬",
+  "📦",
+  "🛵",
+  "🏠"
 ];
 
 type MessagesCursor = { createdAt: string; id: string } | null;
@@ -67,7 +98,7 @@ function clock(iso: string) {
   try {
     return new Date(iso).toLocaleTimeString("pt-BR", {
       hour: "2-digit",
-      minute: "2-digit",
+      minute: "2-digit"
     });
   } catch {
     return "";
@@ -94,9 +125,7 @@ function matchesConversation(item: LiveConversation, rawQuery: string) {
   const phoneDigits = (item.customerPhone ?? "").replace(/\D/g, "");
   const queryDigits = rawQuery.replace(/\D/g, "");
   return (
-    name.includes(q) ||
-    formattedPhone.includes(q) ||
-    (queryDigits.length >= 2 && phoneDigits.includes(queryDigits))
+    name.includes(q) || formattedPhone.includes(q) || (queryDigits.length >= 2 && phoneDigits.includes(queryDigits))
   );
 }
 
@@ -106,10 +135,14 @@ export function WhatsAppInbox({
   error,
   busyId = null,
   readOnly = false,
+  listTotal,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   onTakeover,
   onRelease,
   onClose,
-  onMobileChatOpenChange,
+  onMobileChatOpenChange
 }: {
   items: LiveConversation[];
   loading: boolean;
@@ -117,6 +150,10 @@ export function WhatsAppInbox({
   busyId?: string | null;
   /** Histórico: vê mensagens, sem composer nem Assumir/Encerrar. */
   readOnly?: boolean;
+  listTotal?: number;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   onTakeover?: (item: LiveConversation) => void;
   onRelease?: (item: LiveConversation) => void;
   onClose?: (item: LiveConversation) => void;
@@ -132,23 +169,45 @@ export function WhatsAppInbox({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [readTick, setReadTick] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const listSentinelRef = useRef<HTMLDivElement>(null);
   const chatShellRef = useRef<HTMLElement>(null);
   const draftAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const stickToBottomRef = useRef(true);
   const loadingOlderRef = useRef(false);
   const lastSelectedIdRef = useRef<string | null>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
 
   const filtered = useMemo(() => {
     const q = query.trim();
     if (!q) return items;
-    return items.filter((item) => matchesConversation(item, q));
+    return items.filter(item => matchesConversation(item, q));
   }, [items, query]);
 
   useEffect(() => {
-    if (selectedId && !items.some((item) => item.id === selectedId)) {
+    if (selectedId && !items.some(item => item.id === selectedId)) {
       setSelectedId(null);
     }
   }, [items, selectedId]);
+
+  useEffect(() => {
+    if (!onLoadMore || !hasMore || loadingMore) return;
+    const root = listScrollRef.current;
+    const el = listSentinelRef.current;
+    if (!el || !root) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          onLoadMoreRef.current?.();
+        }
+      },
+      { root, rootMargin: "160px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore, items.length]);
 
   useEffect(() => {
     if (!selectedId && filtered[0] && isDesktop) {
@@ -223,7 +282,7 @@ export function WhatsAppInbox({
     };
   }, [isDesktop, selectedId]);
 
-  const selected = items.find((item) => item.id === selectedId) ?? null;
+  const selected = items.find(item => item.id === selectedId) ?? null;
 
   useEffect(() => {
     setViewingConversationId(selectedId);
@@ -246,7 +305,7 @@ export function WhatsAppInbox({
   }, [items, readTick]);
 
   useEffect(() => {
-    const bump = () => setReadTick((value) => value + 1);
+    const bump = () => setReadTick(value => value + 1);
     window.addEventListener(CONVERSATION_READ_EVENT, bump);
     window.addEventListener(CONVERSATIONS_LIVE_EVENT, bump);
     return () => {
@@ -261,18 +320,17 @@ export function WhatsAppInbox({
       api.conversationMessages(selectedId!, {
         limit: MESSAGE_PAGE_SIZE,
         beforeAt: pageParam?.createdAt,
-        beforeId: pageParam?.id,
+        beforeId: pageParam?.id
       }),
     initialPageParam: null as MessagesCursor,
-    getNextPageParam: (lastPage) =>
-      lastPage.hasMore && lastPage.nextBefore ? lastPage.nextBefore : undefined,
+    getNextPageParam: lastPage => (lastPage.hasMore && lastPage.nextBefore ? lastPage.nextBefore : undefined),
     enabled: Boolean(selectedId),
     staleTime: 30_000,
     refetchOnMount: "always",
     networkMode: "always",
     // Sem polling: Realtime (WebSocket do Supabase) aplica cada INSERT na hora.
     // Só faz poll se o Supabase não estiver configurado (modo demo).
-    refetchInterval: supabase ? false : 4000,
+    refetchInterval: supabase ? false : 4000
   });
 
   const messages = useMemo(() => {
@@ -281,7 +339,7 @@ export function WhatsAppInbox({
     return pages
       .slice()
       .reverse()
-      .flatMap((page) => page.items);
+      .flatMap(page => page.items);
   }, [messagesQuery.data]);
 
   useEffect(() => {
@@ -296,25 +354,20 @@ export function WhatsAppInbox({
           event: "*",
           schema: "public",
           table: "conversation_messages",
-          filter: `conversation_id=eq.${selectedId}`,
+          filter: `conversation_id=eq.${selectedId}`
         },
-        (payload) => {
+        payload => {
           const row = payload.new as Record<string, unknown> | null;
-          if (
-            (payload.eventType === "INSERT" || payload.eventType === "UPDATE") &&
-            row
-          ) {
+          if ((payload.eventType === "INSERT" || payload.eventType === "UPDATE") && row) {
             const message = mapRealtimeConversationMessage(row);
             if (message) {
-              queryClient.setQueryData<MessagesInfinite>(key, (current) =>
-                upsertMessageInCache(current, message),
-              );
+              queryClient.setQueryData<MessagesInfinite>(key, current => upsertMessageInCache(current, message));
             }
           }
           void queryClient.invalidateQueries({
-            queryKey: queryKeys.conversations.live,
+            queryKey: queryKeys.conversations.live
           });
-        },
+        }
       )
       .subscribe();
     return () => {
@@ -341,12 +394,7 @@ export function WhatsAppInbox({
 
   async function loadOlderMessages() {
     const el = threadRef.current;
-    if (
-      !el ||
-      !messagesQuery.hasNextPage ||
-      messagesQuery.isFetchingNextPage ||
-      loadingOlderRef.current
-    ) {
+    if (!el || !messagesQuery.hasNextPage || messagesQuery.isFetchingNextPage || loadingOlderRef.current) {
       return;
     }
 
@@ -376,22 +424,10 @@ export function WhatsAppInbox({
   }
 
   const sendMutation = useMutation({
-    mutationFn: ({
-      conversationId,
-      text,
-      tempId,
-    }: {
-      conversationId: string;
-      text: string;
-      tempId: string;
-    }) =>
+    mutationFn: ({ conversationId, text, tempId }: { conversationId: string; text: string; tempId: string }) =>
       api
-        .sendConversationMessage(
-          conversationId,
-          text,
-          displayName(user) || undefined,
-        )
-        .then((result) => ({ ...result, tempId, conversationId })),
+        .sendConversationMessage(conversationId, text, displayName(user) || undefined)
+        .then(result => ({ ...result, tempId, conversationId })),
     onMutate: async ({ conversationId, text, tempId }) => {
       const key = queryKeys.conversations.messages(conversationId);
       await queryClient.cancelQueries({ queryKey: key });
@@ -405,45 +441,41 @@ export function WhatsAppInbox({
         author: "agent",
         body: text,
         msgType: "text",
-        createdAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
       };
 
-      queryClient.setQueryData<MessagesInfinite>(key, (current) => {
+      queryClient.setQueryData<MessagesInfinite>(key, current => {
         if (!current?.pages.length) {
           return {
             pages: [
               {
                 items: [optimistic],
                 hasMore: false,
-                nextBefore: null,
-              },
+                nextBefore: null
+              }
             ],
-            pageParams: [null],
+            pageParams: [null]
           };
         }
         const pages = current.pages.map((page, index) =>
-          index === 0
-            ? { ...page, items: [...page.items, optimistic] }
-            : page,
+          index === 0 ? { ...page, items: [...page.items, optimistic] } : page
         );
         return { ...current, pages };
       });
 
-      queryClient.setQueryData<LiveConversation[]>(
-        queryKeys.conversations.live,
-        (current) =>
-          (current ?? []).map((item) =>
-            item.id === conversationId
-              ? {
-                  ...item,
-                  handoffMode: "human" as const,
-                  handoffBy: displayName(user) || item.handoffBy,
-                  lastMessageAt: optimistic.createdAt,
-                  lastMessagePreview: text.slice(0, 160),
-                  lastMessageDirection: "outbound" as const,
-                }
-              : item,
-          ),
+      queryClient.setQueryData<LiveConversation[]>(queryKeys.conversations.live, current =>
+        (current ?? []).map(item =>
+          item.id === conversationId
+            ? {
+                ...item,
+                handoffMode: "human" as const,
+                handoffBy: displayName(user) || item.handoffBy,
+                lastMessageAt: optimistic.createdAt,
+                lastMessagePreview: text.slice(0, 160),
+                lastMessageDirection: "outbound" as const
+              }
+            : item
+        )
       );
 
       markConversationRead(conversationId, optimistic.createdAt);
@@ -451,28 +483,26 @@ export function WhatsAppInbox({
 
       return { previous, key };
     },
-    onSuccess: async (result) => {
+    onSuccess: async result => {
       const key = queryKeys.conversations.messages(result.conversationId);
       if (result.message) {
-        queryClient.setQueryData<MessagesInfinite>(key, (current) => {
+        queryClient.setQueryData<MessagesInfinite>(key, current => {
           if (!current?.pages.length) {
             return {
               pages: [
                 {
                   items: [result.message!],
                   hasMore: false,
-                  nextBefore: null,
-                },
+                  nextBefore: null
+                }
               ],
-              pageParams: [null],
+              pageParams: [null]
             };
           }
           const pages = current.pages.map((page, index) => {
             if (index !== 0) return page;
-            const withoutTemp = page.items.filter(
-              (item) => item.id !== result.tempId,
-            );
-            if (withoutTemp.some((item) => item.id === result.message!.id)) {
+            const withoutTemp = page.items.filter(item => item.id !== result.tempId);
+            if (withoutTemp.some(item => item.id === result.message!.id)) {
               return { ...page, items: withoutTemp };
             }
             return { ...page, items: [...withoutTemp, result.message!] };
@@ -481,7 +511,7 @@ export function WhatsAppInbox({
         });
       }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.conversations.live,
+        queryKey: queryKeys.conversations.live
       });
     },
     onError: (err, _variables, context) => {
@@ -489,7 +519,7 @@ export function WhatsAppInbox({
         queryClient.setQueryData(context.key, context.previous);
       }
       toast.error(err instanceof Error ? err.message : "Falha ao enviar.");
-    },
+    }
   });
 
   function keepComposerFocused() {
@@ -516,7 +546,7 @@ export function WhatsAppInbox({
   function insertEmoji(emoji: string) {
     const el = draftAreaRef.current;
     if (!el) {
-      setDraft((value) => value + emoji);
+      setDraft(value => value + emoji);
       return;
     }
     const start = el.selectionStart ?? draft.length;
@@ -536,63 +566,65 @@ export function WhatsAppInbox({
         "min-h-0 flex-1 overflow-hidden bg-food-surface",
         isDesktop
           ? "grid h-full min-h-0 grid-cols-[340px_minmax(0,1fr)] rounded-2xl border border-food-border shadow-food-soft"
-          : "flex h-full flex-col",
+          : "flex h-full flex-col"
       )}
     >
       <aside
         className={cn(
           "flex min-h-0 flex-col border-food-border bg-food-card lg:border-r",
-          selectedId ? "hidden lg:flex" : "flex flex-1",
+          selectedId ? "hidden lg:flex" : "flex flex-1"
         )}
       >
-        <div className="shrink-0 space-y-2 border-b border-food-border p-3 max-lg:px-3">
-          <div className="flex items-center justify-between gap-2">
-            <strong className="text-sm text-food-text">
-              {isDesktop ? "WhatsApp" : "Conversas"}
-            </strong>
-            <Tag className="!m-0" color="success">
-              {items.length} ativas
+        <div className='shrink-0 space-y-2 border-b border-food-border p-3 max-lg:px-3'>
+          <div className='flex items-center justify-between gap-2'>
+            <strong className='text-sm text-food-text'>{isDesktop ? "WhatsApp" : "Conversas"}</strong>
+            <Tag className='!m-0' color={readOnly ? undefined : "success"}>
+              {readOnly ? `${listTotal ?? items.length}` : `${items.length} ativas`}
             </Tag>
           </div>
           <Input
             allowClear
-            prefix={<SearchOutlined className="text-food-muted" />}
-            placeholder="Buscar nome ou telefone"
+            prefix={<SearchOutlined className='text-food-muted' />}
+            placeholder='Buscar nome ou telefone'
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={e => setQuery(e.target.value)}
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={listScrollRef} className='min-h-0 flex-1 overflow-y-auto'>
           {error ? (
             <Alert
-              type="error"
+              type='error'
               showIcon
-              className="m-3"
+              className='m-3'
               message={error instanceof Error ? error.message : "Falha ao carregar."}
             />
           ) : null}
           {loading && !items.length ? (
-            <div className="flex justify-center py-10">
+            <div className='flex justify-center py-10'>
               <Spin />
             </div>
           ) : null}
           {!loading && !filtered.length ? (
             <Empty
-              className="py-10"
+              className='py-10'
               description={
-                query.trim() ? "Nenhuma conversa encontrada" : "Nenhuma conversa ativa"
+                query.trim()
+                  ? "Nenhuma conversa encontrada"
+                  : readOnly
+                    ? "Nenhuma conversa no histórico"
+                    : "Nenhuma conversa ativa"
               }
             />
           ) : null}
-          {filtered.map((item) => {
+          {filtered.map(item => {
             const active = item.id === selectedId;
             const human = item.handoffMode === "human";
             const unread = unreadIds.has(item.id);
             return (
               <button
                 key={item.id}
-                type="button"
+                type='button'
                 onClick={() => {
                   setSelectedId(item.id);
                   markConversationRead(item.id, item.lastMessageAt);
@@ -601,26 +633,23 @@ export function WhatsAppInbox({
                   "flex w-full items-start gap-3 border-0 border-b border-l-2 border-solid border-b-black/[0.06] px-3 py-3 text-left transition dark:border-b-white/[0.08]",
                   active
                     ? "border-l-food-accent bg-transparent bg-gradient-to-r from-food-accent/12 via-food-accent/[0.04] to-transparent dark:from-food-accent/[0.04] dark:via-food-accent/[0.015] dark:to-transparent"
-                    : "border-l-transparent bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]",
+                    : "border-l-transparent bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
                 )}
               >
-                <Badge dot={unread} color="#22c55e" offset={[-2, 34]}>
+                <Badge dot={unread} color='#22c55e' offset={[-2, 34]}>
                   <Avatar
                     size={40}
-                    src={
-                      item.customerAvatarUrl ||
-                      generatedAvatar(item.customerName || item.customerPhone)
-                    }
+                    src={item.customerAvatarUrl || generatedAvatar(item.customerName || item.customerPhone)}
                   >
                     {(item.customerName || item.customerPhone || "?").slice(0, 1).toUpperCase()}
                   </Avatar>
                 </Badge>
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className='min-w-0 flex-1 overflow-hidden'>
+                  <div className='flex min-w-0 items-start justify-between gap-2'>
                     <span
                       className={cn(
                         "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-food-text",
-                        unread ? "font-bold" : "font-semibold",
+                        unread ? "font-bold" : "font-semibold"
                       )}
                     >
                       {customerLabel(item)}
@@ -628,31 +657,21 @@ export function WhatsAppInbox({
                     <span
                       className={cn(
                         "shrink-0 text-[11px]",
-                        unread ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-food-muted",
+                        unread ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-food-muted"
                       )}
                     >
                       {relativeTime(item.lastMessageAt)}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                  <div className='mt-0.5 flex flex-wrap items-center gap-1'>
                     <Tag
-                      className="!m-0 !text-[10px]"
+                      className='!m-0 !text-[10px]'
                       color={readOnly ? "default" : human ? "purple" : "default"}
-                      icon={
-                        readOnly ? undefined : human ? (
-                          <UserSwitchOutlined />
-                        ) : (
-                          <RobotOutlined />
-                        )
-                      }
+                      icon={readOnly ? undefined : human ? <UserSwitchOutlined /> : <RobotOutlined />}
                     >
-                      {readOnly
-                        ? "Encerrada"
-                        : human
-                          ? "Em atendimento"
-                          : "Bot"}
+                      {readOnly ? "Encerrada" : human ? "Em atendimento" : "Bot"}
                     </Tag>
-                    <span className="truncate text-[11px] text-food-muted">
+                    <span className='truncate text-[11px] text-food-muted'>
                       {readOnly
                         ? item.lastOrderCode
                           ? `Pedido #${item.lastOrderCode}`
@@ -663,7 +682,7 @@ export function WhatsAppInbox({
                   <p
                     className={cn(
                       "mt-1 truncate text-xs leading-snug",
-                      unread ? "font-medium text-food-text" : "text-food-muted",
+                      unread ? "font-medium text-food-text" : "text-food-muted"
                     )}
                     title={item.lastMessagePreview || undefined}
                   >
@@ -673,6 +692,11 @@ export function WhatsAppInbox({
               </button>
             );
           })}
+          {hasMore ? (
+            <div ref={listSentinelRef} className='flex h-10 items-center justify-center'>
+              {loadingMore ? <Spin size='small' /> : null}
+            </div>
+          ) : null}
         </div>
       </aside>
 
@@ -682,98 +706,82 @@ export function WhatsAppInbox({
           "flex min-h-0 flex-col bg-[#efeae2] dark:bg-[#0b141a]",
           selectedId || isDesktop ? "flex" : "hidden",
           !selectedId && "hidden lg:flex",
-          !isDesktop &&
-            selectedId &&
-            "fixed inset-x-0 top-0 z-50 h-[100dvh] max-h-[100dvh] max-lg:flex",
+          !isDesktop && selectedId && "fixed inset-x-0 top-0 z-50 h-[100dvh] max-h-[100dvh] max-lg:flex"
         )}
       >
         {!selected ? (
-          <div className="flex flex-1 items-center justify-center p-6">
+          <div className='flex flex-1 items-center justify-center p-6'>
             <Empty
-              description={
-                readOnly
-                  ? "Selecione uma conversa do histórico"
-                  : "Selecione uma conversa para atender"
-              }
+              description={readOnly ? "Selecione uma conversa do histórico" : "Selecione uma conversa para atender"}
             />
           </div>
         ) : (
           <>
-            <header className="sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b border-food-border bg-food-card py-2.5 max-lg:gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:px-3 lg:py-2.5">
-              <div className="flex min-w-0 items-center gap-2 px-3 lg:flex-1 lg:px-0">
+            <header className='sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b border-food-border bg-food-card py-2.5 max-lg:gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:px-3 lg:py-2.5'>
+              <div className='flex min-w-0 items-center gap-2 px-3 lg:flex-1 lg:px-0'>
                 <Button
-                  type="text"
-                  className="shrink-0 lg:!hidden"
+                  type='text'
+                  className='shrink-0 lg:!hidden'
                   icon={<ArrowLeftOutlined />}
                   onClick={() => setSelectedId(null)}
-                  aria-label="Voltar à lista"
+                  aria-label='Voltar à lista'
                 />
                 <Avatar
                   size={40}
-                  className="shrink-0"
-                  src={
-                    selected.customerAvatarUrl ||
-                    generatedAvatar(selected.customerName || selected.customerPhone)
-                  }
+                  className='shrink-0'
+                  src={selected.customerAvatarUrl || generatedAvatar(selected.customerName || selected.customerPhone)}
                 >
-                  {(selected.customerName || selected.customerPhone || "?")
-                    .slice(0, 1)
-                    .toUpperCase()}
+                  {(selected.customerName || selected.customerPhone || "?").slice(0, 1).toUpperCase()}
                 </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-food-text">
-                    {customerLabel(selected)}
-                  </div>
-                  <div className="truncate text-xs text-food-muted">
-                    {formatPhoneDisplay(selected.customerPhone)}
-                    {readOnly && selected.lastOrderCode
-                      ? ` · Pedido #${selected.lastOrderCode}`
-                      : !readOnly &&
-                          selected.handoffMode === "human" &&
-                          selected.handoffBy
-                        ? ` · ${selected.handoffBy}`
-                        : ""}
-                  </div>
+                <div className='min-w-0 flex-1'>
+                  <div className='truncate font-semibold text-food-text'>{customerLabel(selected)}</div>
+                  <div className='truncate text-xs text-food-muted'>{formatPhoneDisplay(selected.customerPhone)}</div>
+                  {!readOnly && selected.handoffMode === "human" && selected.handoffBy?.trim() ? (
+                    <div className='truncate text-[11px] text-food-muted'>Atendente: {selected.handoffBy.trim()}</div>
+                  ) : null}
+                  {readOnly && selected.lastOrderCode ? (
+                    <div className='truncate text-[11px] text-food-muted'>Pedido #{selected.lastOrderCode}</div>
+                  ) : null}
                 </div>
               </div>
               {!readOnly ? (
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0 sm:gap-2">
+                <div className='flex shrink-0 flex-wrap items-center gap-1.5 px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0 sm:gap-2'>
                   {selected.handoffMode === "human" ? (
                     <Button
-                      size="small"
+                      size='small'
                       loading={busyId === selected.id}
                       onClick={() => onRelease?.(selected)}
-                      className="max-lg:!px-2 max-lg:!text-xs"
+                      className='max-lg:!px-2 max-lg:!text-xs'
                     >
-                      <span className="hidden sm:inline">Devolver ao bot</span>
-                      <span className="sm:hidden">Devolver</span>
+                      <span className='hidden sm:inline'>Devolver ao bot</span>
+                      <span className='sm:hidden'>Devolver</span>
                     </Button>
                   ) : (
                     <Button
-                      type="primary"
-                      size="small"
+                      type='primary'
+                      size='small'
                       loading={busyId === selected.id}
                       onClick={() => onTakeover?.(selected)}
-                      className="max-lg:!px-2 max-lg:!text-xs"
+                      className='max-lg:!px-2 max-lg:!text-xs'
                     >
                       Assumir
                     </Button>
                   )}
                   <Button
-                    size="small"
+                    size='small'
                     danger
                     icon={<CloseCircleOutlined />}
                     loading={busyId === selected.id}
                     onClick={() => onClose?.(selected)}
-                    className="max-lg:!px-2 max-lg:!text-xs"
+                    className='max-lg:!px-2 max-lg:!text-xs'
                   >
-                    <span className="hidden sm:inline">Encerrar atendimento</span>
-                    <span className="sm:hidden">Encerrar</span>
+                    <span className='hidden sm:inline'>Encerrar atendimento</span>
+                    <span className='sm:hidden'>Encerrar</span>
                   </Button>
                 </div>
               ) : (
-                <div className="flex shrink-0 items-center px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0">
-                  <Tag className="!m-0">Somente leitura</Tag>
+                <div className='flex shrink-0 items-center px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0'>
+                  <Tag className='!m-0'>Somente leitura</Tag>
                 </div>
               )}
             </header>
@@ -781,144 +789,137 @@ export function WhatsAppInbox({
             <div
               ref={threadRef}
               onScroll={onThreadScroll}
-              className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
+              className='min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5'
             >
               {messagesQuery.isFetchingNextPage ? (
-                <div className="flex justify-center py-2">
-                  <Spin size="small" />
+                <div className='flex justify-center py-2'>
+                  <Spin size='small' />
                 </div>
               ) : null}
               {messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage ? (
-                <div className="py-1 text-center text-[11px] text-food-muted">
+                <div className='py-1 text-center text-[11px] text-food-muted'>
                   Role para cima para ver mensagens anteriores
                 </div>
               ) : null}
               {messagesQuery.isLoading ? (
-                <div className="flex justify-center py-10">
+                <div className='flex justify-center py-10'>
                   <Spin />
                 </div>
               ) : null}
               {messagesQuery.error ? (
                 <Alert
-                  type="error"
+                  type='error'
                   showIcon
                   message={
-                    messagesQuery.error instanceof Error
-                      ? messagesQuery.error.message
-                      : "Falha ao carregar mensagens."
+                    messagesQuery.error instanceof Error ? messagesQuery.error.message : "Falha ao carregar mensagens."
                   }
                 />
               ) : null}
               {!messagesQuery.isLoading && !messages.length ? (
-                <Empty
-                  className="py-10"
-                  description="Ainda sem mensagens neste chat. Novas mensagens aparecem aqui."
-                />
+                <Empty className='py-10' description='Ainda sem mensagens neste chat. Novas mensagens aparecem aqui.' />
               ) : null}
-              {messages.map((message) => (
+              {messages.map(message => (
                 <MessageBubble key={message.id} message={message} />
               ))}
             </div>
 
             {!readOnly ? (
-            <footer className="shrink-0 border-t border-food-border bg-food-card p-3 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              {selected.handoffMode !== "human" ? (
-                <p className="mb-2 text-xs text-food-muted">
-                  O bot está atendendo. Ao enviar uma mensagem, o atendimento é
-                  assumido automaticamente.
-                </p>
-              ) : null}
-              <div className="flex items-end gap-2">
-                <Popover
-                  trigger="click"
-                  placement="topLeft"
-                  open={emojiOpen}
-                  onOpenChange={setEmojiOpen}
-                  arrow={false}
-                  overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-2"
-                  content={
-                    <div
-                      className="grid max-h-52 w-[min(280px,calc(100vw-48px))] grid-cols-8 gap-0.5 overflow-y-auto"
-                      role="listbox"
-                      aria-label="Emojis"
-                    >
-                      {CHAT_EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          className="grid size-8 place-items-center rounded-lg border-0 bg-transparent text-lg leading-none transition hover:bg-food-chip"
-                          onClick={() => {
-                            insertEmoji(emoji);
-                            setEmojiOpen(false);
-                          }}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  }
-                >
-                  <Button
-                    type="primary"
-                    icon={<SmileOutlined />}
-                    aria-label="Emojis"
-                    aria-expanded={emojiOpen}
-                    aria-haspopup="dialog"
-                  />
-                </Popover>
-                <Input.TextArea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Digite uma mensagem"
-                  autoSize={{ minRows: 1, maxRows: 4 }}
-                  ref={(node) => {
-                    draftAreaRef.current =
-                      node?.resizableTextArea?.textArea ?? null;
-                  }}
-                  onFocus={() => {
-                    // iOS tenta scrollar o input para o centro; reverte na hora
-                    // e mantém as mensagens recentes visíveis acima do teclado.
-                    stickToBottomRef.current = true;
-                    requestAnimationFrame(() => {
-                      window.scrollTo(0, 0);
-                      const vv = window.visualViewport;
-                      const shell = chatShellRef.current;
-                      const thread = threadRef.current;
-                      if (!shell || isDesktop) return;
-                      if (!vv) {
-                        shell.style.top = "0px";
-                        shell.style.height = "100dvh";
-                      } else {
-                        shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
-                        shell.style.height = `${vv.height}px`;
-                      }
-                      if (thread) thread.scrollTop = thread.scrollHeight;
-                      requestAnimationFrame(() => {
-                        if (thread) thread.scrollTop = thread.scrollHeight;
-                      });
-                    });
-                  }}
-                  onPressEnter={(e) => {
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      submitMessage();
+              <footer className='shrink-0 border-t border-food-border bg-food-card p-3 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]'>
+                {selected.handoffMode !== "human" ? (
+                  <p className='mb-2 text-xs text-food-muted'>
+                    O bot está atendendo. Ao enviar uma mensagem, o atendimento é assumido automaticamente.
+                  </p>
+                ) : null}
+                <div className='flex items-end gap-2'>
+                  <Popover
+                    trigger='click'
+                    placement='topLeft'
+                    open={emojiOpen}
+                    onOpenChange={setEmojiOpen}
+                    arrow={false}
+                    overlayClassName='[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-2'
+                    content={
+                      <div
+                        className='grid max-h-52 w-[min(280px,calc(100vw-48px))] grid-cols-8 gap-0.5 overflow-y-auto'
+                        role='listbox'
+                        aria-label='Emojis'
+                      >
+                        {CHAT_EMOJIS.map(emoji => (
+                          <button
+                            key={emoji}
+                            type='button'
+                            className='grid size-8 place-items-center rounded-lg border-0 bg-transparent text-lg leading-none transition hover:bg-food-chip'
+                            onClick={() => {
+                              insertEmoji(emoji);
+                              setEmojiOpen(false);
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
                     }
-                  }}
-                />
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  disabled={!draft.trim()}
-                  // Evita o botão roubar o foco do textarea (fecha o teclado no iOS).
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={submitMessage}
-                  aria-label="Enviar"
-                />
-              </div>
-            </footer>
+                  >
+                    <Button
+                      type='primary'
+                      icon={<SmileOutlined />}
+                      aria-label='Emojis'
+                      aria-expanded={emojiOpen}
+                      aria-haspopup='dialog'
+                    />
+                  </Popover>
+                  <Input.TextArea
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    placeholder='Digite uma mensagem'
+                    autoSize={{ minRows: 1, maxRows: 4 }}
+                    ref={node => {
+                      draftAreaRef.current = node?.resizableTextArea?.textArea ?? null;
+                    }}
+                    onFocus={() => {
+                      // iOS tenta scrollar o input para o centro; reverte na hora
+                      // e mantém as mensagens recentes visíveis acima do teclado.
+                      stickToBottomRef.current = true;
+                      requestAnimationFrame(() => {
+                        window.scrollTo(0, 0);
+                        const vv = window.visualViewport;
+                        const shell = chatShellRef.current;
+                        const thread = threadRef.current;
+                        if (!shell || isDesktop) return;
+                        if (!vv) {
+                          shell.style.top = "0px";
+                          shell.style.height = "100dvh";
+                        } else {
+                          shell.style.top = `${Math.max(0, vv.offsetTop)}px`;
+                          shell.style.height = `${vv.height}px`;
+                        }
+                        if (thread) thread.scrollTop = thread.scrollHeight;
+                        requestAnimationFrame(() => {
+                          if (thread) thread.scrollTop = thread.scrollHeight;
+                        });
+                      });
+                    }}
+                    onPressEnter={e => {
+                      if (!e.shiftKey) {
+                        e.preventDefault();
+                        submitMessage();
+                      }
+                    }}
+                  />
+                  <Button
+                    type='primary'
+                    icon={<SendOutlined />}
+                    disabled={!draft.trim()}
+                    // Evita o botão roubar o foco do textarea (fecha o teclado no iOS).
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={submitMessage}
+                    aria-label='Enviar'
+                  />
+                </div>
+              </footer>
             ) : (
-              <div className="shrink-0 border-t border-food-border bg-food-card px-3 py-2.5 max-lg:pb-[max(0.65rem,env(safe-area-inset-bottom))]">
-                <p className="m-0 text-center text-xs text-food-muted">
+              <div className='shrink-0 border-t border-food-border bg-food-card px-3 py-2.5 max-lg:pb-[max(0.65rem,env(safe-area-inset-bottom))]'>
+                <p className='m-0 text-center text-xs text-food-muted'>
                   Conversa encerrada — só visualização das mensagens.
                 </p>
               </div>
@@ -932,14 +933,12 @@ export function WhatsAppInbox({
 
 function MessageChecks({ pending }: { pending: boolean }) {
   if (pending) {
-    return (
-      <CheckOutlined className="text-[11px] opacity-70" aria-label="Enviando" />
-    );
+    return <CheckOutlined className='text-[11px] opacity-70' aria-label='Enviando' />;
   }
   return (
-    <span className="relative inline-flex w-[14px]" aria-label="Enviado">
-      <CheckOutlined className="text-[11px] opacity-80" />
-      <CheckOutlined className="absolute left-[5px] text-[11px] opacity-80" />
+    <span className='relative inline-flex w-[14px]' aria-label='Enviado'>
+      <CheckOutlined className='text-[11px] opacity-80' />
+      <CheckOutlined className='absolute left-[5px] text-[11px] opacity-80' />
     </span>
   );
 }
@@ -948,15 +947,12 @@ function MessageActionsPreview({ actions }: { actions: ConversationMessageAction
   if (actions.type === "buttons") {
     if (!actions.items.length) return null;
     return (
-      <div
-        className="mt-2 space-y-1 border-t border-black/10 pt-2 dark:border-white/10"
-        aria-hidden="true"
-      >
-        {actions.items.map((item) => (
+      <div className='mt-2 space-y-1 border-t border-black/10 pt-2 dark:border-white/10' aria-hidden='true'>
+        {actions.items.map(item => (
           <div
             key={item.id ?? item.title}
-            className="pointer-events-none select-none rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium leading-tight text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]"
-            title="Opção enviada ao cliente (somente visualização)"
+            className='pointer-events-none select-none rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium leading-tight text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]'
+            title='Opção enviada ao cliente (somente visualização)'
           >
             {item.title}
           </div>
@@ -968,29 +964,24 @@ function MessageActionsPreview({ actions }: { actions: ConversationMessageAction
   if (!actions.listButtonLabel) return null;
 
   return (
-    <div
-      className="mt-2 border-t border-black/10 pt-2 dark:border-white/10"
-      aria-hidden="true"
-    >
+    <div className='mt-2 border-t border-black/10 pt-2 dark:border-white/10' aria-hidden='true'>
       <div
-        className="pointer-events-none flex select-none items-center justify-center gap-1.5 rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]"
-        title="Lista enviada ao cliente (somente visualização)"
+        className='pointer-events-none flex select-none items-center justify-center gap-1.5 rounded-lg border border-[#00a884]/40 px-3 py-2 text-center text-[13px] font-medium text-[#00a884] opacity-90 dark:border-[#25d366]/45 dark:text-[#25d366]'
+        title='Lista enviada ao cliente (somente visualização)'
       >
-        <UnorderedListOutlined className="text-xs" />
+        <UnorderedListOutlined className='text-xs' />
         {actions.listButtonLabel}
       </div>
     </div>
   );
 }
 
-const URL_IN_TEXT =
-  /(https?:\/\/[^\s<>"']+)/gi;
+const URL_IN_TEXT = /(https?:\/\/[^\s<>"']+)/gi;
 
 function extractMapsUrl(body: string): string | null {
   const match =
-    body.match(
-      /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps)[^\s<>"']*/i,
-    ) ?? body.match(/https?:\/\/[^\s<>"']+/i);
+    body.match(/https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps)[^\s<>"']*/i) ??
+    body.match(/https?:\/\/[^\s<>"']+/i);
   if (!match?.[0]) return null;
   return match[0].replace(/[),.;]+$/g, "");
 }
@@ -1004,7 +995,7 @@ function isLocationMessage(message: ConversationMessage) {
 function MessageBodyText({ body }: { body: string }) {
   const parts = body.split(URL_IN_TEXT);
   return (
-    <div className="whitespace-pre-wrap break-words">
+    <div className='whitespace-pre-wrap break-words'>
       {parts.map((part, index) => {
         if (/^https?:\/\//i.test(part)) {
           const href = part.replace(/[),.]+$/g, "");
@@ -1013,9 +1004,9 @@ function MessageBodyText({ body }: { body: string }) {
             <span key={`${index}-${href}`}>
               <a
                 href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-[#027eb5] underline underline-offset-2 break-all dark:text-[#53bdeb]"
+                target='_blank'
+                rel='noopener noreferrer'
+                className='font-medium text-[#027eb5] underline underline-offset-2 break-all dark:text-[#53bdeb]'
               >
                 {href}
               </a>
@@ -1033,7 +1024,7 @@ function LocationMessageBody({
   body,
   createdAt,
   mine,
-  pending,
+  pending
 }: {
   body: string;
   createdAt: string;
@@ -1043,20 +1034,16 @@ function LocationMessageBody({
   const mapsUrl = extractMapsUrl(body);
   const address = body
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !/^https?:\/\//i.test(line))
-    .map((line) => line.replace(/^📍\s*Localização\s*:?\s*/i, "").trim())
+    .map(line => line.trim())
+    .filter(line => line && !/^https?:\/\//i.test(line))
+    .map(line => line.replace(/^📍\s*Localização\s*:?\s*/i, "").trim())
     .find(Boolean);
 
   if (!mapsUrl) {
     return (
-      <div className="space-y-1 px-3 py-2">
-        <div className="font-medium">📍 Localização</div>
-        {address ? (
-          <div className="text-xs leading-snug opacity-80">{address}</div>
-        ) : (
-          <MessageBodyText body={body} />
-        )}
+      <div className='space-y-1 px-3 py-2'>
+        <div className='font-medium'>📍 Localização</div>
+        {address ? <div className='text-xs leading-snug opacity-80'>{address}</div> : <MessageBodyText body={body} />}
       </div>
     );
   }
@@ -1064,28 +1051,24 @@ function LocationMessageBody({
   return (
     <a
       href={mapsUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group relative block overflow-hidden rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-food-accent"
-      title="Abrir no Google Maps"
+      target='_blank'
+      rel='noopener noreferrer'
+      className='group relative block overflow-hidden rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-food-accent'
+      title='Abrir no Google Maps'
     >
       <img
-        src="/map_image.png"
-        alt="Localização no mapa"
-        className="block h-[148px] w-full object-cover transition duration-200 group-hover:brightness-110 sm:h-[168px]"
+        src='/map_image.png'
+        alt='Localização no mapa'
+        className='block h-[148px] w-full object-cover transition duration-200 group-hover:brightness-110 sm:h-[168px]'
         draggable={false}
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-8">
-        <div className="flex items-end justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold text-white drop-shadow">
-              📍 Localização
-            </div>
-            {address ? (
-              <div className="truncate text-[10px] text-white/85">{address}</div>
-            ) : null}
+      <div className='pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-8'>
+        <div className='flex items-end justify-between gap-2'>
+          <div className='min-w-0'>
+            <div className='text-[11px] font-semibold text-white drop-shadow'>📍 Localização</div>
+            {address ? <div className='truncate text-[10px] text-white/85'>{address}</div> : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1 text-[10px] text-white/85">
+          <div className='flex shrink-0 items-center gap-1 text-[10px] text-white/85'>
             <span>{clock(createdAt)}</span>
             {mine ? <MessageChecks pending={pending} /> : null}
           </div>
@@ -1098,9 +1081,7 @@ function LocationMessageBody({
 function isImageMessage(message: ConversationMessage) {
   return (
     Boolean(message.mediaUrl) &&
-    (message.msgType === "image" ||
-      message.msgType === "sticker" ||
-      message.mediaMime?.startsWith("image/"))
+    (message.msgType === "image" || message.msgType === "sticker" || message.mediaMime?.startsWith("image/"))
   );
 }
 
@@ -1109,111 +1090,82 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
   const pending = message.id.startsWith("temp-");
   const isAudio = message.msgType === "audio" && Boolean(message.mediaUrl);
   const isImage = isImageMessage(message);
-  const isVideo =
-    message.msgType === "video" &&
-    Boolean(message.mediaUrl) &&
-    !isImage;
-  const isDocument =
-    message.msgType === "document" && Boolean(message.mediaUrl);
+  const isVideo = message.msgType === "video" && Boolean(message.mediaUrl) && !isImage;
+  const isDocument = message.msgType === "document" && Boolean(message.mediaUrl);
   const isLocation = isLocationMessage(message);
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "max-w-[min(100%,280px)] text-sm shadow-sm sm:max-w-[min(100%,320px)]",
-          isLocation
-            ? "overflow-hidden rounded-2xl p-1"
-            : "rounded-2xl px-3 py-2",
+          isLocation ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-3 py-2",
           mine
             ? cn(
                 "rounded-br-md text-food-text dark:text-white",
-                isLocation
-                  ? "bg-[#d9fdd3] dark:bg-[#005c4b]"
-                  : "bg-[#d9fdd3] dark:bg-[#005c4b]",
+                isLocation ? "bg-[#d9fdd3] dark:bg-[#005c4b]" : "bg-[#d9fdd3] dark:bg-[#005c4b]"
               )
             : cn(
                 "rounded-bl-md text-food-text dark:text-white",
-                isLocation
-                  ? "bg-white dark:bg-[#1f2c34]"
-                  : "bg-white dark:bg-[#1f2c34]",
+                isLocation ? "bg-white dark:bg-[#1f2c34]" : "bg-white dark:bg-[#1f2c34]"
               ),
-          pending && "opacity-90",
+          pending && "opacity-90"
         )}
       >
         {mine && message.author !== "customer" && !isLocation ? (
-          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+          <div className='mb-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-70'>
             {message.author === "agent" ? "Atendente" : "Bot"}
           </div>
         ) : null}
         {isAudio ? (
-          <div className="space-y-1.5">
-            <div className="text-xs opacity-70">🎤 Áudio</div>
+          <div className='space-y-1.5'>
+            <div className='text-xs opacity-70'>🎤 Áudio</div>
             <audio
               controls
-              preload="metadata"
+              preload='metadata'
               src={message.mediaUrl!}
-              className="block max-w-full"
+              className='block max-w-full'
               style={{ minWidth: 220, height: 36 }}
             >
               Seu navegador não reproduz áudio.
             </audio>
           </div>
         ) : isImage ? (
-          <div className="space-y-1.5">
+          <div className='space-y-1.5'>
             <a
               href={message.mediaUrl!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block overflow-hidden rounded-xl"
+              target='_blank'
+              rel='noopener noreferrer'
+              className='block overflow-hidden rounded-xl'
             >
-              <img
-                src={message.mediaUrl!}
-                alt=""
-                className="max-h-64 w-full object-cover"
-                loading="lazy"
-              />
+              <img src={message.mediaUrl!} alt='' className='max-h-64 w-full object-cover' loading='lazy' />
             </a>
-            {message.body && !/^📷|^🧩/.test(message.body.trim()) ? (
-              <MessageBodyText body={message.body} />
-            ) : null}
+            {message.body && !/^📷|^🧩/.test(message.body.trim()) ? <MessageBodyText body={message.body} /> : null}
           </div>
         ) : isVideo ? (
-          <div className="space-y-1.5">
-            <video
-              controls
-              preload="metadata"
-              src={message.mediaUrl!}
-              className="max-h-64 w-full rounded-xl"
-            />
-            {message.body && !/^🎬/.test(message.body.trim()) ? (
-              <MessageBodyText body={message.body} />
-            ) : null}
+          <div className='space-y-1.5'>
+            <video controls preload='metadata' src={message.mediaUrl!} className='max-h-64 w-full rounded-xl' />
+            {message.body && !/^🎬/.test(message.body.trim()) ? <MessageBodyText body={message.body} /> : null}
           </div>
         ) : isDocument ? (
-          <div className="space-y-1.5">
+          <div className='space-y-1.5'>
             <MessageBodyText body={message.body} />
             <a
               href={message.mediaUrl!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex text-xs font-semibold text-food-accent underline-offset-2 hover:underline"
+              target='_blank'
+              rel='noopener noreferrer'
+              className='inline-flex text-xs font-semibold text-food-accent underline-offset-2 hover:underline'
             >
               Abrir / baixar arquivo
             </a>
           </div>
         ) : isLocation ? (
-          <LocationMessageBody
-            body={message.body}
-            createdAt={message.createdAt}
-            mine={mine}
-            pending={pending}
-          />
+          <LocationMessageBody body={message.body} createdAt={message.createdAt} mine={mine} pending={pending} />
         ) : (
           <MessageBodyText body={message.body} />
         )}
         {message.actions ? <MessageActionsPreview actions={message.actions} /> : null}
         {!isLocation || !extractMapsUrl(message.body) ? (
-          <div className="mt-1 flex items-center justify-end gap-1 px-0 text-[10px] opacity-60">
+          <div className='mt-1 flex items-center justify-end gap-1 px-0 text-[10px] opacity-60'>
             <span>{clock(message.createdAt)}</span>
             {mine ? <MessageChecks pending={pending} /> : null}
           </div>

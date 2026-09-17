@@ -795,9 +795,28 @@ export const memoryStore = {
 
   upsertCustomer(waPhone: string, name?: string | null, avatarUrl?: string | null) {
     const key = phoneKey(waPhone);
+    const incoming = name?.replace(/\s+/g, " ").trim() || "";
+    const storeName = store.name?.trim() || "";
+    const sameName = (left: string, right: string) =>
+      left
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .toLowerCase()
+        .trim() ===
+      right
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .toLowerCase()
+        .trim();
+    const safeName =
+      incoming && storeName && sameName(incoming, storeName) ? "" : incoming;
     const existing = customers.get(key);
     if (existing) {
-      if (name && !existing.name) existing.name = name;
+      const current = existing.name?.trim() || "";
+      const currentIsStore = Boolean(current && storeName && sameName(current, storeName));
+      if (safeName && (currentIsStore || current !== safeName)) {
+        existing.name = safeName;
+      }
       if (avatarUrl) existing.avatarUrl = avatarUrl;
       return existing;
     }
@@ -805,7 +824,7 @@ export const memoryStore = {
       id: `cust-${key}`,
       storeId: store.id,
       waPhone: key,
-      name: name ?? null,
+      name: safeName || null,
       avatarUrl: avatarUrl ?? null,
     };
     customers.set(key, customer);
@@ -1252,16 +1271,18 @@ export const memoryStore = {
     return map;
   },
 
-  listConversationHistory(limit = 100) {
-    return [...conversations.values()]
+  listConversationHistory(options: { limit?: number; offset?: number } = {}) {
+    const limit = Math.min(100, Math.max(1, Math.round(Number(options.limit) || 30)));
+    const offset = Math.max(0, Math.round(Number(options.offset) || 0));
+    const all = [...conversations.values()]
       .filter((item) => item.closedAt)
       .sort(
         (left, right) =>
           new Date(right.closedAt ?? 0).getTime() -
           new Date(left.closedAt ?? 0).getTime(),
-      )
-      .slice(0, limit)
-      .map((item) => {
+      );
+    const slice = all.slice(offset, offset + limit);
+    const items = slice.map((item) => {
         const customer = [...customers.values()].find((row) => row.id === item.customerId);
         const order = item.lastOrderId
           ? [...orders.values()].find((row) => row.id === item.lastOrderId)
@@ -1294,6 +1315,13 @@ export const memoryStore = {
           closedAt: item.closedAt ?? new Date().toISOString(),
         };
       });
+    const hasMore = offset + items.length < all.length;
+    return {
+      items,
+      hasMore,
+      nextOffset: hasMore ? offset + items.length : null,
+      total: all.length,
+    };
   },
 
   setConversationHandoff(id: string, mode: "bot" | "human", by?: string | null) {

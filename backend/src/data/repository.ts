@@ -1580,6 +1580,19 @@ function mapCustomer(data: Record<string, unknown>): Customer {
   };
 }
 
+function sameLooseName(left: string, right: string) {
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  const a = normalize(left);
+  const b = normalize(right);
+  return Boolean(a && b && a === b);
+}
+
 export async function upsertCustomer(
   waPhone: string,
   name?: string | null,
@@ -1590,6 +1603,13 @@ export async function upsertCustomer(
 
   const store = await getStore();
   const phone = waPhone.replace(/\D/g, "");
+  const incomingName = name?.replace(/\s+/g, " ").trim() || "";
+  const storeName = store.name?.trim() || "";
+  const incomingIsStore = Boolean(
+    incomingName && storeName && sameLooseName(incomingName, storeName),
+  );
+  const safeName = incomingIsStore ? "" : incomingName;
+
   const { data: existing } = await supabase
     .from("customers")
     .select("*")
@@ -1599,7 +1619,13 @@ export async function upsertCustomer(
 
   if (existing) {
     const patch: Record<string, unknown> = {};
-    if (name && !existing.name) patch.name = name;
+    const currentName = existing.name != null ? String(existing.name).trim() : "";
+    const currentIsStore = Boolean(
+      currentName && storeName && sameLooseName(currentName, storeName),
+    );
+    if (safeName && (currentIsStore || currentName !== safeName)) {
+      patch.name = safeName;
+    }
     if (avatarUrl && avatarUrl !== existing.avatar_url) patch.avatar_url = avatarUrl;
     if (Object.keys(patch).length) {
       const { data: updated, error: updateError } = await supabase
@@ -1619,7 +1645,7 @@ export async function upsertCustomer(
     }
     return mapCustomer({
       ...existing,
-      name: name ?? existing.name,
+      name: safeName || existing.name,
       avatar_url: avatarUrl ?? existing.avatar_url,
     } as Record<string, unknown>);
   }
@@ -1627,7 +1653,7 @@ export async function upsertCustomer(
   const payload: Record<string, unknown> = {
     store_id: store.id,
     wa_phone: phone,
-    name: name ?? null,
+    name: safeName || null,
     avatar_url: avatarUrl ?? null,
   };
   let { data, error } = await supabase.from("customers").insert(payload).select("*").single();
@@ -2671,18 +2697,25 @@ export async function findConversationByCustomerPhone(waPhone: string) {
 }
 
 /** Histórico = conversas encerradas pelo atendente. */
-export async function listConversationHistory(limit = 100) {
+export async function listConversationHistory(options: {
+  limit?: number;
+  offset?: number;
+} = {}) {
+  const limit = Math.min(100, Math.max(1, Math.round(Number(options.limit) || 30)));
+  const offset = Math.max(0, Math.round(Number(options.offset) || 0));
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listConversationHistory(limit);
+  if (!supabase) return memoryStore.listConversationHistory({ limit, offset });
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("conversations")
     .select(
       "*, customers(id, name, wa_phone, avatar_url), orders!last_order_id(id, code, status, total_cents)",
+      { count: "exact" },
     )
     .not("closed_at", "is", null)
     .order("closed_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) {
     if (error.message?.includes("closed_at")) {
@@ -2699,7 +2732,7 @@ export async function listConversationHistory(limit = 100) {
     missingDirectionIds,
   );
 
-  return rows.map((row) => {
+  const items = rows.map((row) => {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
     const context = (row.context ?? { cart: [] }) as ConversationContext;
@@ -2749,6 +2782,15 @@ export async function listConversationHistory(limit = 100) {
       closedAt: String(row.closed_at ?? new Date().toISOString()),
     };
   });
+
+  const total = count ?? offset + items.length;
+  const hasMore = offset + items.length < total;
+  return {
+    items,
+    hasMore,
+    nextOffset: hasMore ? offset + items.length : null,
+    total,
+  };
 }
 
 export async function setConversationHandoff(

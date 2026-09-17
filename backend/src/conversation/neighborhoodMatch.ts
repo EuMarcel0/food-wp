@@ -37,10 +37,25 @@ const ABBREVIATIONS: Record<string, string> = {
   sra: "senhora",
 };
 
-const STOP_WORDS = new Set(["de", "da", "do", "das", "dos", "e", "o", "a", "bairro"]);
+const STOP_WORDS = new Set(["de", "da", "do", "das", "dos", "e", "o", "a", "bairro", "rua", "r", "av", "avenida", "travessa", "tv", "alameda", "rodovia", "rod", "numero", "n"]);
+
+const ROMAN_OR_DIGIT: Record<string, string> = {
+  i: "1",
+  ii: "2",
+  iii: "3",
+  iv: "4",
+  v: "5",
+  vi: "6",
+  "01": "1",
+  "02": "2",
+  "03": "3",
+  "04": "4",
+  "05": "5",
+};
 
 function expandToken(token: string) {
-  return ABBREVIATIONS[token] ?? token;
+  const abbreviated = ABBREVIATIONS[token] ?? token;
+  return ROMAN_OR_DIGIT[abbreviated] ?? abbreviated;
 }
 
 function tokenize(text: string) {
@@ -89,6 +104,28 @@ export type NeighborhoodMatch = {
   reason: string;
 };
 
+function containsConsecutiveTokens(haystack: string[], needle: string[]) {
+  if (!needle.length || haystack.length < needle.length) return false;
+  for (let i = 0; i <= haystack.length - needle.length; i++) {
+    if (needle.every((token, offset) => haystack[i + offset] === token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Trechos da mensagem que costumam trazer o bairro (endereço completo). */
+function neighborhoodQueryHints(query: string) {
+  const hints = [query];
+  const afterBairro = query.match(/\bbairro\b\s*[:\-]?\s*(.+)$/i);
+  if (afterBairro?.[1]?.trim()) hints.push(afterBairro[1].trim());
+  for (const part of query.split(/[,;|/]+/)) {
+    const trimmed = part.trim();
+    if (trimmed.length >= 3 && trimmed !== query) hints.push(trimmed);
+  }
+  return hints;
+}
+
 function scoreNeighborhood(queryRaw: string, zone: DeliveryNeighborhood): NeighborhoodMatch | null {
   const queryNorm = normalizeNeighborhoodText(queryRaw);
   const nameNorm = normalizeNeighborhoodText(zone.name);
@@ -126,9 +163,20 @@ function scoreNeighborhood(queryRaw: string, zone: DeliveryNeighborhood): Neighb
     const hit = queryTokens.filter(token => nameSet.has(token)).length;
     const coverage = hit / queryTokens.length;
     const reverseCoverage = hit / nameTokens.length;
-    if (coverage === 1 && reverseCoverage >= 0.5) {
+    if (containsConsecutiveTokens(queryTokens, nameTokens)) {
+      const distinctive =
+        nameTokens.length >= 2 || nameTokens.some(token => token.length >= 4);
+      if (distinctive) {
+        score = Math.max(score, 96);
+        reason = "endereco-contem";
+      }
+    } else if (coverage === 1 && reverseCoverage >= 0.5) {
       score = Math.max(score, 95);
       reason = "tokens";
+    } else if (reverseCoverage === 1 && nameTokens.some(token => token.length >= 4)) {
+      // Todos os tokens do bairro aparecem no texto (ex.: endereço completo).
+      score = Math.max(score, 93);
+      reason = "tokens-no-endereco";
     } else if (coverage >= 0.7) {
       score = Math.max(score, 80 + Math.round(coverage * 10));
       reason = "tokens";
@@ -190,16 +238,35 @@ export function matchNeighborhoodQuery(
   }
 
   const scored = zones
-    .map(zone => scoreNeighborhood(trimmed, zone))
+    .flatMap(zone =>
+      neighborhoodQueryHints(trimmed).map(hint => scoreNeighborhood(hint, zone)),
+    )
     .filter((item): item is NeighborhoodMatch => item != null)
-    .sort((left, right) => right.score - left.score || left.zone.name.localeCompare(right.zone.name, "pt-BR"));
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        right.zone.name.length - left.zone.name.length ||
+        left.zone.name.localeCompare(right.zone.name, "pt-BR"),
+    );
 
-  if (!scored.length) return { status: "none" };
+  const uniqueByZone = new Map<string, NeighborhoodMatch>();
+  for (const item of scored) {
+    const current = uniqueByZone.get(item.zone.id);
+    if (!current || item.score > current.score) uniqueByZone.set(item.zone.id, item);
+  }
+  const ranked = [...uniqueByZone.values()].sort(
+    (left, right) =>
+      right.score - left.score ||
+      right.zone.name.length - left.zone.name.length ||
+      left.zone.name.localeCompare(right.zone.name, "pt-BR"),
+  );
 
-  const best = scored[0];
-  const strong = scored.filter(item => item.score >= 80 && item.score >= best.score - 8);
+  if (!ranked.length) return { status: "none" };
 
-  if (best.score >= 90 && (strong.length === 1 || best.score - (scored[1]?.score ?? 0) >= 8)) {
+  const best = ranked[0];
+  const strong = ranked.filter(item => item.score >= 80 && item.score >= best.score - 8);
+
+  if (best.score >= 90 && (strong.length === 1 || best.score - (ranked[1]?.score ?? 0) >= 8)) {
     return { status: "unique", match: best };
   }
 
@@ -207,8 +274,8 @@ export function matchNeighborhoodQuery(
     return { status: "unique", match: best };
   }
 
-  if (strong.length > 1 || (best.score >= 60 && scored.length > 1 && best.score < 90)) {
-    const candidates = (strong.length > 1 ? strong : scored).slice(0, 10);
+  if (strong.length > 1 || (best.score >= 60 && ranked.length > 1 && best.score < 90)) {
+    const candidates = (strong.length > 1 ? strong : ranked).slice(0, 10);
     if (candidates.length === 1) return { status: "unique", match: candidates[0] };
     return { status: "ambiguous", matches: candidates };
   }
