@@ -164,13 +164,14 @@ export function buildReceiptEscPos(input) {
   const emit = (text = "") => {
     chunks.push(encodeText(`${text}\n`));
   };
-  const section = (label) => emit(sectionTitle(columns, label));
 
-  // init + negrito + altura dupla + espaçamento maior entre linhas
+  // init + negrito + fonte 2x (largura e altura) — proporcional, sem line spacing extra
   chunks.push(Buffer.from([ESC, 0x40]));
-  chunks.push(Buffer.from([ESC, 0x33, 48])); // line spacing
   chunks.push(Buffer.from([ESC, 0x45, 1])); // bold on
-  chunks.push(Buffer.from([GS, 0x21, 0x01])); // double height
+  chunks.push(Buffer.from([GS, 0x21, 0x11])); // double width + double height
+  // Com largura dupla, cabem ~metade dos caracteres por linha.
+  const textColumns = Math.max(16, Math.floor(columns / 2));
+  const section = (label) => emit(sectionTitle(textColumns, label));
 
   // ~60px de margem no topo (alimentação em branco)
   emit("");
@@ -202,7 +203,7 @@ export function buildReceiptEscPos(input) {
     emit(`Bairro: ${order.neighborhoodName}`);
   }
   if (order.fulfillment === "delivery" && order.addressText) {
-    for (const row of wrap(String(order.addressText), columns)) emit(row);
+    for (const row of wrap(String(order.addressText), textColumns)) emit(row);
   }
 
   emit("");
@@ -212,18 +213,18 @@ export function buildReceiptEscPos(input) {
     const unit = Number(item.unitPriceCents) || 0;
     const total = qty * unit;
     const title = `${qty}x ${item.name || "Item"}`;
-    for (const row of wrap(title, columns)) emit(row);
-    emit(line(columns, `(un ${formatBRL(unit)})`, formatBRL(total)));
+    for (const row of wrap(title, textColumns)) emit(row);
+    emit(line(textColumns, `(un ${formatBRL(unit)})`, formatBRL(total)));
     if (item.notes) {
-      for (const row of wrap(`obs.: ${item.notes}`, columns)) emit(row);
+      for (const row of wrap(`obs.: ${item.notes}`, textColumns)) emit(row);
     }
     const crust = crustNames(item.extras);
     if (crust.length) {
-      for (const row of wrap(`Borda: ${crust.join(", ")}`, columns)) emit(row);
+      for (const row of wrap(`Borda: ${crust.join(", ")}`, textColumns)) emit(row);
     }
     const addons = addonNames(item.extras);
     if (addons.length) {
-      for (const row of wrap(`Adicionais: ${addons.join(", ")}`, columns)) {
+      for (const row of wrap(`Adicionais: ${addons.join(", ")}`, textColumns)) {
         emit(row);
       }
     }
@@ -235,14 +236,14 @@ export function buildReceiptEscPos(input) {
     ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
     : "";
   if (payment) emit(`Forma: ${payment}`);
-  emit(line(columns, "Subtotal", formatBRL(order.subtotalCents)));
+  emit(line(textColumns, "Subtotal", formatBRL(order.subtotalCents)));
   if (order.fulfillment === "delivery") {
     const feeLabel = order.neighborhoodName
       ? `Taxa (${order.neighborhoodName})`
       : "Taxa de entrega";
-    emit(line(columns, feeLabel, formatBRL(order.deliveryFeeCents)));
+    emit(line(textColumns, feeLabel, formatBRL(order.deliveryFeeCents)));
   }
-  emit(line(columns, "TOTAL", formatBRL(order.totalCents)));
+  emit(line(textColumns, "TOTAL", formatBRL(order.totalCents)));
 
   if (order.paymentMethod === "cash" && order.changeForCents != null) {
     const changeFor = Number(order.changeForCents) || 0;
@@ -256,19 +257,19 @@ export function buildReceiptEscPos(input) {
   if (order.notes) {
     emit("");
     section("Observacoes");
-    for (const row of wrap(String(order.notes), columns)) emit(row);
+    for (const row of wrap(String(order.notes), textColumns)) emit(row);
   }
 
   if (store.receiptFooter) {
     emit("");
     chunks.push(Buffer.from([ESC, 0x61, 1]));
-    for (const row of wrap(String(store.receiptFooter), columns)) emit(row);
+    for (const row of wrap(String(store.receiptFooter), textColumns)) emit(row);
     chunks.push(Buffer.from([ESC, 0x61, 0]));
   }
 
   emit("");
   chunks.push(Buffer.from([ESC, 0x61, 1]));
-  chunks.push(Buffer.from([GS, 0x21, 0x00])); // normal height for disclaimer
+  chunks.push(Buffer.from([GS, 0x21, 0x00])); // normal size for disclaimer
   for (const row of wrap(FISCAL_DISCLAIMER, columns)) emit(row);
   chunks.push(Buffer.from([ESC, 0x61, 0]));
   chunks.push(Buffer.from([ESC, 0x45, 0])); // bold off

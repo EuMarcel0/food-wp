@@ -45,7 +45,7 @@ function SectionTitle({ label }: { label: string }) {
         fontWeight: 800,
         letterSpacing: 0.2,
         textTransform: "uppercase",
-        fontSize: 13,
+        fontSize: 14,
       }}
     >
       <span
@@ -69,7 +69,6 @@ function Line({ left, right, strong }: { left: string; right?: string; strong?: 
         alignItems: "baseline",
         gap: 8,
         fontWeight: strong ? 800 : 700,
-        lineHeight: 1.55,
         marginBottom: 2,
       }}
     >
@@ -94,7 +93,7 @@ function Line({ left, right, strong }: { left: string; right?: string; strong?: 
 
 function Block({ children }: { children: ReactNode }) {
   return (
-    <div style={{ display: "block", lineHeight: 1.55, marginBottom: 4 }}>{children}</div>
+    <div style={{ display: "block", marginBottom: 4 }}>{children}</div>
   );
 }
 
@@ -116,15 +115,14 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         background: "#fff",
         color: "#111",
         fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace',
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: 700,
-        lineHeight: 1.55,
         padding: "60px 8px 60px",
         boxSizing: "border-box",
       }}
     >
-      <header style={{ textAlign: "center", lineHeight: 1.5 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 0.3 }}>{name}</div>
+      <header style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: 0.3 }}>{name}</div>
         {legalName ? <div style={{ marginTop: 4 }}>{legalName}</div> : null}
         {cnpj ? <div style={{ marginTop: 2 }}>CNPJ {cnpj}</div> : null}
       </header>
@@ -132,7 +130,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
       <SectionTitle label="Pedido" />
       <section>
         <Block>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>Pedido #{order.code}</div>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>Pedido #{order.code}</div>
         </Block>
         <Block>{formatReceiptDate(order.createdAt)}</Block>
       </section>
@@ -160,7 +158,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
             return (
               <div
                 key={item.id ?? `${item.name}-${index}`}
-                style={{ marginBottom: 10, lineHeight: 1.55 }}
+                style={{ marginBottom: 10 }}
               >
                 <Line
                   left={`${item.quantity}x ${item.name} (un ${unit})`}
@@ -191,7 +189,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         ) : null}
         <Line left="TOTAL" right={formatBRL(order.totalCents)} strong />
         {order.paymentMethod === "cash" && order.changeForCents != null ? (
-          <div style={{ marginTop: 6, lineHeight: 1.55 }}>
+          <div style={{ marginTop: 6 }}>
             {cashChangeLabel(order.changeForCents, order.totalCents)}
           </div>
         ) : null}
@@ -201,7 +199,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         <>
           <SectionTitle label="Observações" />
           <footer>
-            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{order.notes.trim()}</div>
+            <div style={{ whiteSpace: "pre-wrap" }}>{order.notes.trim()}</div>
           </footer>
         </>
       ) : null}
@@ -212,7 +210,6 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
             marginTop: 12,
             textAlign: "center",
             whiteSpace: "pre-wrap",
-            lineHeight: 1.55,
           }}
         >
           {footer}
@@ -225,9 +222,8 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
           paddingTop: 8,
           borderTop: "1px dashed #111",
           textAlign: "center",
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: 700,
-          lineHeight: 1.5,
         }}
       >
         {FISCAL_DISCLAIMER}
