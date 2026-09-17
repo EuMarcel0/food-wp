@@ -85,8 +85,9 @@ export function PrinterSettingsCard() {
       extra={online ? <Tag color='success'>Agente online</Tag> : <Tag>Agente offline</Tag>}
     >
       <p className='mb-3 text-sm leading-normal text-food-muted'>
-        A impressão usa um <strong>agente no PC da cozinha</strong> (porta 19100), que fala direto com a térmica
-        (ESC/POS). A API na nuvem não acessa a impressora.
+        A impressão usa um <strong>agente no PC da cozinha</strong> (porta 19100). Depois de
+        conectar e salvar a impressora, o agente busca sozinho os pedidos aceitos na API —
+        <strong> não precisa</strong> deixar a tela Pedidos (nem o painel) aberta.
       </p>
 
       {error ? <Alert type='warning' showIcon className='mb-3' message={error} /> : null}
@@ -141,8 +142,8 @@ export function PrinterSettingsCard() {
             Imprimir automaticamente neste computador
           </p>
           <p className='m-0 mt-1 text-xs leading-normal text-food-muted'>
-            Deixe ligado só no PC da cozinha (com o agente). Nos outros computadores
-            com a retaguarda aberta, desligue — senão todos tentam imprimir juntos.
+            Ligado = este PC é a estação da cozinha. Nos celulares e outros computadores,
+            deixe desligado. O agente imprime pela fila do servidor (sem depender de aba aberta).
           </p>
         </div>
         <Switch
@@ -181,7 +182,9 @@ export function PrinterSettingsCard() {
             setSaving(true);
             try {
               await savePrintAgentPrinter(selected);
-              toast.success("Impressora padrão salva no agente.");
+              toast.success(
+                "Impressora salva. O agente vai imprimir os aceites automaticamente.",
+              );
             } catch (err) {
               toast.error(err instanceof Error ? err.message : "Falha ao salvar impressora.");
             } finally {

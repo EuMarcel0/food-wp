@@ -18,6 +18,7 @@ const CONFIG_PATH = join(DIR, "config.json");
  *   token: string;
  *   printerName: string;
  *   columns: number;
+ *   apiBaseUrl: string;
  * }} AgentConfig
  */
 
@@ -31,6 +32,7 @@ export function loadConfig() {
       token: randomBytes(24).toString("hex"),
       printerName: "",
       columns: 48,
+      apiBaseUrl: "",
     };
     writeFileSync(CONFIG_PATH, JSON.stringify(created, null, 2), "utf8");
     return created;
@@ -45,6 +47,7 @@ export function loadConfig() {
     token: String(raw.token || "").trim() || randomBytes(24).toString("hex"),
     printerName: String(raw.printerName || "").trim(),
     columns: Math.min(48, Math.max(32, columns)),
+    apiBaseUrl: String(raw.apiBaseUrl || "").trim().replace(/\/$/, ""),
   };
 }
 
@@ -61,6 +64,9 @@ export function saveConfig(patch) {
       48,
       Math.max(32, Number(patch.columns ?? current.columns) || 48),
     ),
+    apiBaseUrl: String(patch.apiBaseUrl !== undefined ? patch.apiBaseUrl : current.apiBaseUrl)
+      .trim()
+      .replace(/\/$/, ""),
   };
   mkdirSync(DIR, { recursive: true });
   writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2), "utf8");

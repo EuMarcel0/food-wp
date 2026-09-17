@@ -4,6 +4,7 @@ const BASE_KEY = "food-wp-print-agent-base";
 const TOKEN_KEY = "food-wp-print-agent-token";
 /** Só o PC da cozinha deve imprimir automaticamente (aceite automático). */
 const AUTO_PRINT_STATION_KEY = "food-wp-auto-print-station";
+const STATION_ID_KEY = "food-wp-print-station-id";
 const DEFAULT_BASE = "http://127.0.0.1:19100";
 
 export type PrintAgentHealth = {
@@ -13,6 +14,8 @@ export type PrintAgentHealth = {
   port?: number;
   printerName?: string | null;
   columns?: number;
+  apiBaseUrl?: string | null;
+  queuePolling?: boolean;
 };
 
 export type PrintAgentPrinter = {
@@ -35,6 +38,34 @@ export function getPrintAgentToken() {
   } catch {
     return "";
   }
+}
+
+/** ID estável desta estação (claim no servidor). */
+export function getPrintStationId() {
+  try {
+    const existing = localStorage.getItem(STATION_ID_KEY)?.trim();
+    if (existing) return existing;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? `browser:${crypto.randomUUID()}`
+        : `browser:${Date.now().toString(16)}`;
+    localStorage.setItem(STATION_ID_KEY, id);
+    return id;
+  } catch {
+    return `browser:${Date.now().toString(16)}`;
+  }
+}
+
+/** URL da API que o agente deve pollar (sem depender do painel aberto). */
+export function resolvePanelApiBaseUrl() {
+  const fromEnv = String(import.meta.env.VITE_API_URL ?? "")
+    .trim()
+    .replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin.replace(/\/$/, "");
+  }
+  return "";
 }
 
 export function setPrintAgentAuth(base: string, token: string) {
@@ -100,14 +131,21 @@ export async function pairPrintAgent(base = DEFAULT_BASE) {
   };
   const resolved = `http://127.0.0.1:${data.port || 19100}`;
   setPrintAgentAuth(resolved, data.token);
-  return { base: resolved, token: data.token, printerName: data.printerName ?? "" };
+  await pushApiBaseToAgent().catch(() => undefined);
+  return {
+    base: resolved,
+    token: data.token,
+    printerName: data.printerName ?? "",
+  };
 }
 
 async function authedFetch(path: string, init: RequestInit = {}) {
   const base = getPrintAgentBase().replace(/\/$/, "");
   const token = getPrintAgentToken();
   if (!token) {
-    throw new Error("Agente não conectado. Use Conectar agente em Configurações.");
+    throw new Error(
+      "Agente não conectado. Use Conectar agente em Configurações.",
+    );
   }
   const response = await fetch(`${base}${path}`, {
     ...init,
@@ -131,10 +169,30 @@ export async function fetchPrintAgentPrinters() {
 }
 
 export async function savePrintAgentPrinter(printerName: string) {
+  const apiBaseUrl = resolvePanelApiBaseUrl();
   return authedFetch("/config", {
     method: "PUT",
-    body: JSON.stringify({ printerName }),
-  }) as Promise<{ ok: boolean; printerName: string | null }>;
+    body: JSON.stringify({ printerName, apiBaseUrl }),
+  }) as Promise<{
+    ok: boolean;
+    printerName: string | null;
+    apiBaseUrl?: string | null;
+    queuePolling?: boolean;
+  }>;
+}
+
+/** Envia a URL da API ao agente para ele pollar a fila sozinho. */
+export async function pushApiBaseToAgent() {
+  const apiBaseUrl = resolvePanelApiBaseUrl();
+  if (!apiBaseUrl || !getPrintAgentToken()) return null;
+  return authedFetch("/config", {
+    method: "PUT",
+    body: JSON.stringify({ apiBaseUrl }),
+  }) as Promise<{
+    ok: boolean;
+    apiBaseUrl?: string | null;
+    queuePolling?: boolean;
+  }>;
 }
 
 export async function printOrderViaAgent(input: {

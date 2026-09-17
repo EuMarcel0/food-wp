@@ -3,6 +3,7 @@ import express from "express";
 import { hostname } from "node:os";
 import { configPaths, loadConfig, saveConfig } from "./config.js";
 import { listPrinters } from "./printers.js";
+import { refreshPrintQueuePoller } from "./printQueue.js";
 import { rawPrintWindows } from "./rawPrint.js";
 import { buildReceiptEscPos } from "./receipt.js";
 
@@ -51,6 +52,8 @@ app.get("/health", (_req, res) => {
     port: config.port,
     printerName: config.printerName || null,
     columns: config.columns,
+    apiBaseUrl: config.apiBaseUrl || null,
+    queuePolling: Boolean(config.apiBaseUrl && config.printerName),
   });
 });
 
@@ -71,6 +74,7 @@ app.get("/setup", (req, res) => {
     port: config.port,
     printerName: config.printerName || null,
     columns: config.columns,
+    apiBaseUrl: config.apiBaseUrl || null,
     configPath: paths.configPath,
   });
 });
@@ -99,12 +103,19 @@ app.put("/config", auth, (req, res) => {
         : config.printerName,
     columns:
       body.columns !== undefined ? Number(body.columns) : config.columns,
+    apiBaseUrl:
+      body.apiBaseUrl !== undefined
+        ? String(body.apiBaseUrl || "")
+        : config.apiBaseUrl,
   });
   Object.assign(config, next);
+  refreshPrintQueuePoller(enqueuePrint);
   res.json({
     ok: true,
     printerName: config.printerName || null,
     columns: config.columns,
+    apiBaseUrl: config.apiBaseUrl || null,
+    queuePolling: Boolean(config.apiBaseUrl && config.printerName),
   });
 });
 
@@ -154,7 +165,9 @@ app.listen(config.port, "127.0.0.1", () => {
   console.log(
     `  Printer: ${config.printerName || "(não definida — use o painel)"}`,
   );
+  console.log(`  API:     ${config.apiBaseUrl || "(não configurada)"}`);
   console.log("");
   console.log("No painel: Configurações → Impressão → Conectar agente");
   console.log("");
+  refreshPrintQueuePoller(enqueuePrint);
 });

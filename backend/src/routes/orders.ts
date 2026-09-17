@@ -1,7 +1,11 @@
 import { Router } from "express";
 import {
+  claimAutoPrint,
+  completeAutoPrint,
+  failAutoPrint,
   getOrder,
   getOrderStats,
+  listAutoPrintQueue,
   listOrdersPage,
   updateOrderStatus,
 } from "../data/repository.js";
@@ -35,6 +39,22 @@ ordersRouter.get("/stats", async (req, res) => {
   res.json(await getOrderStats(day));
 });
 
+/** Fila de cupons pendentes (agente / estação da cozinha). */
+ordersRouter.get("/print-queue", async (req, res) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 20;
+    res.json({ items: await listAutoPrintQueue(limit) });
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao listar fila de impressão.",
+    });
+  }
+});
+
 ordersRouter.get("/", async (req, res) => {
   const { page, limit } = parsePageQuery(req.query);
   let fromDay = parseOptionalText(req.query.from ?? req.query.createdFrom);
@@ -53,6 +73,61 @@ ordersRouter.get("/", async (req, res) => {
       createdTo: parseDateDay(toDay, true),
     }),
   );
+});
+
+ordersRouter.post("/:id/print-claim", async (req, res) => {
+  try {
+    const claimedBy = String(req.body?.claimedBy ?? "").trim() || "station";
+    const order = await claimAutoPrint(String(req.params.id), claimedBy);
+    if (!order) {
+      res.status(409).json({
+        error: "Pedido já impresso ou reservado por outra estação.",
+      });
+      return;
+    }
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Falha ao reservar impressão.",
+    });
+  }
+});
+
+ordersRouter.post("/:id/print-complete", async (req, res) => {
+  try {
+    const claimedBy = String(req.body?.claimedBy ?? "").trim() || undefined;
+    const order = await completeAutoPrint(String(req.params.id), claimedBy);
+    if (!order) {
+      res.status(409).json({ error: "Não foi possível confirmar a impressão." });
+      return;
+    }
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao confirmar impressão.",
+    });
+  }
+});
+
+ordersRouter.post("/:id/print-fail", async (req, res) => {
+  try {
+    const claimedBy = String(req.body?.claimedBy ?? "").trim();
+    if (!claimedBy) {
+      res.status(400).json({ error: "Informe claimedBy." });
+      return;
+    }
+    const ok = await failAutoPrint(String(req.params.id), claimedBy);
+    res.json({ ok });
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Falha ao liberar impressão.",
+    });
+  }
 });
 
 ordersRouter.get("/:id", async (req, res) => {
@@ -101,7 +176,10 @@ ordersRouter.patch("/:id/status", async (req, res) => {
     );
   } catch (error) {
     res.status(400).json({
-      error: error instanceof Error ? error.message : "Não foi possível atualizar o status.",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar o status.",
     });
     return;
   }

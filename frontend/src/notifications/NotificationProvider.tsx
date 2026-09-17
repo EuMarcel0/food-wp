@@ -11,9 +11,11 @@ import {
 import { useAuth } from "../auth/AuthProvider";
 import { api } from "../lib/api";
 import {
+  drainAutoPrintQueue,
   isAutoAcceptNotification,
   printAfterAutoAccept,
 } from "../lib/autoPrint";
+import { isAutoPrintStation } from "../lib/printAgent";
 import { bindNotifySoundUnlock, playNewOrderSound } from "../lib/notifySound";
 import { supabase } from "../lib/supabase";
 import type { AppNotification } from "../types";
@@ -53,6 +55,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       seen.current = new Set(ordered.map((item) => item.id));
       primed.current = true;
       setItems(ordered);
+      // Backlog: fila server-side (não depende de notificação “nova”).
+      if (isAutoPrintStation()) {
+        void drainAutoPrintQueue();
+      }
       return;
     }
     for (const item of ordered) {
@@ -83,10 +89,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const client = supabase;
+    // Poll sempre: backup se o Realtime cair (senão a impressão some).
+    const pollMs = client ? 8000 : 6000;
+    const timer = window.setInterval(() => {
+      load().catch(() => undefined);
+      if (isAutoPrintStation()) {
+        void drainAutoPrintQueue();
+      }
+    }, pollMs);
+
     if (!client) {
-      const timer = window.setInterval(() => {
-        load().catch(() => undefined);
-      }, 6000);
       return () => window.clearInterval(timer);
     }
 
@@ -97,11 +109,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         { event: "INSERT", schema: "public", table: "notifications" },
         () => {
           load().catch(() => undefined);
+          if (isAutoPrintStation()) {
+            void drainAutoPrintQueue();
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          if (isAutoPrintStation()) {
+            void drainAutoPrintQueue();
+          }
         },
       )
       .subscribe();
 
     return () => {
+      window.clearInterval(timer);
       void client.removeChannel(channel);
     };
   }, [load]);

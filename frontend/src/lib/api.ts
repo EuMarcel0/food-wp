@@ -273,6 +273,29 @@ export const api = {
   orderStats: (day?: string) =>
     request<OrderStats>(withQuery("/api/orders/stats", { day })),
   order: (id: string, silent = false) => request<Order>(`/api/orders/${id}`, { silent }),
+  orderPrintQueue: (silent = true) =>
+    request<{ items: { id: string; code: string; requestedAt: string }[] }>(
+      "/api/orders/print-queue",
+      { silent },
+    ),
+  claimOrderPrint: (id: string, claimedBy: string, silent = true) =>
+    request<Order>(`/api/orders/${id}/print-claim`, {
+      method: "POST",
+      body: JSON.stringify({ claimedBy }),
+      silent,
+    }),
+  completeOrderPrint: (id: string, claimedBy: string, silent = true) =>
+    request<Order>(`/api/orders/${id}/print-complete`, {
+      method: "POST",
+      body: JSON.stringify({ claimedBy }),
+      silent,
+    }),
+  failOrderPrint: (id: string, claimedBy: string, silent = true) =>
+    request<{ ok: boolean }>(`/api/orders/${id}/print-fail`, {
+      method: "POST",
+      body: JSON.stringify({ claimedBy }),
+      silent,
+    }),
   conversations: (tab: "active" | "history" = "active", silent = true) =>
     request<LiveConversation[]>(withQuery("/api/conversations", { tab }), {
       silent

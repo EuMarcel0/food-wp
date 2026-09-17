@@ -338,6 +338,19 @@ function mapOrder(row: Record<string, unknown>): Order {
     prepMinutes:
       row.prep_minutes == null ? null : Math.max(1, Number(row.prep_minutes)),
     createdAt: String(row.created_at),
+    autoPrintRequestedAt: row.auto_print_requested_at
+      ? String(row.auto_print_requested_at)
+      : null,
+    autoPrintClaimedAt: row.auto_print_claimed_at
+      ? String(row.auto_print_claimed_at)
+      : null,
+    autoPrintClaimedBy:
+      row.auto_print_claimed_by != null
+        ? String(row.auto_print_claimed_by)
+        : null,
+    autoPrintedAt: row.auto_printed_at
+      ? String(row.auto_printed_at)
+      : null,
     items,
   };
 }
@@ -3252,6 +3265,13 @@ export async function updateOrderStatus(
   ) {
     payload.prep_minutes = prepMinutes;
   }
+  if (previous !== status && status === "accepted") {
+    const now = new Date().toISOString();
+    payload.auto_print_requested_at = now;
+    payload.auto_print_claimed_at = null;
+    payload.auto_print_claimed_by = null;
+    payload.auto_printed_at = null;
+  }
 
   const { data, error } = await supabase
     .from("orders")
@@ -3262,6 +3282,9 @@ export async function updateOrderStatus(
   if (error || !data) {
     if (error?.message?.includes("prep_minutes")) {
       throw new Error("Rode a migration 019_order_prep_minutes.sql no Supabase.");
+    }
+    if (error?.message?.includes("auto_print_")) {
+      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
     }
     return null;
   }
@@ -3278,6 +3301,166 @@ export async function updateOrderStatus(
     });
   }
   return order;
+}
+
+const AUTO_PRINT_CLAIM_TTL_MS = 90_000;
+
+function isAutoPrintClaimStale(claimedAt: string | null | undefined) {
+  if (!claimedAt) return true;
+  const ms = Date.parse(claimedAt);
+  if (!Number.isFinite(ms)) return true;
+  return Date.now() - ms >= AUTO_PRINT_CLAIM_TTL_MS;
+}
+
+/** Pedidos aceitos ainda sem cupom impresso (claim livre ou expirado). */
+export async function listAutoPrintQueue(limit = 20) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAutoPrintQueue(limit);
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, code, auto_print_requested_at, auto_print_claimed_at, auto_print_claimed_by")
+    .not("auto_print_requested_at", "is", null)
+    .is("auto_printed_at", null)
+    .order("auto_print_requested_at", { ascending: true })
+    .limit(Math.min(50, Math.max(1, limit)));
+
+  if (error) {
+    if (error.message?.includes("auto_print_")) {
+      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+
+  const staleBefore = Date.now() - AUTO_PRINT_CLAIM_TTL_MS;
+  return (data ?? [])
+    .filter((row) => {
+      const claimedAt = row.auto_print_claimed_at
+        ? Date.parse(String(row.auto_print_claimed_at))
+        : NaN;
+      if (!Number.isFinite(claimedAt)) return true;
+      return claimedAt <= staleBefore;
+    })
+    .map((row) => ({
+      id: String(row.id),
+      code: String(row.code),
+      requestedAt: String(row.auto_print_requested_at),
+    }));
+}
+
+/** Reserva exclusiva do cupom (multi-PC / agente + painel). */
+export async function claimAutoPrint(id: string, claimedBy: string) {
+  const by = claimedBy.trim().slice(0, 120) || "station";
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.claimAutoPrint(id, by);
+
+  const { data: current, error: readError } = await supabase
+    .from("orders")
+    .select(
+      "id, code, auto_print_requested_at, auto_print_claimed_at, auto_print_claimed_by, auto_printed_at",
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (readError) {
+    if (readError.message?.includes("auto_print_")) {
+      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
+    }
+    throw new Error(readError.message);
+  }
+  if (!current?.auto_print_requested_at || current.auto_printed_at) {
+    return null;
+  }
+  if (
+    current.auto_print_claimed_by &&
+    current.auto_print_claimed_by !== by &&
+    !isAutoPrintClaimStale(
+      current.auto_print_claimed_at
+        ? String(current.auto_print_claimed_at)
+        : null,
+    )
+  ) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({
+      auto_print_claimed_at: now,
+      auto_print_claimed_by: by,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .is("auto_printed_at", null)
+    .not("auto_print_requested_at", "is", null)
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("auto_print_")) {
+      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+  if (String(data.auto_print_claimed_by ?? "") !== by) return null;
+  return mapOrder(data as Record<string, unknown>);
+}
+
+export async function completeAutoPrint(id: string, claimedBy?: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.completeAutoPrint(id, claimedBy);
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({
+      auto_printed_at: now,
+      auto_print_claimed_at: now,
+      auto_print_claimed_by: claimedBy?.trim() || "station",
+      updated_at: now,
+    })
+    .eq("id", id)
+    .is("auto_printed_at", null)
+    .not("auto_print_requested_at", "is", null)
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("auto_print_")) {
+      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return data ? mapOrder(data as Record<string, unknown>) : null;
+}
+
+export async function failAutoPrint(id: string, claimedBy: string) {
+  const by = claimedBy.trim();
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.failAutoPrint(id, by);
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update({
+      auto_print_claimed_at: null,
+      auto_print_claimed_by: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("auto_print_claimed_by", by)
+    .is("auto_printed_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("auto_print_")) {
+      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return Boolean(data);
 }
 
 function mapNotification(

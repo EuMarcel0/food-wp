@@ -1549,6 +1549,13 @@ export const memoryStore = {
     }
     const previous = order.status;
     order.status = status;
+    if (previous !== status && status === "accepted") {
+      const now = new Date().toISOString();
+      order.autoPrintRequestedAt = now;
+      order.autoPrintClaimedAt = null;
+      order.autoPrintClaimedBy = null;
+      order.autoPrintedAt = null;
+    }
     this.createNotification({
       type: "order_updated",
       orderId: order.id,
@@ -1558,6 +1565,68 @@ export const memoryStore = {
       actorName,
     });
     return order;
+  },
+
+  listAutoPrintQueue(limit = 20) {
+    const staleBefore = Date.now() - 90_000;
+    return [...orders.values()]
+      .filter((order) => {
+        if (!order.autoPrintRequestedAt || order.autoPrintedAt) return false;
+        if (!order.autoPrintClaimedAt) return true;
+        const claimed = Date.parse(order.autoPrintClaimedAt);
+        return !Number.isFinite(claimed) || claimed <= staleBefore;
+      })
+      .sort(
+        (a, b) =>
+          Date.parse(a.autoPrintRequestedAt ?? "") -
+          Date.parse(b.autoPrintRequestedAt ?? ""),
+      )
+      .slice(0, Math.min(50, Math.max(1, limit)))
+      .map((order) => ({
+        id: order.id,
+        code: order.code,
+        requestedAt: order.autoPrintRequestedAt!,
+      }));
+  },
+
+  claimAutoPrint(id: string, claimedBy: string) {
+    const order = orders.get(id);
+    if (!order?.autoPrintRequestedAt || order.autoPrintedAt) return null;
+    const staleBefore = Date.now() - 90_000;
+    const claimedMs = order.autoPrintClaimedAt
+      ? Date.parse(order.autoPrintClaimedAt)
+      : NaN;
+    if (
+      order.autoPrintClaimedBy &&
+      order.autoPrintClaimedBy !== claimedBy &&
+      Number.isFinite(claimedMs) &&
+      claimedMs > staleBefore
+    ) {
+      return null;
+    }
+    const now = new Date().toISOString();
+    order.autoPrintClaimedAt = now;
+    order.autoPrintClaimedBy = claimedBy;
+    return order;
+  },
+
+  completeAutoPrint(id: string, _claimedBy?: string) {
+    const order = orders.get(id);
+    if (!order?.autoPrintRequestedAt || order.autoPrintedAt) return null;
+    const now = new Date().toISOString();
+    order.autoPrintedAt = now;
+    order.autoPrintClaimedAt = now;
+    if (_claimedBy) order.autoPrintClaimedBy = _claimedBy;
+    return order;
+  },
+
+  failAutoPrint(id: string, claimedBy: string) {
+    const order = orders.get(id);
+    if (!order || order.autoPrintedAt) return false;
+    if (order.autoPrintClaimedBy !== claimedBy) return false;
+    order.autoPrintClaimedAt = null;
+    order.autoPrintClaimedBy = null;
+    return true;
   },
 
   createNotification(input: {

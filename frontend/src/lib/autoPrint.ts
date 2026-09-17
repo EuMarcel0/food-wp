@@ -3,77 +3,16 @@ import { formatCnpj } from "./format";
 import {
   fetchPrintAgentHealth,
   getPrintAgentToken,
+  getPrintStationId,
   isAutoPrintStation,
   printOrderViaAgent,
+  pushApiBaseToAgent,
 } from "./printAgent";
 import { toast } from "./toast";
 
-const PRINTED_KEY = "food-wp-auto-printed-orders";
-const PRINT_CHANNEL = "food-wp-auto-print";
 const AUTO_ACTOR = "Aceite automático";
 
-function readPrinted() {
-  try {
-    // localStorage: compartilhado entre abas do mesmo navegador.
-    const raw = localStorage.getItem(PRINTED_KEY);
-    const list = raw ? (JSON.parse(raw) as string[]) : [];
-    return new Set(Array.isArray(list) ? list : []);
-  } catch {
-    return new Set<string>();
-  }
-}
-
-function markPrinted(orderId: string) {
-  const set = readPrinted();
-  set.add(orderId);
-  // Mantém só os últimos pedidos (evita crescer sem limite).
-  const trimmed = [...set].slice(-200);
-  try {
-    localStorage.setItem(PRINTED_KEY, JSON.stringify(trimmed));
-  } catch {
-    // ignore
-  }
-  try {
-    const channel = new BroadcastChannel(PRINT_CHANNEL);
-    channel.postMessage({ type: "printed", orderId });
-    channel.close();
-  } catch {
-    // ignore
-  }
-}
-
-function listenPrinted(orderId: string, onPrinted: () => void) {
-  try {
-    const channel = new BroadcastChannel(PRINT_CHANNEL);
-    channel.onmessage = (event) => {
-      const data = event.data as { type?: string; orderId?: string } | null;
-      if (data?.type === "printed" && data.orderId === orderId) {
-        onPrinted();
-      }
-    };
-    return () => channel.close();
-  } catch {
-    return () => undefined;
-  }
-}
-
-async function withPrintLock<T>(
-  orderId: string,
-  task: () => Promise<T>,
-): Promise<T | null> {
-  const locks = navigator.locks;
-  if (!locks?.request) {
-    return task();
-  }
-  return locks.request(
-    `food-wp-auto-print:${orderId}`,
-    { ifAvailable: true },
-    async (lock) => {
-      if (!lock) return null;
-      return task();
-    },
-  );
-}
+let draining = false;
 
 export function isAutoAcceptNotification(item: {
   type: string;
@@ -86,62 +25,74 @@ export function isAutoAcceptNotification(item: {
   return /aceito/i.test(summary);
 }
 
-/** Imprime via agente local quando o aceite automático aceita o pedido. */
+/** Pode esta estação tentar imprimir? */
+function canAutoPrintHere() {
+  return isAutoPrintStation() && Boolean(getPrintAgentToken());
+}
+
+/**
+ * Imprime um pedido aceito via claim no servidor (evita double-print multi-PC).
+ * Também usada pelo drain da fila.
+ */
 export async function printAfterAutoAccept(orderId: string, orderCode?: string) {
-  if (!orderId || readPrinted().has(orderId)) return;
-  if (!isAutoPrintStation()) return;
-  if (!getPrintAgentToken()) {
-    toast.error(
-      `Pedido #${orderCode || "?"} aceito, mas o agente de impressão não está conectado.`,
-    );
-    return;
-  }
+  if (!orderId || !canAutoPrintHere()) return;
 
   try {
     await fetchPrintAgentHealth();
   } catch {
-    toast.error(
-      `Pedido #${orderCode || "?"} aceito, mas o agente de impressão está offline.`,
-    );
+    // Agente offline: a fila no print-agent (se configurada) ou outro tick retenta.
     return;
   }
 
-  let cancelled = false;
-  const stopListen = listenPrinted(orderId, () => {
-    cancelled = true;
-  });
-
+  const claimedBy = getPrintStationId();
+  let claimed = false;
   try {
-    const printed = await withPrintLock(orderId, async () => {
-      if (cancelled || readPrinted().has(orderId)) return false;
-
-      const [order, store] = await Promise.all([
-        api.order(orderId, true),
-        api.store(),
-      ]);
-      if (cancelled || readPrinted().has(orderId)) return false;
-
-      await printOrderViaAgent({
-        order,
-        store: {
-          ...store,
-          cnpj: store.cnpj ? formatCnpj(store.cnpj) : store.cnpj,
-        },
-      });
-      markPrinted(orderId);
-      toast.success(`Pedido #${order.code} enviado à impressora.`);
-      return true;
+    const order = await api.claimOrderPrint(orderId, claimedBy, true);
+    claimed = true;
+    const store = await api.store();
+    await printOrderViaAgent({
+      order,
+      store: {
+        ...store,
+        cnpj: store.cnpj ? formatCnpj(store.cnpj) : store.cnpj,
+      },
     });
-
-    // Outra aba/PC já pegou o lock — ok, não é erro.
-    if (printed === null || printed === false) return;
+    await api.completeOrderPrint(orderId, claimedBy, true);
+    toast.success(`Pedido #${order.code} enviado à impressora.`);
   } catch (error) {
+    if (claimed) {
+      await api.failOrderPrint(orderId, claimedBy, true).catch(() => undefined);
+    }
+    const message =
+      error instanceof Error ? error.message : String(error ?? "");
+    // Outra estação já pegou / já impresso — silencioso.
+    if (/já impresso|reservado|409/i.test(message)) return;
     toast.error(
-      error instanceof Error
-        ? error.message
-        : `Falha ao imprimir o pedido #${orderCode || "?"}.`,
+      message || `Falha ao imprimir o pedido #${orderCode || "?"}.`,
     );
+  }
+}
+
+/** Consome a fila server-side (backlog + pedidos novos). */
+export async function drainAutoPrintQueue() {
+  if (draining || !canAutoPrintHere()) return;
+  draining = true;
+  try {
+    try {
+      await fetchPrintAgentHealth();
+    } catch {
+      return;
+    }
+    // Garante que o agente saiba a URL da API (poll próprio, sem painel).
+    await pushApiBaseToAgent().catch(() => undefined);
+
+    const { items } = await api.orderPrintQueue(true);
+    for (const item of items) {
+      await printAfterAutoAccept(item.id, item.code);
+    }
+  } catch {
+    // ignore — próximo tick
   } finally {
-    stopListen();
+    draining = false;
   }
 }

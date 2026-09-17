@@ -378,6 +378,11 @@ export type Order = {
   totalCents: number;
   prepMinutes: number | null;
   createdAt: string;
+  /** Quando o cupom deve ser impresso automaticamente (aceite). */
+  autoPrintRequestedAt?: string | null;
+  autoPrintClaimedAt?: string | null;
+  autoPrintClaimedBy?: string | null;
+  autoPrintedAt?: string | null;
   items?: OrderItem[];
 };
 
