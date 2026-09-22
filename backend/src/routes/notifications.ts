@@ -13,7 +13,13 @@ function readerFrom(value: unknown) {
 }
 
 notificationsRouter.get("/", async (req, res) => {
-  res.json(await listNotifications(readerFrom(req.query.reader)));
+  const rawLimit = Number(req.query.limit);
+  const rawOffset = Number(req.query.offset);
+  const limit = Number.isFinite(rawLimit) ? rawLimit : 20;
+  const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
+  res.json(
+    await listNotifications(readerFrom(req.query.reader), { limit, offset }),
+  );
 });
 
 notificationsRouter.patch("/read-all", async (req, res) => {

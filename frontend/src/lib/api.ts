@@ -3,7 +3,6 @@ import { PAGE_SIZE, type PageResult } from "./pagination";
 import { withQuery } from "./query";
 import type {
   Addon,
-  AppNotification,
   Category,
   ConversationHistoryPage,
   ConversationMessage,
@@ -11,6 +10,7 @@ import type {
   Crust,
   Health,
   LiveConversation,
+  NotificationsPage,
   Order,
   OrderStats,
   OrderStatus,
@@ -449,8 +449,19 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status, actorName, prepMinutes })
     }),
-  notifications: (reader: string, silent = true) =>
-    request<AppNotification[]>(`/api/notifications?reader=${encodeURIComponent(reader)}`, { silent }),
+  notifications: (
+    reader: string,
+    silent = true,
+    options: { limit?: number; offset?: number } = {},
+  ) =>
+    request<NotificationsPage>(
+      withQuery("/api/notifications", {
+        reader,
+        limit: options.limit,
+        offset: options.offset,
+      }),
+      { silent },
+    ),
   markNotificationRead: (id: string, reader: string) =>
     request<{ ok: boolean }>(`/api/notifications/${id}/read`, {
       method: "PATCH",

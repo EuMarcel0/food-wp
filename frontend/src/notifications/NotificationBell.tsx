@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BellOutlined } from "@ant-design/icons";
-import { Badge, Button, Drawer, Empty, Popover } from "antd";
+import { Badge, Button, Drawer, Empty, Popover, Spin } from "antd";
 import { useNavigate } from "react-router-dom";
 import { formatDate } from "../lib/format";
 import { useMediaQuery } from "../lib/hooks";
@@ -10,11 +10,39 @@ import { useNotifications } from "./NotificationProvider";
 
 function NotificationList({
   items,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   onSelect,
 }: {
   items: AppNotification[];
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   onSelect: (id: string) => void;
 }) {
+  const scrollRef = useRef<HTMLUListElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+
+  useEffect(() => {
+    if (!hasMore || loadingMore) return;
+    const root = scrollRef.current;
+    const el = sentinelRef.current;
+    if (!root || !el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onLoadMoreRef.current();
+        }
+      },
+      { root, rootMargin: "80px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, items.length]);
+
   if (!items.length) {
     return (
       <div className="px-4 py-10 pb-8">
@@ -27,7 +55,10 @@ function NotificationList({
   }
 
   return (
-    <ul className="m-0 max-h-[380px] list-none overflow-auto overscroll-contain p-1.5 max-lg:max-h-none max-lg:flex-1 max-lg:p-2">
+    <ul
+      ref={scrollRef}
+      className="m-0 max-h-[380px] list-none overflow-auto overscroll-contain p-1.5 max-lg:max-h-none max-lg:flex-1 max-lg:p-2"
+    >
       {items.map((item) => (
         <li key={item.id}>
           <button
@@ -56,12 +87,30 @@ function NotificationList({
           </button>
         </li>
       ))}
+      {hasMore ? (
+        <li>
+          <div
+            ref={sentinelRef}
+            className="flex h-10 items-center justify-center"
+          >
+            {loadingMore ? <Spin size="small" /> : null}
+          </div>
+        </li>
+      ) : null}
     </ul>
   );
 }
 
 export function NotificationBell() {
-  const { items, unread, markRead, markAllRead } = useNotifications();
+  const {
+    items,
+    unread,
+    hasMore,
+    loadingMore,
+    loadMore,
+    markRead,
+    markAllRead,
+  } = useNotifications();
   const navigate = useNavigate();
   const isMobile = useMediaQuery("(max-width: 991px)");
   const isPhone = useMediaQuery("(max-width: 575px)");
@@ -101,10 +150,20 @@ export function NotificationBell() {
       </Button>
     ) : null;
 
-  const list = <NotificationList items={items} onSelect={openOrder} />;
+  const list = (
+    <NotificationList
+      items={items}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
+      onLoadMore={() => {
+        void loadMore();
+      }}
+      onSelect={openOrder}
+    />
+  );
 
   const trigger = (
-    <Badge count={unread} size="small" offset={[-2, 2]}>
+    <Badge dot={unread > 0} offset={[-2, 2]} color="#ef4444">
       <Button
         className="!size-8"
         type="text"

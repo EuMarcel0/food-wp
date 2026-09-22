@@ -163,8 +163,10 @@ export async function subscribeWhatsAppApp() {
 }
 
 /**
- * Desliga chamadas de voz no número Cloud API (remove o botão de ligar no chat).
- * Docs: POST /{PHONE_NUMBER_ID}/settings { calling: { status: "DISABLED" } }
+ * Tenta desligar chamadas via Cloud API.
+ * Em número de coexistência (WhatsApp Business no celular) a Meta NÃO expõe
+ * Calling API — voz/vídeo continuam no app; desligue no celular:
+ * WhatsApp Business → Configurações → Chamadas → desative receber chamadas.
  */
 export async function disableWhatsAppCalling() {
   if (!flags.whatsappReady || !env.whatsappPhoneNumberId) return;
@@ -178,20 +180,24 @@ export async function disableWhatsAppCalling() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          calling: { status: "DISABLED" },
+          calling: {
+            status: "DISABLED",
+            call_icon_visibility: "DISABLE_ALL",
+          },
         }),
       },
     );
     const body = await response.text();
     if (!response.ok) {
       console.warn(
-        "WhatsApp: não foi possível desabilitar chamadas",
+        "WhatsApp: API não desabilitou chamadas (comum em coexistência).",
         response.status,
         body,
+        "— Desligue no celular: Configurações → Chamadas → Receber chamadas.",
       );
       return;
     }
-    console.log("WhatsApp: chamadas desabilitadas no número");
+    console.log("WhatsApp: chamadas desabilitadas via API (status + ícone)");
   } catch (error) {
     console.warn(
       "WhatsApp: falha ao desabilitar chamadas",

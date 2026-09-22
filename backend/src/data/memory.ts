@@ -1797,19 +1797,38 @@ export const memoryStore = {
     return notification;
   },
 
-  listNotifications(readerKey: string) {
-    return [...notifications]
-      .sort((left, right) => {
-        const leftTime = Date.parse(left.createdAt) || 0;
-        const rightTime = Date.parse(right.createdAt) || 0;
-        if (rightTime !== leftTime) return rightTime - leftTime;
-        return right.id.localeCompare(left.id);
-      })
-      .slice(0, 50)
-      .map((item) => ({
-        ...item,
-        read: notificationReads.has(readKey(item.id, readerKey)),
-      }));
+  listNotifications(
+    readerKey: string,
+    options: { limit?: number; offset?: number } = {},
+  ) {
+    const limit = Math.min(50, Math.max(1, Math.round(Number(options.limit) || 20)));
+    const offset = Math.max(0, Math.round(Number(options.offset) || 0));
+    const all = [...notifications].sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt) || 0;
+      const rightTime = Date.parse(right.createdAt) || 0;
+      if (rightTime !== leftTime) return rightTime - leftTime;
+      return right.id.localeCompare(left.id);
+    });
+    const slice = all.slice(offset, offset + limit);
+    const items = slice.map((item) => ({
+      ...item,
+      read: notificationReads.has(readKey(item.id, readerKey)),
+    }));
+    const total = all.length;
+    const hasMore = offset + items.length < total;
+    return {
+      items,
+      hasMore,
+      nextOffset: hasMore ? offset + items.length : null,
+      total,
+      unread: this.countUnreadNotifications(readerKey),
+    };
+  },
+
+  countUnreadNotifications(readerKey: string) {
+    return notifications.filter(
+      (item) => !notificationReads.has(readKey(item.id, readerKey)),
+    ).length;
   },
 
   markNotificationRead(id: string, readerKey: string) {
@@ -1821,7 +1840,7 @@ export const memoryStore = {
 
   markAllNotificationsRead(readerKey: string) {
     let count = 0;
-    for (const item of notifications.slice(0, 50)) {
+    for (const item of notifications) {
       const key = readKey(item.id, readerKey);
       if (notificationReads.has(key)) continue;
       notificationReads.add(key);

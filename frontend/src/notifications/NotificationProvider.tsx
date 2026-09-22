@@ -20,9 +20,15 @@ import { bindNotifySoundUnlock, playNewOrderSound } from "../lib/notifySound";
 import { supabase } from "../lib/supabase";
 import type { AppNotification } from "../types";
 
+const NOTIF_FIRST_PAGE = 20;
+const NOTIF_PAGE_SIZE = 15;
+
 type NotificationContextValue = {
   items: AppNotification[];
   unread: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMore: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
 };
@@ -42,26 +48,38 @@ function sortByNewest(items: AppNotification[]) {
   });
 }
 
+function mergeNotifications(
+  current: AppNotification[],
+  incoming: AppNotification[],
+) {
+  const map = new Map<string, AppNotification>();
+  for (const item of current) map.set(item.id, item);
+  for (const item of incoming) map.set(item.id, item);
+  return sortByNewest([...map.values()]);
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const reader = readerFromUser(user?.email);
   const [items, setItems] = useState<AppNotification[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const seen = useRef(new Set<string>());
   const primed = useRef(false);
+  const loadingMoreRef = useRef(false);
 
-  const ingest = useCallback((next: AppNotification[]) => {
-    const ordered = sortByNewest(next);
+  const applyNewItemsSideEffects = useCallback((incoming: AppNotification[]) => {
     if (!primed.current) {
-      seen.current = new Set(ordered.map((item) => item.id));
+      seen.current = new Set(incoming.map((item) => item.id));
       primed.current = true;
-      setItems(ordered);
-      // Backlog: fila server-side (não depende de notificação “nova”).
       if (isAutoPrintStation()) {
         void drainAutoPrintQueue();
       }
       return;
     }
-    for (const item of ordered) {
+    for (const item of incoming) {
       if (seen.current.has(item.id)) continue;
       seen.current.add(item.id);
       if (item.type === "order_created") playNewOrderSound();
@@ -69,30 +87,70 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         void printAfterAutoAccept(item.orderId, item.orderCode);
       }
     }
-    setItems(ordered);
   }, []);
 
-  const load = useCallback(
+  const refreshHead = useCallback(
     async (silent = true) => {
-      ingest(await api.notifications(reader, silent));
+      const page = await api.notifications(reader, silent, {
+        limit: NOTIF_FIRST_PAGE,
+        offset: 0,
+      });
+      const wasPrimed = primed.current;
+      applyNewItemsSideEffects(page.items);
+      setItems((current) =>
+        wasPrimed
+          ? mergeNotifications(current, page.items)
+          : sortByNewest(page.items),
+      );
+      setUnread(page.unread);
+      if (!wasPrimed) {
+        setHasMore(page.hasMore);
+        setNextOffset(page.nextOffset);
+      }
     },
-    [ingest, reader],
+    [applyNewItemsSideEffects, reader],
   );
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || nextOffset == null || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await api.notifications(reader, true, {
+        limit: NOTIF_PAGE_SIZE,
+        offset: nextOffset,
+      });
+      for (const item of page.items) seen.current.add(item.id);
+      setItems((current) => mergeNotifications(current, page.items));
+      setHasMore(page.hasMore);
+      setNextOffset(page.nextOffset);
+      setUnread(page.unread);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [hasMore, nextOffset, reader]);
 
   useEffect(() => {
     primed.current = false;
     seen.current = new Set();
-    load().catch(() => setItems([]));
-  }, [load]);
+    setItems([]);
+    setUnread(0);
+    setHasMore(false);
+    setNextOffset(null);
+    refreshHead(false).catch(() => {
+      setItems([]);
+      setUnread(0);
+    });
+  }, [refreshHead]);
 
   useEffect(() => bindNotifySoundUnlock(), []);
 
   useEffect(() => {
     const client = supabase;
-    // Poll sempre: backup se o Realtime cair (senão a impressão some).
     const pollMs = client ? 8000 : 6000;
     const timer = window.setInterval(() => {
-      load().catch(() => undefined);
+      refreshHead().catch(() => undefined);
       if (isAutoPrintStation()) {
         void drainAutoPrintQueue();
       }
@@ -108,7 +166,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications" },
         () => {
-          load().catch(() => undefined);
+          refreshHead().catch(() => undefined);
           if (isAutoPrintStation()) {
             void drainAutoPrintQueue();
           }
@@ -129,31 +187,45 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
       void client.removeChannel(channel);
     };
-  }, [load]);
+  }, [refreshHead]);
 
   const markRead = useCallback(
     async (id: string) => {
-      await api.markNotificationRead(id, reader);
-      setItems((current) =>
-        current.map((item) => (item.id === id ? { ...item, read: true } : item)),
-      );
+      let shouldDecrement = false;
+      setItems((current) => {
+        const target = current.find((item) => item.id === id);
+        shouldDecrement = Boolean(target && !target.read);
+        return current.map((item) =>
+          item.id === id ? { ...item, read: true } : item,
+        );
+      });
+      try {
+        await api.markNotificationRead(id, reader);
+        if (shouldDecrement) setUnread((value) => Math.max(0, value - 1));
+      } catch {
+        void refreshHead();
+      }
     },
-    [reader],
+    [reader, refreshHead],
   );
 
   const markAllRead = useCallback(async () => {
     await api.markAllNotificationsRead(reader);
     setItems((current) => current.map((item) => ({ ...item, read: true })));
+    setUnread(0);
   }, [reader]);
 
   const value = useMemo<NotificationContextValue>(
     () => ({
       items,
-      unread: items.filter((item) => !item.read).length,
+      unread,
+      hasMore,
+      loadingMore,
+      loadMore,
       markRead,
       markAllRead,
     }),
-    [items, markRead, markAllRead],
+    [items, unread, hasMore, loadingMore, loadMore, markRead, markAllRead],
   );
 
   return (

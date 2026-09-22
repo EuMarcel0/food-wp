@@ -294,3 +294,11 @@ export type AppNotification = {
   createdAt: string;
   read: boolean;
 };
+
+export type NotificationsPage = {
+  items: AppNotification[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  total: number;
+  unread: number;
+};

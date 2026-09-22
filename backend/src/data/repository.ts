@@ -3792,16 +3792,24 @@ export async function createNotification(input: {
   }
 }
 
-export async function listNotifications(readerKey: string) {
+export async function listNotifications(
+  readerKey: string,
+  options: { limit?: number; offset?: number } = {},
+) {
+  const limit = Math.min(50, Math.max(1, Math.round(Number(options.limit) || 20)));
+  const offset = Math.max(0, Math.round(Number(options.offset) || 0));
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listNotifications(readerKey);
+  if (!supabase) return memoryStore.listNotifications(readerKey, { limit, offset });
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("notifications")
-    .select("*")
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(50);
-  if (error || !data) return memoryStore.listNotifications(readerKey);
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error || !data) {
+    return memoryStore.listNotifications(readerKey, { limit, offset });
+  }
 
   const ids = data.map((row) => String(row.id));
   const readIds = new Set<string>();
@@ -3816,19 +3824,43 @@ export async function listNotifications(readerKey: string) {
     }
   }
 
-  return data
-    .map((row) =>
-      mapNotification(
-        row as Record<string, unknown>,
-        readIds.has(String(row.id)),
-      ),
-    )
-    .sort((left, right) => {
-      const leftTime = Date.parse(left.createdAt) || 0;
-      const rightTime = Date.parse(right.createdAt) || 0;
-      if (rightTime !== leftTime) return rightTime - leftTime;
-      return right.id.localeCompare(left.id);
-    });
+  const items = data.map((row) =>
+    mapNotification(
+      row as Record<string, unknown>,
+      readIds.has(String(row.id)),
+    ),
+  );
+
+  const total = count ?? offset + items.length;
+  const hasMore = offset + items.length < total;
+  const unread = await countUnreadNotifications(readerKey);
+
+  return {
+    items,
+    hasMore,
+    nextOffset: hasMore ? offset + items.length : null,
+    total,
+    unread,
+  };
+}
+
+async function countUnreadNotifications(readerKey: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.countUnreadNotifications(readerKey);
+
+  const { data: rows, error } = await supabase.from("notifications").select("id");
+  if (error || !rows?.length) return 0;
+
+  const ids = rows.map((row) => String(row.id));
+  const { data: reads } = await supabase
+    .from("notification_reads")
+    .select("notification_id")
+    .eq("reader_key", readerKey)
+    .in("notification_id", ids);
+  const readCount = new Set(
+    (reads ?? []).map((row) => String(row.notification_id)),
+  ).size;
+  return Math.max(0, ids.length - readCount);
 }
 
 export async function markNotificationRead(id: string, readerKey: string) {
@@ -3850,13 +3882,26 @@ export async function markAllNotificationsRead(readerKey: string) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.markAllNotificationsRead(readerKey);
 
-  const items = await listNotifications(readerKey);
-  const unread = items.filter((item) => !item.read);
+  const { data: rows, error: listError } = await supabase
+    .from("notifications")
+    .select("id");
+  if (listError || !rows?.length) return 0;
+
+  const ids = rows.map((row) => String(row.id));
+  const { data: reads } = await supabase
+    .from("notification_reads")
+    .select("notification_id")
+    .eq("reader_key", readerKey)
+    .in("notification_id", ids);
+  const readIds = new Set(
+    (reads ?? []).map((row) => String(row.notification_id)),
+  );
+  const unread = ids.filter((id) => !readIds.has(id));
   if (!unread.length) return 0;
 
   const { error } = await supabase.from("notification_reads").upsert(
-    unread.map((item) => ({
-      notification_id: item.id,
+    unread.map((id) => ({
+      notification_id: id,
       reader_key: readerKey,
     })),
   );
