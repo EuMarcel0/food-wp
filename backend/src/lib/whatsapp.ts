@@ -162,6 +162,44 @@ export async function subscribeWhatsAppApp() {
   console.log("WhatsApp: app inscrito na WABA");
 }
 
+/**
+ * Desliga chamadas de voz no número Cloud API (remove o botão de ligar no chat).
+ * Docs: POST /{PHONE_NUMBER_ID}/settings { calling: { status: "DISABLED" } }
+ */
+export async function disableWhatsAppCalling() {
+  if (!flags.whatsappReady || !env.whatsappPhoneNumberId) return;
+  try {
+    const response = await fetch(
+      `${GRAPH}/${env.whatsappPhoneNumberId}/settings`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.whatsappToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          calling: { status: "DISABLED" },
+        }),
+      },
+    );
+    const body = await response.text();
+    if (!response.ok) {
+      console.warn(
+        "WhatsApp: não foi possível desabilitar chamadas",
+        response.status,
+        body,
+      );
+      return;
+    }
+    console.log("WhatsApp: chamadas desabilitadas no número");
+  } catch (error) {
+    console.warn(
+      "WhatsApp: falha ao desabilitar chamadas",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 export async function sendText(
   to: string,
   body: string,

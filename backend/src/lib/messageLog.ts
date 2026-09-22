@@ -3,6 +3,7 @@ import {
   findConversationByCustomerPhone,
   getConversation,
   saveConversation,
+  setConversationHandoff,
   upsertCustomer,
 } from "../data/repository.js";
 import type {
@@ -153,6 +154,77 @@ export async function logInboundByPhone(
   } catch (error) {
     console.warn(
       "[message-log] falha ao salvar inbound:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
+ * Espelha mensagem enviada pelo WhatsApp Business no celular (coexistência).
+ * Não dispara o bot — grava como agente e assume handoff humano se ainda estiver no bot.
+ */
+export async function logPhoneEchoByCustomerPhone(input: {
+  customerPhone: string;
+  body: string;
+  msgType?: string;
+  waMessageId?: string | null;
+}) {
+  try {
+    const text = input.body.trim();
+    const msgType = input.msgType ?? "text";
+    if (!text && msgType === "text") return;
+
+    const customer = await upsertCustomer(input.customerPhone);
+    let conversation = await getConversation(customer.id);
+    if (!conversation) {
+      conversation = await saveConversation(
+        customer,
+        "welcome",
+        { cart: [] },
+        { reopen: true },
+      );
+    } else if (conversation.closedAt) {
+      conversation = await saveConversation(
+        customer,
+        conversation.state,
+        conversation.context ?? { cart: [] },
+        { reopen: true },
+      );
+    }
+
+    await appendConversationMessage({
+      conversationId: conversation.id,
+      customerId: customer.id,
+      storeId: customer.storeId,
+      direction: "outbound",
+      author: "agent",
+      body:
+        text ||
+        (msgType === "audio"
+          ? "🎤 Áudio"
+          : msgType === "image"
+            ? "📷 Imagem"
+            : msgType === "video"
+              ? "🎬 Vídeo"
+              : msgType === "document"
+                ? "📎 Documento"
+                : msgType === "sticker"
+                  ? "🧩 Figurinha"
+                  : "[mensagem do celular]"),
+      msgType,
+      waMessageId: input.waMessageId ?? null,
+    });
+
+    if (conversation.handoffMode !== "human") {
+      await setConversationHandoff(
+        conversation.id,
+        "human",
+        "WhatsApp celular",
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[message-log] falha ao espelhar echo do celular:",
       error instanceof Error ? error.message : error,
     );
   }

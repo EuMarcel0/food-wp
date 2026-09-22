@@ -7,7 +7,7 @@ import { conversationsRouter } from "./routes/conversations.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { legalRouter } from "./routes/legal.js";
-import { checkWhatsAppToken, subscribeWhatsAppApp } from "./lib/whatsapp.js";
+import { checkWhatsAppToken, disableWhatsAppCalling, subscribeWhatsAppApp } from "./lib/whatsapp.js";
 import { webhookStats } from "./lib/webhookStats.js";
 import { startIdleTimeoutJob } from "./jobs/idleTimeout.js";
 
@@ -83,5 +83,6 @@ app.listen(env.port, "0.0.0.0", () => {
     `WhatsApp: ${flags.whatsappReady ? "pronto" : "dry-run (preencha o .env)"}`,
   );
   void subscribeWhatsAppApp();
+  void disableWhatsAppCalling();
   startIdleTimeoutJob();
 });

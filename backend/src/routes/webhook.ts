@@ -5,7 +5,7 @@ import {
   handleIncomingMessage,
   handleUnsupportedInbound,
 } from "../conversation/engine.js";
-import { logInboundByPhone } from "../lib/messageLog.js";
+import { logInboundByPhone, logPhoneEchoByCustomerPhone } from "../lib/messageLog.js";
 import {
   describeInboundWithoutMedia,
   parseInboundMedia,
@@ -38,6 +38,25 @@ type WhatsAppChange = {
         };
       }
     >;
+    /** Coexistência: mensagens enviadas pelo WhatsApp Business no celular. */
+    message_echoes?: Array<{
+      from?: string;
+      to?: string;
+      id?: string;
+      timestamp?: string;
+      type?: string;
+      text?: { body?: string };
+      image?: { caption?: string; id?: string };
+      video?: { caption?: string; id?: string };
+      document?: { caption?: string; filename?: string; id?: string };
+      audio?: { id?: string };
+      sticker?: { id?: string };
+      revoke?: { original_message_id?: string };
+      edit?: {
+        original_message_id?: string;
+        message?: Record<string, unknown>;
+      };
+    }>;
     contacts?: Array<{
       profile?: { name?: string; picture?: string };
       wa_id?: string;
@@ -85,8 +104,58 @@ webhookRouter.post("/whatsapp", (req, res) => {
 
   const entries = (req.body?.entry ?? []) as Array<{ changes?: WhatsAppChange[] }>;
   let incoming = 0;
+  let echoes = 0;
   for (const entry of entries) {
     for (const change of entry.changes ?? []) {
+      const field = change.field ?? "";
+
+      // Coexistência: espelha o que a pessoa enviou pelo app do celular.
+      if (field === "smb_message_echoes") {
+        const messageEchoes = change.value?.message_echoes ?? [];
+        noteWebhook(field, messageEchoes.length);
+        for (const echo of messageEchoes) {
+          const customerPhone = String(echo.to ?? "").replace(/\D/g, "");
+          if (!customerPhone) continue;
+          if (echo.type === "revoke" || echo.type === "edit") {
+            console.log(
+              `WhatsApp smb_message_echoes ignore type=${echo.type} to=${customerPhone}`,
+            );
+            continue;
+          }
+
+          const type = echo.type ?? "text";
+          let body = "";
+          if (type === "text") body = echo.text?.body ?? "";
+          else if (type === "image") body = echo.image?.caption?.trim() || "📷 Imagem";
+          else if (type === "video") body = echo.video?.caption?.trim() || "🎬 Vídeo";
+          else if (type === "document") {
+            body =
+              echo.document?.caption?.trim() ||
+              echo.document?.filename?.trim() ||
+              "📎 Documento";
+          } else if (type === "audio") body = "🎤 Áudio";
+          else if (type === "sticker") body = "🧩 Figurinha";
+          else body = `[${type}]`;
+
+          echoes += 1;
+          const queueKey = queueKeyForPhone(customerPhone);
+          console.log(
+            `WhatsApp smb_message_echoes type=${type} to=${customerPhone}`,
+          );
+          enqueueByUser(queueKey, async () => {
+            await logPhoneEchoByCustomerPhone({
+              customerPhone,
+              body,
+              msgType: type,
+              waMessageId: echo.id ?? null,
+            });
+          }).catch((error) => {
+            console.error("Falha ao espelhar mensagem do celular", error);
+          });
+        }
+        continue;
+      }
+
       const messages = change.value?.messages ?? [];
       noteWebhook(change.field, messages.length);
       const profile = change.value?.contacts?.[0]?.profile;
@@ -214,6 +283,8 @@ webhookRouter.post("/whatsapp", (req, res) => {
     }
   }
   console.log(
-    `WhatsApp webhook: ${incoming} mensagem(ns) processada(s)`,
+    `WhatsApp webhook: ${incoming} mensagem(ns) processada(s)${
+      echoes ? `, ${echoes} echo(s) do celular` : ""
+    }`,
   );
 });
