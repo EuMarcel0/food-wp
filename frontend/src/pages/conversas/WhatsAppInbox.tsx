@@ -594,7 +594,7 @@ export function WhatsAppInbox({
                   Encerrar todos
                 </Button>
               ) : null} */}
-              <Tag className='!m-0' color={readOnly ? undefined : "success"}>
+              <Tag className='m-0!' color={readOnly ? undefined : "success"}>
                 {readOnly ? `${listTotal ?? items.length}` : `${listTotal ?? items.length} ativas`}
               </Tag>
             </div>
