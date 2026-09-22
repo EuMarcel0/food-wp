@@ -196,7 +196,7 @@ export function OrdersPage() {
           setQInput("");
           setStatus(undefined);
           setFulfillment(undefined);
-          setDateRange(todayRange());
+          setDateRange(null);
         }}
       >
         <Input.Search
@@ -230,7 +230,7 @@ export function OrdersPage() {
           format="DD/MM/YYYY"
           placeholder={["Data início", "Data fim"]}
           value={dateRange}
-          onChange={(dates) => setDateRange(dates ?? todayRange())}
+          onChange={(dates) => setDateRange(dates)}
         />
       </ListFilters>
       <FillTable
