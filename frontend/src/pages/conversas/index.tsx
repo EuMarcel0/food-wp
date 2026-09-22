@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { Tag, Tabs } from "antd";
@@ -19,12 +18,16 @@ import { toast } from "../../lib/toast";
 import { cn } from "../../lib/cn";
 import { listPage } from "../../ui";
 import type { LiveConversation } from "../../types";
+import {
+  flattenLiveConversationPages,
+  flattenPagedItems,
+} from "../../conversations/realtimeCache";
 import { WhatsAppInbox } from "./WhatsAppInbox";
 
 type TabKey = "active" | "history";
 
-const HISTORY_FIRST_PAGE = 30;
-const HISTORY_PAGE_SIZE = 15;
+const LIST_FIRST_PAGE = 30;
+const LIST_PAGE_SIZE = 15;
 
 export function ConversationsPage() {
   const dialog = useDialog();
@@ -34,9 +37,18 @@ export function ConversationsPage() {
   const [tab, setTab] = useState<TabKey>("active");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
-  const activeQuery = useQuery({
+  const activeQuery = useInfiniteQuery({
     queryKey: queryKeys.conversations.live,
-    queryFn: () => api.conversations("active", true),
+    queryFn: ({ pageParam }) =>
+      api.conversations(true, {
+        limit: pageParam === 0 ? LIST_FIRST_PAGE : LIST_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextOffset != null
+        ? lastPage.nextOffset
+        : undefined,
     refetchInterval: supabase ? false : 8000,
     networkMode: "always",
   });
@@ -45,7 +57,7 @@ export function ConversationsPage() {
     queryKey: queryKeys.conversations.history,
     queryFn: ({ pageParam }) =>
       api.conversationHistory(true, {
-        limit: pageParam === 0 ? HISTORY_FIRST_PAGE : HISTORY_PAGE_SIZE,
+        limit: pageParam === 0 ? LIST_FIRST_PAGE : LIST_PAGE_SIZE,
         offset: pageParam,
       }),
     initialPageParam: 0,
@@ -132,6 +144,26 @@ export function ConversationsPage() {
     },
   });
 
+  const closeAllMutation = useMutation({
+    mutationFn: () => api.closeAllConversations(),
+    onSuccess: async (result) => {
+      if (result.failed) {
+        toast.error(
+          `${result.closed} encerrado(s), ${result.failed} com falha.`,
+        );
+      } else {
+        toast.success(
+          result.closed
+            ? `${result.closed} atendimento(s) encerrado(s).`
+            : "Nenhum atendimento ativo para encerrar.",
+        );
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations.all,
+      });
+    },
+  });
+
   function askTakeover(item: LiveConversation) {
     const name = item.customerName?.trim() || "este cliente";
     void dialog.confirm({
@@ -170,22 +202,37 @@ export function ConversationsPage() {
     });
   }
 
-  const activeItems = activeQuery.data ?? [];
-  const historyItems = useMemo(() => {
-    const seen = new Set<string>();
-    const items: LiveConversation[] = [];
-    for (const page of historyQuery.data?.pages ?? []) {
-      for (const item of page.items) {
-        if (seen.has(item.id)) continue;
-        seen.add(item.id);
-        items.push(item);
-      }
-    }
-    return items;
-  }, [historyQuery.data]);
+  const activeItems = useMemo(
+    () => flattenLiveConversationPages(activeQuery.data?.pages),
+    [activeQuery.data],
+  );
+  const historyItems = useMemo(
+    () => flattenPagedItems(historyQuery.data?.pages),
+    [historyQuery.data],
+  );
+  const activeTotal = activeQuery.data?.pages[0]?.total ?? activeItems.length;
   const historyTotal =
     historyQuery.data?.pages[0]?.total ?? historyItems.length;
   const humanCount = activeItems.filter((item) => item.handoffMode === "human").length;
+
+  function askCloseAll() {
+    void dialog.confirm({
+      title: "Encerrar todos os atendimentos",
+      description: (
+        <>
+          Serão encerrados <strong>{activeTotal}</strong> atendimento(s) ativo(s). Cada
+          cliente recebe a mensagem de despedida no WhatsApp e as conversas vão
+          para o histórico. Continuar?
+        </>
+      ),
+      okText: "Encerrar todos",
+      cancelText: "Cancelar",
+      okDanger: true,
+      onConfirm: async () => {
+        await closeAllMutation.mutateAsync();
+      },
+    });
+  }
 
   return (
     <div
@@ -234,7 +281,7 @@ export function ConversationsPage() {
                 <span className="inline-flex max-w-full items-center gap-1.5">
                   WhatsApp
                   <Tag className="!m-0" icon={<CommentOutlined />}>
-                    {activeItems.length}
+                    {activeTotal}
                   </Tag>
                   {humanCount ? (
                     <Tag className="!m-0 max-lg:hidden" color="purple">
@@ -287,6 +334,14 @@ export function ConversationsPage() {
             items={activeItems}
             error={activeQuery.error}
             loading={activeQuery.isLoading}
+            listTotal={activeTotal}
+            hasMore={Boolean(activeQuery.hasNextPage)}
+            loadingMore={activeQuery.isFetchingNextPage}
+            onLoadMore={() => {
+              if (activeQuery.hasNextPage && !activeQuery.isFetchingNextPage) {
+                void activeQuery.fetchNextPage();
+              }
+            }}
             busyId={
               takeoverMutation.isPending
                 ? takeoverMutation.variables
@@ -294,11 +349,14 @@ export function ConversationsPage() {
                   ? releaseMutation.variables
                   : closeMutation.isPending
                     ? closeMutation.variables
-                    : null
+                    : closeAllMutation.isPending
+                      ? "close-all"
+                      : null
             }
             onTakeover={askTakeover}
             onRelease={(item) => releaseMutation.mutate(item.id)}
             onClose={askClose}
+            onCloseAll={askCloseAll}
             onMobileChatOpenChange={setMobileChatOpen}
           />
         )}

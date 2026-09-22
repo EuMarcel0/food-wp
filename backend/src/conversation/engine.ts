@@ -14,6 +14,7 @@ import {
   getStore,
   listAddons,
   listCrusts,
+  listPaymentMethods,
   listProducts,
   listSizes,
   saveConversation,
@@ -67,7 +68,8 @@ import {
   type Product,
   type ProductOptionGroup,
   type SaveConversationOptions,
-  type Store
+  type Store,
+  type StorePaymentMethod
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
@@ -307,7 +309,7 @@ function batchTotalFlavors(context: ConversationContext) {
 function batchFlavorMenuIntro(context: ConversationContext, prefix?: string) {
   const total = batchTotalFlavors(context);
   const flavorWord = total === 1 ? "sabor" : "sabores";
-  return [prefix, `🍕 Combine até *${total}* ${flavorWord}`, `Escolha o *1º* sabor de *${total}*:`]
+  return [prefix, `🍕 Você pode escolher até *${total}* ${flavorWord}`, `Escolha o *1º* sabor de *${total}*:`]
     .filter(Boolean)
     .join("\n");
 }
@@ -616,13 +618,13 @@ async function askDrinksUpsell(to: string, more = false) {
   if (more) {
     await sendButtons(to, "🥤 *Deseja adicionar mais uma bebida?*", [
       { id: "order_drinks", title: "Ver bebidas" },
-      { id: "skip_drinks", title: "Pular" },
+      { id: "skip_drinks", title: "Pular" }
     ]);
     return;
   }
   await sendButtons(to, "🥤 *Bebidas?*\nQuer adicionar alguma bebida ao pedido?", [
     { id: "order_drinks", title: "Ver bebidas" },
-    { id: "skip_drinks", title: "Não, obrigado" },
+    { id: "skip_drinks", title: "Não, obrigado(a)" }
   ]);
 }
 
@@ -1011,11 +1013,7 @@ async function askNeighborhoodAmbiguous(to: string, matches: { zone: DeliveryNei
   ]);
 }
 
-async function goToAddress(
-  to: string,
-  zone?: DeliveryNeighborhood | null,
-  opts?: { pickupEnabled?: boolean }
-) {
+async function goToAddress(to: string, zone?: DeliveryNeighborhood | null, opts?: { pickupEnabled?: boolean }) {
   const intro = [
     zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
     "🏠 Qual o endereço completo da entrega?",
@@ -1065,15 +1063,20 @@ function resolveAddress(input: {
   return text || null;
 }
 
-const PAYMENT_ROWS = [
-  { id: "pay:pix", title: "Pix na Entrega/Retirada" },
-  { id: "pay:cash", title: "Dinheiro" },
-  { id: "pay:credit", title: "Cartão crédito" },
-  { id: "pay:debit", title: "Cartão débito" }
-];
-
 async function askPayment(to: string, intro = "💳 Como deseja pagar?") {
-  await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows: PAYMENT_ROWS }]);
+  const methods = await listPaymentMethods();
+  if (!methods.length) {
+    await sendText(
+      to,
+      "Nenhuma forma de pagamento cadastrada. Avise a loja para configurar em Adicionais → Pagamentos.",
+    );
+    return;
+  }
+  const rows = methods.slice(0, WA_LIST_MAX_ROWS).map((method) => ({
+    id: `pay:${method.id}`,
+    title: method.name.slice(0, 24),
+  }));
+  await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows }]);
 }
 
 async function askContactName(to: string) {
@@ -1084,26 +1087,61 @@ function clipContactName(raw: string) {
   return raw.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
-function parsePayment(incoming: string, normalized: string): PaymentMethod | "card_ambiguous" | null {
-  const raw = incoming.startsWith("pay:") ? incoming.slice(4) : normalized;
-  const value = normalize(raw.replace(/_/g, " "));
-  if (value === "pix" || value.startsWith("pix ")) return "pix";
-  if (value === "cash" || value === "dinheiro") return "cash";
-  if (value === "credit" || value === "credito" || value === "cartao credito" || value === "cartao de credito") {
-    return "credit";
+function paymentKindAliases(kind: StorePaymentMethod["kind"]): string[] {
+  if (kind === "pix") return ["pix"];
+  if (kind === "cash") return ["cash", "dinheiro"];
+  if (kind === "credit") {
+    return ["credit", "credito", "cartao credito", "cartao de credito"];
   }
-  if (value === "debit" || value === "debito" || value === "cartao debito" || value === "cartao de debito") {
-    return "debit";
+  if (kind === "debit") {
+    return ["debit", "debito", "cartao debito", "cartao de debito"];
   }
-  if (value === "card" || value === "cartao") return "card_ambiguous";
+  return [];
+}
+
+async function resolvePaymentMethod(
+  incoming: string,
+  normalized: string,
+): Promise<StorePaymentMethod | "card_ambiguous" | null> {
+  const methods = await listPaymentMethods();
+  if (!methods.length) return null;
+
+  if (incoming.startsWith("pay:")) {
+    const id = incoming.slice(4);
+    const byId = methods.find((item) => item.id === id);
+    if (byId) return byId;
+  }
+
+  const byName = methods.find((item) => normalize(item.name) === normalized);
+  if (byName) return byName;
+
+  for (const method of methods) {
+    const aliases = paymentKindAliases(method.kind);
+    if (aliases.includes(normalized)) return method;
+  }
+
+  if (normalized === "card" || normalized === "cartao") {
+    const cardMethods = methods.filter(
+      (item) => item.kind === "credit" || item.kind === "debit",
+    );
+    if (cardMethods.length === 1) return cardMethods[0];
+    if (cardMethods.length > 1) return "card_ambiguous";
+  }
+
   return null;
 }
 
-function paymentLabel(method: PaymentMethod) {
+function paymentDisplayLabel(
+  method: PaymentMethod,
+  label?: string | null,
+) {
+  const custom = label?.trim();
+  if (custom) return custom;
   if (method === "pix") return "Pix na Entrega/Retirada";
   if (method === "cash") return "Dinheiro";
   if (method === "credit") return "Cartão crédito";
   if (method === "debit") return "Cartão débito";
+  if (method === "other") return "Outro";
   return "Cartão";
 }
 
@@ -1182,8 +1220,7 @@ function productCategories(products: Product[]) {
     else map.set(id, { id, name, count: 1, sortOrder: product.categorySortOrder ?? 0 });
   }
   return [...map.values()].sort(
-    (left, right) =>
-      left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR"),
+    (left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "pt-BR")
   );
 }
 
@@ -1707,17 +1744,17 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
   const picked = draftAddon(drafts)?.options.map(addonOptionLabel) ?? [];
   const prompt = [
     `*${product.name}*`,
-    picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "🧀 Escolha um adicional",
+    picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "Deseja colocar algum adicional?",
     picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
   ]
     .filter(Boolean)
     .join("\n");
 
-  // Primeira mensagem: botões Adicionais + Pular (sem abrir o modal).
+  // Primeira mensagem: botões Sim + Não (sem abrir o modal).
   if (!picked.length && offset === 0 && !openList) {
     await sendButtons(to, prompt, [
-      { id: "choose_addon", title: "Adicionais" },
-      { id: "skip_addon", title: "Pular" }
+      { id: "choose_addon", title: "Sim" },
+      { id: "skip_addon", title: "Não" }
     ]);
     return false;
   }
@@ -1820,13 +1857,7 @@ async function finishItemOrContinueBatch(
       context.menuCategoryId = context.batchCategoryId ?? context.menuCategoryId ?? null;
       context.menuOffset = 0;
       await persist("awaiting_product", context);
-      await showMenu(
-        to,
-        batchFlavorMenuIntro(context, "✅ Item adicionado!"),
-        context,
-        persist,
-        store
-      );
+      await showMenu(to, batchFlavorMenuIntro(context, "✅ Item adicionado!"), context, persist, store);
       return;
     }
     clearBatch(context);
@@ -1919,7 +1950,7 @@ async function finishOrder(
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (!context.fulfillment || !context.paymentMethod) {
-    await sendText(to, "Escolha Pix, dinheiro, cartão crédito ou débito.");
+    await sendText(to, "Escolha uma forma de pagamento para continuar.");
     await askPayment(to);
     return;
   }
@@ -1933,12 +1964,14 @@ async function finishOrder(
   const orderNotes = context.orderNotes;
   const fulfillment = context.fulfillment;
   const paymentMethod = context.paymentMethod;
+  const paymentMethodLabel = context.paymentMethodLabel;
   const changeForCents = context.changeForCents;
 
   const order = await createOrder({
     customer,
     fulfillment: context.fulfillment,
     paymentMethod: context.paymentMethod,
+    paymentMethodLabel: context.paymentMethodLabel ?? null,
     changeForCents: context.paymentMethod === "cash" ? (context.changeForCents ?? 0) : null,
     contactName: context.contactName ?? customer.name,
     addressText: context.addressText,
@@ -1973,7 +2006,7 @@ async function finishOrder(
       cartSummary,
       "",
       fulfillment === "delivery" ? `📍 Entrega: ${addressText ?? "a combinar"}` : "🏪 Retirada no local",
-      `💳 Pagamento: ${paymentLabel(paymentMethod)}`,
+      `💳 Pagamento: ${paymentDisplayLabel(paymentMethod, paymentMethodLabel)}`,
       changeLine ? `💵 ${changeLine}` : null,
       feeLine.startsWith("Taxa") || feeLine.startsWith("Entrega") ? `🛵 ${feeLine}` : null,
       orderNotes ? `📝 Obs.: ${orderNotes}` : null,
@@ -2573,7 +2606,10 @@ export async function handleIncomingMessage(input: {
       incoming === "prev_options" ||
       incoming === "done_options" ||
       normalized === "adicionais" ||
-      normalized === "pular";
+      normalized === "sim" ||
+      normalized === "pular" ||
+      normalized === "nao" ||
+      normalized === "não";
 
     if (!addonAction) {
       await persist("awaiting_addon", context);
@@ -2581,7 +2617,11 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    if (incoming === "choose_addon" || normalized === "adicionais") {
+    if (
+      incoming === "choose_addon" ||
+      normalized === "adicionais" ||
+      normalized === "sim"
+    ) {
       context.addonOffset = 0;
       await persist("awaiting_addon", context);
       const finished = await askAddons(input.from, product, drafts, 0, true);
@@ -2614,7 +2654,12 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    if (incoming === "skip_addon" || normalized === "pular") {
+    if (
+      incoming === "skip_addon" ||
+      normalized === "pular" ||
+      normalized === "nao" ||
+      normalized === "não"
+    ) {
       context.addonOffset = 0;
       context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
@@ -3039,19 +3084,34 @@ export async function handleIncomingMessage(input: {
     }
     context.changeForCents = change;
     context.paymentMethod = "cash";
+    if (!context.paymentMethodLabel) {
+      context.paymentMethodLabel = "Dinheiro";
+    }
     await persist("awaiting_contact_name", context);
     await askContactName(input.from);
     return;
   }
 
   if (state === "awaiting_payment") {
-    const payment = parsePayment(incoming, normalized);
+    const payment = await resolvePaymentMethod(incoming, normalized);
     if (payment === "card_ambiguous") {
+      const methods = await listPaymentMethods();
+      const cardMethods = methods.filter(
+        (item) => item.kind === "credit" || item.kind === "debit",
+      );
+      if (!cardMethods.length) {
+        await resumeCurrentStep(input.from, store, state, context);
+        return;
+      }
       await persist("awaiting_payment", context);
-      await sendButtons(input.from, "Qual cartão?", [
-        { id: "pay:credit", title: "Crédito" },
-        { id: "pay:debit", title: "Débito" }
-      ]);
+      await sendButtons(
+        input.from,
+        "Qual cartão?",
+        cardMethods.slice(0, 3).map((item) => ({
+          id: `pay:${item.id}`,
+          title: item.name.slice(0, 20),
+        })),
+      );
       return;
     }
 
@@ -3060,8 +3120,10 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    context.paymentMethod = payment;
-    if (payment === "cash") {
+    context.paymentMethod = payment.kind;
+    context.paymentMethodId = payment.id;
+    context.paymentMethodLabel = payment.name;
+    if (payment.kind === "cash") {
       const totalCents = orderTotalCents(store, context);
       await persist("awaiting_change", context);
       await askChange(input.from, totalCents);

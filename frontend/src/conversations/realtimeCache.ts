@@ -5,10 +5,119 @@ import type {
   ConversationMessageActions,
   ConversationMessagesPage,
   LiveConversation,
+  LiveConversationPage,
 } from "../types";
 
 type MessagesCursor = { createdAt: string; id: string } | null;
 export type MessagesInfinite = InfiniteData<ConversationMessagesPage, MessagesCursor>;
+export type LiveConversationsInfinite = InfiniteData<LiveConversationPage, number>;
+
+export function flattenLiveConversationPages(
+  pages: LiveConversationPage[] | undefined,
+): LiveConversation[] {
+  return flattenPagedItems(pages);
+}
+
+function itemsFromPage<T extends { id: string }>(page: unknown): T[] {
+  if (!page) return [];
+  // Página no formato antigo: a própria resposta era T[]
+  if (Array.isArray(page)) return page as T[];
+  if (typeof page === "object" && Array.isArray((page as { items?: unknown }).items)) {
+    return (page as { items: T[] }).items;
+  }
+  return [];
+}
+
+export function flattenPagedItems<T extends { id: string }>(
+  pages: unknown,
+): T[] {
+  const seen = new Set<string>();
+  const items: T[] = [];
+  // Cache antigo do useQuery: data era T[] direto (sem { pages })
+  if (
+    Array.isArray(pages) &&
+    pages.length > 0 &&
+    pages[0] != null &&
+    typeof pages[0] === "object" &&
+    "id" in (pages[0] as object) &&
+    !("items" in (pages[0] as object))
+  ) {
+    for (const item of pages as T[]) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      items.push(item);
+    }
+    return items;
+  }
+
+  for (const page of Array.isArray(pages) ? pages : []) {
+    for (const item of itemsFromPage<T>(page)) {
+      if (!item?.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      items.push(item);
+    }
+  }
+  return items;
+}
+
+/** Atualiza um item nas páginas infinite da lista ativa (e opcionalmente move para o topo). */
+export function patchLiveConversationInCache(
+  current: LiveConversationsInfinite | undefined,
+  conversationId: string,
+  patch: (item: LiveConversation) => LiveConversation,
+  options: { moveToTop?: boolean } = {},
+): LiveConversationsInfinite | undefined {
+  if (!current?.pages?.length) return current;
+
+  let found: LiveConversation | null = null;
+  const pagesWithout = current.pages.map((page) => {
+    const list = itemsFromPage<LiveConversation>(page);
+    if (!list.length && !Array.isArray((page as { items?: unknown })?.items)) {
+      return page;
+    }
+    const index = list.findIndex((item) => item.id === conversationId);
+    if (index < 0) return page;
+    const nextItems = list.slice();
+    const updated = patch(nextItems[index]);
+    found = updated;
+    if (options.moveToTop) {
+      nextItems.splice(index, 1);
+    } else {
+      nextItems[index] = updated;
+    }
+    // Normaliza página legada (array) para o formato paginado
+    if (Array.isArray(page)) {
+      return {
+        items: nextItems,
+        hasMore: false,
+        nextOffset: null,
+        total: nextItems.length,
+      };
+    }
+    return { ...page, items: nextItems };
+  });
+
+  if (!found) return current;
+
+  if (!options.moveToTop) {
+    return { ...current, pages: pagesWithout };
+  }
+
+  const pages = pagesWithout.map((page, index) => {
+    const list = itemsFromPage<LiveConversation>(page);
+    return index === 0
+      ? Array.isArray(page)
+        ? {
+            items: [found!, ...list],
+            hasMore: false,
+            nextOffset: null,
+            total: list.length + 1,
+          }
+        : { ...page, items: [found!, ...list] }
+      : page;
+  });
+  return { ...current, pages };
+}
 
 function mapRealtimeActions(raw: unknown): ConversationMessageActions | null {
   if (!raw || typeof raw !== "object") return null;
@@ -124,30 +233,33 @@ export function applyRealtimeMessageToCaches(
   const direction = message.direction;
 
   let missingFromList = false;
-  queryClient.setQueryData<LiveConversation[]>(
+  queryClient.setQueryData<LiveConversationsInfinite>(
     queryKeys.conversations.live,
     (current) => {
-      if (!current?.length) {
+      if (!current?.pages.length) {
         missingFromList = true;
         return current;
       }
-      const index = current.findIndex((item) => item.id === conversationId);
-      if (index < 0) {
+      const patched = patchLiveConversationInCache(
+        current,
+        conversationId,
+        (prev) => ({
+          ...prev,
+          lastMessageAt: createdAt,
+          lastMessagePreview: previewFromBody(
+            message.body,
+            prev.lastMessagePreview,
+          ),
+          lastMessageDirection: direction,
+          lastInboundAt:
+            direction === "inbound" ? createdAt : (prev.lastInboundAt ?? null),
+        }),
+        { moveToTop: true },
+      );
+      if (patched === current) {
         missingFromList = true;
-        return current;
       }
-      const prev = current[index];
-      const updated: LiveConversation = {
-        ...prev,
-        lastMessageAt: createdAt,
-        lastMessagePreview: previewFromBody(message.body, prev.lastMessagePreview),
-        lastMessageDirection: direction,
-        lastInboundAt:
-          direction === "inbound" ? createdAt : (prev.lastInboundAt ?? null),
-      };
-      const next = current.slice();
-      next.splice(index, 1);
-      return [updated, ...next];
+      return patched;
     },
   );
 

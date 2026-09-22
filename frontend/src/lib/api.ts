@@ -11,17 +11,56 @@ import type {
   Crust,
   Health,
   LiveConversation,
+  LiveConversationPage,
   Order,
   OrderStats,
   OrderStatus,
   Product,
   Size,
-  Store
+  Store,
+  StorePaymentMethod
 } from "../types";
 
 const base = import.meta.env.VITE_API_URL ?? "";
 
 type RequestOptions = RequestInit & { silent?: boolean };
+
+function normalizeConversationListPage<T extends { id: string }>(
+  data: unknown,
+): {
+  items: T[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  total: number;
+} {
+  if (Array.isArray(data)) {
+    return {
+      items: data as T[],
+      hasMore: false,
+      nextOffset: null,
+      total: data.length,
+    };
+  }
+  if (data && typeof data === "object") {
+    const row = data as {
+      items?: unknown;
+      hasMore?: unknown;
+      nextOffset?: unknown;
+      total?: unknown;
+    };
+    if (Array.isArray(row.items)) {
+      const items = row.items as T[];
+      return {
+        items,
+        hasMore: Boolean(row.hasMore),
+        nextOffset:
+          typeof row.nextOffset === "number" ? row.nextOffset : null,
+        total: typeof row.total === "number" ? row.total : items.length,
+      };
+    }
+  }
+  return { items: [], hasMore: false, nextOffset: null, total: 0 };
+}
 
 async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const { silent, ...fetchInit } = init;
@@ -195,6 +234,43 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   deleteSize: (id: string) => request<void>(`/api/sizes/${id}`, { method: "DELETE" }),
+  listPaymentMethods: (
+    page = 1,
+    limit = PAGE_SIZE,
+    filters?: { q?: string; active?: boolean },
+  ) =>
+    request<PageResult<StorePaymentMethod>>(
+      withQuery("/api/payment-methods", {
+        all: 1,
+        page,
+        limit,
+        q: filters?.q,
+        active: filters?.active,
+      }),
+    ),
+  createPaymentMethod: (payload: {
+    name: string;
+    kind: StorePaymentMethod["kind"];
+    active: boolean;
+  }) =>
+    request<StorePaymentMethod>("/api/payment-methods", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updatePaymentMethod: (
+    id: string,
+    payload: {
+      name: string;
+      kind: StorePaymentMethod["kind"];
+      active: boolean;
+    },
+  ) =>
+    request<StorePaymentMethod>(`/api/payment-methods/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deletePaymentMethod: (id: string) =>
+    request<void>(`/api/payment-methods/${id}`, { method: "DELETE" }),
   products: (page = 1, limit = PAGE_SIZE, filters?: { q?: string; categoryId?: string; active?: boolean }) =>
     request<PageResult<Product>>(
       withQuery("/api/products", {
@@ -296,22 +372,34 @@ export const api = {
       body: JSON.stringify({ claimedBy }),
       silent,
     }),
-  conversations: (tab: "active" | "history" = "active", silent = true) =>
-    request<LiveConversation[]>(withQuery("/api/conversations", { tab }), {
-      silent
-    }),
-  conversationHistory: (
+  conversations: async (
     silent = true,
     options: { limit?: number; offset?: number } = {},
   ) =>
-    request<ConversationHistoryPage>(
-      withQuery("/api/conversations", {
-        tab: "history",
-        limit: options.limit,
-        offset: options.offset,
-      }),
-      { silent }
+    normalizeConversationListPage<LiveConversation>(
+      await request<unknown>(
+        withQuery("/api/conversations", {
+          tab: "active",
+          limit: options.limit,
+          offset: options.offset,
+        }),
+        { silent },
+      ),
     ),
+  conversationHistory: async (
+    silent = true,
+    options: { limit?: number; offset?: number } = {},
+  ) =>
+    normalizeConversationListPage(
+      await request<unknown>(
+        withQuery("/api/conversations", {
+          tab: "history",
+          limit: options.limit,
+          offset: options.offset,
+        }),
+        { silent },
+      ),
+    ) as ConversationHistoryPage,
   conversationMessages: (
     id: string,
     options: {
@@ -352,6 +440,11 @@ export const api = {
     request<unknown>(`/api/conversations/${id}/close`, {
       method: "POST",
     }),
+  closeAllConversations: () =>
+    request<{ closed: number; failed: number; total: number }>(
+      "/api/conversations/close-all",
+      { method: "POST" },
+    ),
   updateOrderStatus: (id: string, status: OrderStatus, actorName?: string, prepMinutes?: number) =>
     request<Order>(`/api/orders/${id}/status`, {
       method: "PATCH",

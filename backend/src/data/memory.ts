@@ -28,6 +28,7 @@ import {
   type Order,
   type OrderStatus,
   type PaymentMethod,
+  type PaymentMethodKind,
   type PizzaKind,
   type Product,
   type ProductOptionGroup,
@@ -36,6 +37,7 @@ import {
   type Size,
   type Store,
   type StorePatch,
+  type StorePaymentMethod,
 } from "../types.js";
 
 const store: Store = {
@@ -225,6 +227,37 @@ const sizes: Size[] = [
     price: 75,
     maxSelect: 2,
     priceMode: "replace",
+    sortOrder: 3,
+    active: true,
+  },
+];
+
+const paymentMethods: StorePaymentMethod[] = [
+  {
+    id: "pay-pix",
+    name: "Pix na Entrega/Retirada",
+    kind: "pix",
+    sortOrder: 0,
+    active: true,
+  },
+  {
+    id: "pay-cash",
+    name: "Dinheiro",
+    kind: "cash",
+    sortOrder: 1,
+    active: true,
+  },
+  {
+    id: "pay-credit",
+    name: "Cartão crédito",
+    kind: "credit",
+    sortOrder: 2,
+    active: true,
+  },
+  {
+    id: "pay-debit",
+    name: "Cartão débito",
+    kind: "debit",
     sortOrder: 3,
     active: true,
   },
@@ -576,6 +609,83 @@ export const memoryStore = {
     const index = crusts.findIndex((item) => item.id === id);
     if (index < 0) return false;
     crusts.splice(index, 1);
+    return true;
+  },
+
+  listPaymentMethods() {
+    return paymentMethods.filter((item) => item.active);
+  },
+
+  listAllPaymentMethods() {
+    return [...paymentMethods].sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.name.localeCompare(right.name, "pt-BR"),
+    );
+  },
+
+  listPaymentMethodsPage(
+    page: number,
+    limit: number,
+    all: boolean,
+    filter: { q?: string; active?: boolean } = {},
+  ) {
+    const items = (all ? [...paymentMethods] : this.listPaymentMethods())
+      .filter((item) => {
+        if (filter.active !== undefined && item.active !== filter.active) {
+          return false;
+        }
+        if (filter.q && !item.name.toLowerCase().includes(filter.q.toLowerCase())) {
+          return false;
+        }
+        return true;
+      })
+      .sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.name.localeCompare(right.name, "pt-BR"),
+      );
+    return paginateItems(items, page, limit);
+  },
+
+  createPaymentMethod(input: {
+    name: string;
+    kind: PaymentMethodKind;
+    active: boolean;
+  }) {
+    const sortOrder =
+      paymentMethods.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
+    const method: StorePaymentMethod = {
+      id: `pay-${Date.now()}`,
+      name: input.name,
+      kind: input.kind,
+      sortOrder,
+      active: input.active,
+    };
+    paymentMethods.push(method);
+    return method;
+  },
+
+  updatePaymentMethod(
+    id: string,
+    input: {
+      name: string;
+      kind: PaymentMethodKind;
+      active: boolean;
+    },
+  ) {
+    const method = paymentMethods.find((item) => item.id === id);
+    if (!method) return null;
+    method.name = input.name;
+    method.kind = input.kind;
+    method.active = input.active;
+    return method;
+  },
+
+  deletePaymentMethod(id: string) {
+    const index = paymentMethods.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    paymentMethods.splice(index, 1);
     return true;
   },
 
@@ -1226,15 +1336,18 @@ export const memoryStore = {
     return next;
   },
 
-  listLiveConversations(_hours = 24) {
-    return [...conversations.values()]
+  listLiveConversations(options: { limit?: number; offset?: number } = {}) {
+    const limit = Math.min(100, Math.max(1, Math.round(Number(options.limit) || 30)));
+    const offset = Math.max(0, Math.round(Number(options.offset) || 0));
+    const all = [...conversations.values()]
       .filter((item) => !item.closedAt)
       .sort(
         (left, right) =>
           new Date(right.lastMessageAt ?? 0).getTime() -
           new Date(left.lastMessageAt ?? 0).getTime(),
-      )
-      .map((item) => {
+      );
+    const slice = all.slice(offset, offset + limit);
+    const items = slice.map((item) => {
         const customer = [...customers.values()].find((row) => row.id === item.customerId);
         const lastMessageAt = item.lastMessageAt ?? new Date().toISOString();
         const messages = conversationMessages.get(item.id) ?? [];
@@ -1257,6 +1370,34 @@ export const memoryStore = {
           lastMessageDirection:
             item.lastMessageDirection ?? lastMessage?.direction ?? null,
           lastInboundAt: item.lastInboundAt ?? null,
+        };
+      });
+    const hasMore = offset + items.length < all.length;
+    return {
+      items,
+      hasMore,
+      nextOffset: hasMore ? offset + items.length : null,
+      total: all.length,
+    };
+  },
+
+  listOpenConversationsForClose(limit = 200) {
+    const capped = Math.min(500, Math.max(1, Math.round(Number(limit) || 200)));
+    return [...conversations.values()]
+      .filter((item) => !item.closedAt)
+      .sort(
+        (left, right) =>
+          new Date(right.lastMessageAt ?? 0).getTime() -
+          new Date(left.lastMessageAt ?? 0).getTime(),
+      )
+      .slice(0, capped)
+      .map((item) => {
+        const customer = [...customers.values()].find((row) => row.id === item.customerId);
+        return {
+          id: item.id,
+          customerId: item.customerId,
+          storeId: item.storeId,
+          phone: customer?.waPhone ?? null,
         };
       });
   },
@@ -1390,6 +1531,7 @@ export const memoryStore = {
     customer: Customer;
     fulfillment: Fulfillment;
     paymentMethod: PaymentMethod;
+    paymentMethodLabel?: string | null;
     changeForCents?: number | null;
     contactName?: string | null;
     addressText?: string;
@@ -1410,6 +1552,8 @@ export const memoryStore = {
       0,
     );
     const contactName = input.contactName?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+    const paymentMethodLabel =
+      input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
     if (contactName) {
       this.updateCustomerName(input.customer.id, contactName);
     }
@@ -1423,6 +1567,7 @@ export const memoryStore = {
       status: "received",
       fulfillment: input.fulfillment,
       paymentMethod: input.paymentMethod,
+      paymentMethodLabel,
       changeForCents:
         input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
       addressText: input.addressText ?? null,

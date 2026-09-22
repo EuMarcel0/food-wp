@@ -31,6 +31,7 @@ import {
   type OrderItem,
   type OrderStatus,
   type PaymentMethod,
+  type PaymentMethodKind,
   type PizzaKind,
   type Product,
   type ProductOptionGroup,
@@ -38,6 +39,7 @@ import {
   type Size,
   type Store,
   type StorePatch,
+  type StorePaymentMethod,
 } from "../types.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { memoryStore } from "./memory.js";
@@ -327,6 +329,10 @@ function mapOrder(row: Record<string, unknown>): Order {
     status: row.status as OrderStatus,
     fulfillment: row.fulfillment as Fulfillment,
     paymentMethod: (row.payment_method as PaymentMethod | null) ?? null,
+    paymentMethodLabel:
+      row.payment_method_label != null
+        ? String(row.payment_method_label).trim() || null
+        : null,
     changeForCents:
       row.change_for_cents == null ? null : Math.max(0, Number(row.change_for_cents)),
     addressText: (row.address_text as string | null) ?? null,
@@ -1163,6 +1169,227 @@ export async function deleteCrust(id: string) {
   return true;
 }
 
+function missingPaymentMethodsTable(message?: string) {
+  return Boolean(
+    message?.includes("payment_methods") &&
+      (message.includes("does not exist") ||
+        message.includes("schema cache") ||
+        message.includes("Could not find the table")),
+  );
+}
+
+function parsePaymentMethodKind(value: unknown): PaymentMethodKind {
+  if (value === "pix" || value === "cash" || value === "credit" || value === "debit") {
+    return value;
+  }
+  return "other";
+}
+
+function mapStorePaymentMethod(row: Record<string, unknown>): StorePaymentMethod {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    kind: parsePaymentMethodKind(row.kind),
+    sortOrder: Number(row.sort_order ?? 0),
+    active: Boolean(row.active ?? true),
+  };
+}
+
+const DEFAULT_PAYMENT_METHODS: {
+  name: string;
+  kind: PaymentMethodKind;
+  sortOrder: number;
+}[] = [
+  { name: "Pix na Entrega/Retirada", kind: "pix", sortOrder: 0 },
+  { name: "Dinheiro", kind: "cash", sortOrder: 1 },
+  { name: "Cartão crédito", kind: "credit", sortOrder: 2 },
+  { name: "Cartão débito", kind: "debit", sortOrder: 3 },
+];
+
+async function ensureDefaultPaymentMethods() {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const store = await getStore();
+  const { count, error } = await supabase
+    .from("payment_methods")
+    .select("id", { count: "exact", head: true })
+    .eq("store_id", store.id);
+  if (error) {
+    if (missingPaymentMethodsTable(error.message)) return;
+    throw new Error(error.message);
+  }
+  if (count) return;
+  const { error: insertError } = await supabase.from("payment_methods").insert(
+    DEFAULT_PAYMENT_METHODS.map((item) => ({
+      store_id: store.id,
+      name: item.name,
+      kind: item.kind,
+      sort_order: item.sortOrder,
+      active: true,
+    })),
+  );
+  if (insertError && !missingPaymentMethodsTable(insertError.message)) {
+    throw new Error(insertError.message);
+  }
+}
+
+export async function listPaymentMethods(): Promise<StorePaymentMethod[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listPaymentMethods();
+  await ensureDefaultPaymentMethods();
+  const { data, error } = await supabase
+    .from("payment_methods")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingPaymentMethodsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) =>
+    mapStorePaymentMethod(row as Record<string, unknown>),
+  );
+}
+
+export async function listAllPaymentMethods(): Promise<StorePaymentMethod[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listAllPaymentMethods();
+  await ensureDefaultPaymentMethods();
+  const { data, error } = await supabase
+    .from("payment_methods")
+    .select("*")
+    .order("sort_order")
+    .order("name");
+  if (error) {
+    if (missingPaymentMethodsTable(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) =>
+    mapStorePaymentMethod(row as Record<string, unknown>),
+  );
+}
+
+export async function listPaymentMethodsPage(
+  page: number,
+  limit: number,
+  all: boolean,
+  filter: { q?: string; active?: boolean } = {},
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.listPaymentMethodsPage(page, limit, all, filter);
+  }
+  await ensureDefaultPaymentMethods();
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  let query = supabase
+    .from("payment_methods")
+    .select("*", { count: "exact" })
+    .order("sort_order")
+    .order("name");
+  if (!all) query = query.eq("active", true);
+  if (filter.active !== undefined) query = query.eq("active", filter.active);
+  if (filter.q) query = query.ilike("name", `%${filter.q}%`);
+
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    if (missingPaymentMethodsTable(error.message)) {
+      return { items: [] as StorePaymentMethod[], total: 0, page, limit };
+    }
+    return memoryStore.listPaymentMethodsPage(page, limit, all, filter);
+  }
+  return {
+    items: (data ?? []).map((row) =>
+      mapStorePaymentMethod(row as Record<string, unknown>),
+    ),
+    total: count ?? 0,
+    page,
+    limit,
+  };
+}
+
+export async function createPaymentMethod(input: {
+  name: string;
+  kind: PaymentMethodKind;
+  active: boolean;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.createPaymentMethod(input);
+  const store = await getStore();
+  const { data: last } = await supabase
+    .from("payment_methods")
+    .select("sort_order")
+    .eq("store_id", store.id)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sortOrder = Number(last?.sort_order ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("payment_methods")
+    .insert({
+      store_id: store.id,
+      name: input.name,
+      kind: input.kind,
+      sort_order: sortOrder,
+      active: input.active,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(
+      missingPaymentMethodsTable(error?.message)
+        ? "Rode a migration 048_payment_methods.sql no banco."
+        : error?.message ?? "Não foi possível salvar a forma de pagamento.",
+    );
+  }
+  return mapStorePaymentMethod(data as Record<string, unknown>);
+}
+
+export async function updatePaymentMethod(
+  id: string,
+  input: {
+    name: string;
+    kind: PaymentMethodKind;
+    active: boolean;
+  },
+) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.updatePaymentMethod(id, input);
+  const { data, error } = await supabase
+    .from("payment_methods")
+    .update({
+      name: input.name,
+      kind: input.kind,
+      active: input.active,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !data) {
+    if (missingPaymentMethodsTable(error?.message)) {
+      throw new Error("Rode a migration 048_payment_methods.sql no banco.");
+    }
+    return null;
+  }
+  return mapStorePaymentMethod(data as Record<string, unknown>);
+}
+
+export async function deletePaymentMethod(id: string) {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.deletePaymentMethod(id);
+  const { error } = await supabase.from("payment_methods").delete().eq("id", id);
+  if (error) {
+    throw new Error(
+      missingPaymentMethodsTable(error.message)
+        ? "Rode a migration 048_payment_methods.sql no banco."
+        : error.message,
+    );
+  }
+  return true;
+}
+
 function missingSizesTable(message?: string) {
   return Boolean(
     message?.includes("sizes") &&
@@ -1893,6 +2120,37 @@ export async function closeConversationByAgent(conversationId: string) {
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
+/** Lista conversas abertas para encerrar em lote (com telefone). */
+export async function listOpenConversationsForClose(limit = 200) {
+  const capped = Math.min(500, Math.max(1, Math.round(Number(limit) || 200)));
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listOpenConversationsForClose(capped);
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, customer_id, store_id, customers(wa_phone)")
+    .is("closed_at", null)
+    .order("last_message_at", { ascending: false })
+    .limit(capped);
+
+  if (error) {
+    if (error.message?.includes("closed_at")) {
+      throw new Error("Rode a migration 031_conversation_closed.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => {
+    const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
+    return {
+      id: String(row.id),
+      customerId: String(row.customer_id),
+      storeId: String(row.store_id),
+      phone: customer?.wa_phone ? String(customer.wa_phone) : null,
+    };
+  });
+}
+
 export type IdleConversationCandidate = {
   id: string;
   customerId: string;
@@ -2196,16 +2454,22 @@ async function latestMessageDirectionsForConversations(ids: string[]) {
   return map;
 }
 
-export async function listLiveConversations(_hours = 24) {
+export async function listLiveConversations(options: {
+  limit?: number;
+  offset?: number;
+} = {}) {
+  const limit = Math.min(100, Math.max(1, Math.round(Number(options.limit) || 30)));
+  const offset = Math.max(0, Math.round(Number(options.offset) || 0));
   const supabase = getSupabase();
-  if (!supabase) return memoryStore.listLiveConversations(_hours);
+  if (!supabase) return memoryStore.listLiveConversations({ limit, offset });
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("conversations")
-    .select("*, customers(id, name, wa_phone, avatar_url)")
+    .select("*, customers(id, name, wa_phone, avatar_url)", { count: "exact" })
     .is("closed_at", null)
     .order("last_message_at", { ascending: false })
-    .limit(100);
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) {
     if (error.message?.includes("handoff_mode")) {
@@ -2225,7 +2489,7 @@ export async function listLiveConversations(_hours = 24) {
     missingDirectionIds,
   );
 
-  return rows.map((row) => {
+  const items = rows.map((row) => {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
     const context = (row.context ?? { cart: [] }) as ConversationContext;
     const lastMessageAt = String(row.last_message_at ?? new Date().toISOString());
@@ -2253,6 +2517,15 @@ export async function listLiveConversations(_hours = 24) {
       lastInboundAt: row.last_inbound_at ? String(row.last_inbound_at) : null,
     };
   });
+
+  const total = count ?? offset + items.length;
+  const hasMore = offset + items.length < total;
+  return {
+    items,
+    hasMore,
+    nextOffset: hasMore ? offset + items.length : null,
+    total,
+  };
 }
 
 export async function listConversationMessages(
@@ -2980,6 +3253,7 @@ export async function createOrder(input: {
   customer: Customer;
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod;
+  paymentMethodLabel?: string | null;
   changeForCents?: number | null;
   contactName?: string | null;
   addressText?: string;
@@ -3000,6 +3274,8 @@ export async function createOrder(input: {
   if (!supabase) return memoryStore.createOrder(input);
 
   const contactName = input.contactName?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+  const paymentMethodLabel =
+    input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
   const subtotalCents = input.items.reduce(
     (sum, item) => sum + item.quantity * item.unitPriceCents,
     0,
@@ -3011,6 +3287,7 @@ export async function createOrder(input: {
     status: "received",
     fulfillment: input.fulfillment,
     payment_method: input.paymentMethod,
+    payment_method_label: paymentMethodLabel,
     change_for_cents:
       input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
     contact_name: contactName,
@@ -3035,11 +3312,15 @@ export async function createOrder(input: {
       error?.message?.includes("neighborhood_name") ||
         error?.message?.includes("neighborhood_id"),
     );
-    if (missingContact || missingNeighborhood) {
+    const missingPaymentLabel = Boolean(
+      error?.message?.includes("payment_method_label"),
+    );
+    if (missingContact || missingNeighborhood || missingPaymentLabel) {
       const {
         neighborhood_id: _id,
         neighborhood_name: _name,
         contact_name: _contact,
+        payment_method_label: _label,
         ...base
       } = payload;
       const legacy = {
@@ -3051,6 +3332,9 @@ export async function createOrder(input: {
               neighborhood_name: payload.neighborhood_name,
             }),
         ...(missingContact ? {} : { contact_name: payload.contact_name }),
+        ...(missingPaymentLabel
+          ? {}
+          : { payment_method_label: payload.payment_method_label }),
       };
       const retry = await supabase.from("orders").insert(legacy).select("*").single();
       row = retry.data;

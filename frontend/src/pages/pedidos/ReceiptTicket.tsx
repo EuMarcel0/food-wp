@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import {
-  PAYMENT_LABEL,
+  orderPaymentLabel,
   addonLabel,
   crustLabel,
   cashChangeLabel,
@@ -103,7 +103,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
   const cnpj = store?.cnpj ? formatCnpj(store.cnpj) : "";
   const footer = store?.receiptFooter?.trim();
   const items = order.items ?? [];
-  const payment = order.paymentMethod ? PAYMENT_LABEL[order.paymentMethod] : null;
+  const payment = orderPaymentLabel(order);
   const neighborhood = receiptNeighborhood(order, store);
 
   return (

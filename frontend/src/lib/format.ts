@@ -196,7 +196,26 @@ export const PAYMENT_LABEL: Record<NonNullable<Order["paymentMethod"]>, string> 
   card: "Cartão",
   credit: "Crédito",
   debit: "Débito",
+  other: "Outro",
 };
+
+export const PAYMENT_KIND_LABEL: Record<
+  import("../types").PaymentMethodKind,
+  string
+> = {
+  pix: "Pix",
+  cash: "Dinheiro (pede troco)",
+  credit: "Cartão crédito",
+  debit: "Cartão débito",
+  other: "Outro",
+};
+
+export function orderPaymentLabel(order: Order) {
+  const custom = order.paymentMethodLabel?.trim();
+  if (custom) return custom;
+  if (!order.paymentMethod) return null;
+  return PAYMENT_LABEL[order.paymentMethod] ?? order.paymentMethod;
+}
 
 export function cashChangeLabel(changeForCents: number, totalCents: number) {
   if (!changeForCents) return "Sem troco";
@@ -210,4 +229,5 @@ export const PAYMENT_COLOR: Record<NonNullable<Order["paymentMethod"]>, string> 
   card: "purple",
   credit: "purple",
   debit: "blue",
+  other: "default",
 };

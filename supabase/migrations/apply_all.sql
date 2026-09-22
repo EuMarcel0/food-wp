@@ -995,3 +995,6 @@ set allowed_mime_types = array[
 ]
 where id = 'chat-media';
 
+
+-- ========== 048_payment_methods ==========
+-- (ver 048_payment_methods.sql)

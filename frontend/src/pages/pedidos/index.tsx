@@ -25,7 +25,7 @@ import { supabase } from "../../lib/supabase";
 import {
   nextStatus,
   PAYMENT_COLOR,
-  PAYMENT_LABEL,
+  orderPaymentLabel,
   STATUS_COLOR,
   STATUS_LABEL,
   statusActionLabel,
@@ -296,7 +296,7 @@ export function OrdersPage() {
             render: (value: Order["paymentMethod"], order) =>
               value ? (
                 <span className="inline-flex flex-col items-center gap-0.5">
-                  <Tag color={PAYMENT_COLOR[value]}>{PAYMENT_LABEL[value]}</Tag>
+                  <Tag color={PAYMENT_COLOR[value]}>{orderPaymentLabel(order)}</Tag>
                   {value === "cash" && order.changeForCents != null ? (
                     <span className="max-w-[11.5rem] whitespace-normal text-[11px] font-medium leading-tight text-food-muted">
                       {cashChangeLabel(order.changeForCents, order.totalCents)}

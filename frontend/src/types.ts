@@ -93,6 +93,13 @@ export type ConversationHistoryPage = {
   total: number;
 };
 
+export type LiveConversationPage = {
+  items: LiveConversation[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  total: number;
+};
+
 export type OrderItem = {
   id?: string;
   name: string;
@@ -110,7 +117,8 @@ export type Order = {
   code: string;
   status: OrderStatus;
   fulfillment: "delivery" | "pickup";
-  paymentMethod: "pix" | "cash" | "card" | "credit" | "debit" | null;
+  paymentMethod: "pix" | "cash" | "card" | "credit" | "debit" | "other" | null;
+  paymentMethodLabel?: string | null;
   changeForCents?: number | null;
   addressText: string | null;
   neighborhoodName?: string | null;
@@ -156,6 +164,16 @@ export type Size = {
   price: number;
   maxSelect: number;
   priceMode: "addon" | "replace";
+  sortOrder: number;
+  active: boolean;
+};
+
+export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "other";
+
+export type StorePaymentMethod = {
+  id: string;
+  name: string;
+  kind: PaymentMethodKind;
   sortOrder: number;
   active: boolean;
 };

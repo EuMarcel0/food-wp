@@ -4,12 +4,14 @@ import {
   createCategory,
   createCrust,
   createNeighborhood,
+  createPaymentMethod,
   createProduct,
   createSize,
   deleteAddon,
   deleteCategory,
   deleteCrust,
   deleteNeighborhood,
+  deletePaymentMethod,
   deleteSize,
   getStore,
   listAddons,
@@ -17,11 +19,14 @@ import {
   listAllAddons,
   listAllCategories,
   listAllCrusts,
+  listAllPaymentMethods,
   listAllSizes,
   listCategories,
   listCategoriesPage,
   listCrusts,
   listCrustsPage,
+  listPaymentMethods,
+  listPaymentMethodsPage,
   listProductsPage,
   listSizes,
   listSizesPage,
@@ -30,6 +35,7 @@ import {
   updateCategory,
   updateCrust,
   updateNeighborhood,
+  updatePaymentMethod,
   updateProduct,
   updateSize,
   updateStore,
@@ -657,6 +663,102 @@ catalogRouter.delete("/sizes/:id", async (req, res) => {
   } catch (error) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "Falha ao excluir tamanho.",
+    });
+  }
+});
+
+function paymentMethodPayload(body: Record<string, unknown>): {
+  name: string;
+  kind: "pix" | "cash" | "credit" | "debit" | "other";
+  active: boolean;
+} | null {
+  const name = String(body.name ?? "").trim();
+  const kindRaw = String(body.kind ?? "").trim();
+  const kind =
+    kindRaw === "pix" ||
+    kindRaw === "cash" ||
+    kindRaw === "credit" ||
+    kindRaw === "debit" ||
+    kindRaw === "other"
+      ? kindRaw
+      : null;
+  const active = body.active !== false;
+  if (!name || !kind) return null;
+  return { name, kind, active };
+}
+
+catalogRouter.get("/payment-methods", async (req, res) => {
+  const all = String(req.query.all ?? "") === "1";
+  const paged =
+    req.query.page !== undefined || req.query.limit !== undefined;
+  if (paged) {
+    const { page, limit } = parsePageQuery(req.query);
+    res.json(
+      await listPaymentMethodsPage(page, limit, all, {
+        q: parseSearch(req.query.q),
+        active: parseOptionalBoolean(req.query.active),
+      }),
+    );
+    return;
+  }
+  res.json(all ? await listAllPaymentMethods() : await listPaymentMethods());
+});
+
+catalogRouter.post("/payment-methods", async (req, res) => {
+  const payload = paymentMethodPayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({
+      error: "Preencha o nome e o tipo da forma de pagamento.",
+    });
+    return;
+  }
+  try {
+    res.status(201).json(await createPaymentMethod(payload));
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao incluir forma de pagamento.",
+    });
+  }
+});
+
+catalogRouter.patch("/payment-methods/:id", async (req, res) => {
+  const payload = paymentMethodPayload(req.body ?? {});
+  if (!payload) {
+    res.status(400).json({
+      error: "Preencha o nome e o tipo da forma de pagamento.",
+    });
+    return;
+  }
+  try {
+    const method = await updatePaymentMethod(String(req.params.id), payload);
+    if (!method) {
+      res.status(404).json({ error: "Forma de pagamento não encontrada." });
+      return;
+    }
+    res.json(method);
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao atualizar forma de pagamento.",
+    });
+  }
+});
+
+catalogRouter.delete("/payment-methods/:id", async (req, res) => {
+  try {
+    await deletePaymentMethod(String(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao excluir forma de pagamento.",
     });
   }
 });

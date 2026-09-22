@@ -10,22 +10,32 @@ import { RowActions } from "../../components/RowActions";
 import { useDialog } from "../../dialog";
 import { AddonCard } from "./AddonCard";
 import { CrustCard } from "./CrustCard";
+import { PaymentMethodCard } from "./PaymentMethodCard";
 import { SizeCard } from "./SizeCard";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
-import { formatReais } from "../../lib/format";
+import { formatReais, PAYMENT_KIND_LABEL } from "../../lib/format";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
 import { useTableGridHeight } from "../../lib/useTableGridHeight";
-import type { Addon, Crust, Size } from "../../types";
-import type { AddonValues, CrustValues, SizeValues } from "../../lib/validation";
+import type { Addon, Crust, Size, StorePaymentMethod } from "../../types";
+import type {
+  AddonValues,
+  CrustValues,
+  PaymentMethodValues,
+  SizeValues,
+} from "../../lib/validation";
 import { AddonForm, toAddonPayload } from "./AddonForm";
 import { CrustForm, toCrustPayload } from "./CrustForm";
+import {
+  PaymentMethodForm,
+  toPaymentMethodPayload,
+} from "./PaymentMethodForm";
 import { SizeForm, toSizePayload } from "./SizeForm";
 import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
 
-type TabKey = "addons" | "crusts" | "sizes";
+type TabKey = "addons" | "crusts" | "sizes" | "payments";
 
 export function AddonsPage() {
   const dialog = useDialog();
@@ -39,6 +49,9 @@ export function AddonsPage() {
   const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
   const [editingCrust, setEditingCrust] = useState<Crust | null>(null);
   const [editingSize, setEditingSize] = useState<Size | null>(null);
+  const [editingPayment, setEditingPayment] = useState<StorePaymentMethod | null>(
+    null,
+  );
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [qInput, setQInput] = useState("");
   const [active, setActive] = useState<boolean | undefined>();
@@ -46,11 +59,14 @@ export function AddonsPage() {
   const addonFilters = { q: q || undefined, active };
   const crustFilters = { q: q || undefined };
   const sizeFilters = { q: q || undefined };
+  const paymentFilters = { q: q || undefined, active };
   const addonFilterCount = [q, active !== undefined].filter(Boolean).length;
   const crustFilterCount = q ? 1 : 0;
   const sizeFilterCount = q ? 1 : 0;
+  const paymentFilterCount = [q, active !== undefined].filter(Boolean).length;
   const isCrusts = tab === "crusts";
   const isSizes = tab === "sizes";
+  const isPayments = tab === "payments";
   const isAddons = tab === "addons";
 
   useEffect(() => {
@@ -79,11 +95,25 @@ export function AddonsPage() {
     enabled: isSizes,
   });
 
-  const listQuery = isSizes ? sizesQuery : isCrusts ? crustsQuery : addonsQuery;
+  const paymentsQuery = useQuery({
+    queryKey: queryKeys.paymentMethods.list(page, limit, paymentFilters),
+    queryFn: () => api.listPaymentMethods(page, limit, paymentFilters),
+    placeholderData: keepPreviousData,
+    enabled: isPayments,
+  });
+
+  const listQuery = isSizes
+    ? sizesQuery
+    : isCrusts
+      ? crustsQuery
+      : isPayments
+        ? paymentsQuery
+        : addonsQuery;
   const result = listQuery.data;
   const addons = addonsQuery.data?.items ?? [];
   const crusts = crustsQuery.data?.items ?? [];
   const sizes = sizesQuery.data?.items ?? [];
+  const payments = paymentsQuery.data?.items ?? [];
   const total = result?.total ?? 0;
 
   useEffect(() => {
@@ -93,13 +123,19 @@ export function AddonsPage() {
   }, [limit, page, result]);
 
   useEffect(() => {
-    const items = isSizes ? sizes : isCrusts ? crusts : addons;
+    const items = isSizes
+      ? sizes
+      : isCrusts
+        ? crusts
+        : isPayments
+          ? payments
+          : addons;
     const ids = new Set(items.map((item) => item.id));
     setSelectedKeys((keys) => {
       const next = keys.filter((key) => ids.has(String(key)));
       return next.length === keys.length ? keys : next;
     });
-  }, [isCrusts, isSizes, addons, crusts, sizes]);
+  }, [isCrusts, isSizes, isPayments, addons, crusts, sizes, payments]);
 
   async function refreshAddons() {
     await Promise.all([
@@ -117,6 +153,12 @@ export function AddonsPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.sizes.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
     ]);
+  }
+
+  async function refreshPayments() {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.paymentMethods.all,
+    });
   }
 
   const saveAddonMutation = useMutation({
@@ -239,6 +281,53 @@ export function AddonsPage() {
     },
   });
 
+  const savePaymentMutation = useMutation({
+    mutationFn: async (values: PaymentMethodValues) => {
+      const payload = toPaymentMethodPayload(values);
+      if (editingPayment) {
+        return api.updatePaymentMethod(editingPayment.id, payload);
+      }
+      return api.createPaymentMethod(payload);
+    },
+    onSuccess: async () => {
+      toast.success(
+        editingPayment
+          ? "Forma de pagamento atualizada."
+          : "Forma de pagamento incluída.",
+      );
+      setOpen(false);
+      setEditingPayment(null);
+      await refreshPayments();
+    },
+  });
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: (method: StorePaymentMethod) =>
+      api.deletePaymentMethod(method.id),
+    onSuccess: async (_data, method) => {
+      toast.success("Forma de pagamento excluída.");
+      setSelectedKeys((keys) =>
+        keys.filter((key) => String(key) !== method.id),
+      );
+      await refreshPayments();
+    },
+  });
+
+  const bulkDeletePaymentMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.deletePaymentMethod(id)));
+    },
+    onSuccess: async (_data, ids) => {
+      toast.success(
+        ids.length === 1
+          ? "Forma de pagamento excluída."
+          : `${ids.length} formas de pagamento excluídas.`,
+      );
+      setSelectedKeys([]);
+      await refreshPayments();
+    },
+  });
+
   function askDeleteAddon(addon: Addon) {
     void dialog.delete({
       title: "Excluir adicional",
@@ -275,6 +364,19 @@ export function AddonsPage() {
         </>
       ),
       onConfirm: () => deleteSizeMutation.mutateAsync(size),
+    });
+  }
+
+  function askDeletePayment(method: StorePaymentMethod) {
+    void dialog.delete({
+      title: "Excluir forma de pagamento",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{method.name}</strong>? O bot
+          deixa de oferecer esta opção no WhatsApp.
+        </>
+      ),
+      onConfirm: () => deletePaymentMutation.mutateAsync(method),
     });
   }
 
@@ -328,6 +430,25 @@ export function AddonsPage() {
     });
   }
 
+  function askBulkDeletePayment() {
+    const ids = selectedKeys.map(String);
+    if (!ids.length) return;
+    const count = ids.length;
+    void dialog.delete({
+      title: "Excluir formas de pagamento",
+      description: (
+        <>
+          Tem certeza que deseja excluir <strong>{count}</strong>{" "}
+          {count === 1
+            ? "forma de pagamento selecionada"
+            : "formas de pagamento selecionadas"}
+          ?
+        </>
+      ),
+      onConfirm: () => bulkDeletePaymentMutation.mutateAsync(ids),
+    });
+  }
+
   const bulkTrailing =
     selectedKeys.length > 0 ? (
       <Button
@@ -337,14 +458,18 @@ export function AddonsPage() {
             ? bulkDeleteSizeMutation.isPending
             : isCrusts
               ? bulkDeleteCrustMutation.isPending
-              : bulkDeleteAddonMutation.isPending
+              : isPayments
+                ? bulkDeletePaymentMutation.isPending
+                : bulkDeleteAddonMutation.isPending
         }
         onClick={
           isSizes
             ? askBulkDeleteSize
             : isCrusts
               ? askBulkDeleteCrust
-              : askBulkDeleteAddon
+              : isPayments
+                ? askBulkDeletePayment
+                : askBulkDeleteAddon
         }
       >
         Excluir ({selectedKeys.length})
@@ -355,6 +480,7 @@ export function AddonsPage() {
     setEditingAddon(null);
     setEditingCrust(null);
     setEditingSize(null);
+    setEditingPayment(null);
     setOpen(true);
   }
 
@@ -364,7 +490,7 @@ export function AddonsPage() {
         className="mb-3 shrink-0"
         kicker="Extras"
         title="Adicionais"
-        subtitle="Cadastre extras, bordas e tamanhos. Na pizza, marque os tamanhos e se o bot deve perguntar a borda."
+        subtitle="Cadastre extras, bordas, tamanhos e formas de pagamento usadas no WhatsApp."
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             Incluir
@@ -382,12 +508,14 @@ export function AddonsPage() {
           setEditingAddon(null);
           setEditingCrust(null);
           setEditingSize(null);
+          setEditingPayment(null);
           setSelectedKeys([]);
         }}
         items={[
           { key: "addons", label: "Adicional" },
           { key: "crusts", label: "Bordas" },
           { key: "sizes", label: "Tamanhos" },
+          { key: "payments", label: "Pagamentos" },
         ]}
       />
       {isSizes ? (
@@ -418,6 +546,37 @@ export function AddonsPage() {
             placeholder="Nome da borda…"
             value={qInput}
             onChange={(event) => setQInput(event.target.value)}
+          />
+        </ListFilters>
+      ) : isPayments ? (
+        <ListFilters
+          className="mb-3 shrink-0"
+          activeCount={paymentFilterCount}
+          trailing={bulkTrailing}
+          onClear={() => {
+            setQInput("");
+            setActive(undefined);
+          }}
+        >
+          <Input.Search
+            className={filterSearch}
+            allowClear
+            placeholder="Nome da forma de pagamento…"
+            value={qInput}
+            onChange={(event) => setQInput(event.target.value)}
+          />
+          <Select
+            className={filterSelect}
+            allowClear
+            placeholder="Situação"
+            value={active === undefined ? undefined : active ? "1" : "0"}
+            onChange={(value) =>
+              setActive(value === undefined ? undefined : value === "1")
+            }
+            options={[
+              { value: "1", label: "Ativos" },
+              { value: "0", label: "Inativos" },
+            ]}
           />
         </ListFilters>
       ) : (
@@ -588,6 +747,67 @@ export function AddonsPage() {
               },
             ]}
           />
+        ) : isPayments ? (
+          <Table
+            rowKey="id"
+            className={`${tableClass} ${tableGridFill}`}
+            loading={paymentsQuery.isPending && !paymentsQuery.data}
+            dataSource={payments}
+            pagination={false}
+            scroll={{ x: 560, y: bodyHeight }}
+            rowSelection={{
+              selectedRowKeys: selectedKeys,
+              onChange: setSelectedKeys,
+            }}
+            columns={[
+              { title: "Nome", dataIndex: "name" },
+              {
+                title: "Tipo",
+                dataIndex: "kind",
+                width: 180,
+                render: (value: StorePaymentMethod["kind"]) => (
+                  <Tag color={value === "cash" ? "green" : "blue"}>
+                    {PAYMENT_KIND_LABEL[value]}
+                  </Tag>
+                ),
+              },
+              {
+                title: "Ativo",
+                dataIndex: "active",
+                width: 100,
+                render: (value: boolean) => (
+                  <Tag color={value ? "green" : "default"}>
+                    {value ? "Sim" : "Não"}
+                  </Tag>
+                ),
+              },
+              {
+                title: "Ações",
+                width: 72,
+                align: "center",
+                render: (_, method) => (
+                  <RowActions
+                    items={[
+                      {
+                        key: "edit",
+                        label: "Editar",
+                        onClick: () => {
+                          setEditingPayment(method);
+                          setOpen(true);
+                        },
+                      },
+                      {
+                        key: "delete",
+                        label: "Excluir",
+                        danger: true,
+                        onClick: () => askDeletePayment(method),
+                      },
+                    ]}
+                  />
+                ),
+              },
+            ]}
+          />
         ) : (
           <Table
             rowKey="id"
@@ -701,6 +921,32 @@ export function AddonsPage() {
               />
             ))}
           </MobileCardList>
+        ) : isPayments ? (
+          <MobileCardList
+            loading={paymentsQuery.isPending && !paymentsQuery.data}
+            isEmpty={payments.length === 0}
+            empty={
+              paymentFilterCount > 0
+                ? "Nenhuma forma de pagamento encontrada com esses filtros."
+                : "Inclua a primeira forma de pagamento. Pix, dinheiro, crédito e débito entram automaticamente se a tabela estiver vazia."
+            }
+            pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
+              setPage(nextPage);
+              setLimit(nextSize);
+            })}
+          >
+            {payments.map((method) => (
+              <PaymentMethodCard
+                key={method.id}
+                method={method}
+                onEdit={(item) => {
+                  setEditingPayment(item);
+                  setOpen(true);
+                }}
+                onDelete={askDeletePayment}
+              />
+            ))}
+          </MobileCardList>
         ) : (
           <MobileCardList
             loading={addonsQuery.isPending && !addonsQuery.data}
@@ -763,6 +1009,18 @@ export function AddonsPage() {
         }}
         onSubmit={async (values) => {
           await saveSizeMutation.mutateAsync(values);
+        }}
+      />
+      <PaymentMethodForm
+        open={open && isPayments}
+        method={editingPayment}
+        submitting={savePaymentMutation.isPending}
+        onCancel={() => {
+          setOpen(false);
+          setEditingPayment(null);
+        }}
+        onSubmit={async (values) => {
+          await savePaymentMutation.mutateAsync(values);
         }}
       />
     </div>

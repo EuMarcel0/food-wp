@@ -7,6 +7,7 @@ import {
   listConversationHistory,
   listConversationMessages,
   listLiveConversations,
+  listOpenConversationsForClose,
   setConversationHandoff
 } from "../data/repository.js";
 import { getSupabase } from "../lib/supabase.js";
@@ -29,10 +30,50 @@ conversationsRouter.get("/", async (req, res) => {
       res.json(await listConversationHistory({ limit, offset }));
       return;
     }
-    res.json(await listLiveConversations(24));
+    const rawLimit = Number(req.query.limit);
+    const rawOffset = Number(req.query.offset);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 30;
+    const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
+    res.json(await listLiveConversations({ limit, offset }));
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao listar conversas."
+    });
+  }
+});
+
+conversationsRouter.post("/close-all", async (_req, res) => {
+  try {
+    const open = await listOpenConversationsForClose(200);
+    let closed = 0;
+    let failed = 0;
+    for (const item of open) {
+      try {
+        if (item.phone) {
+          await sendText(item.phone, AGENT_CLOSE_MESSAGE);
+          await appendConversationMessage({
+            conversationId: item.id,
+            customerId: item.customerId,
+            storeId: item.storeId,
+            direction: "outbound",
+            author: "bot",
+            body: AGENT_CLOSE_MESSAGE
+          });
+        }
+        const updated = await closeConversationByAgent(item.id);
+        if (updated) closed += 1;
+        else failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    res.json({ closed, failed, total: open.length });
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao encerrar todos os atendimentos."
     });
   }
 });

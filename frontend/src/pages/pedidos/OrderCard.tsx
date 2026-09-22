@@ -5,7 +5,7 @@ import { RowActions } from "../../components/RowActions";
 import {
   nextStatus,
   PAYMENT_COLOR,
-  PAYMENT_LABEL,
+  orderPaymentLabel,
   STATUS_COLOR,
   STATUS_LABEL,
   statusActionLabel,
@@ -39,7 +39,7 @@ export function OrderCard({
       kicker={
         [
           order.fulfillment === "delivery" ? "Entrega" : "Retirada",
-          order.paymentMethod ? PAYMENT_LABEL[order.paymentMethod] : null,
+          order.paymentMethod ? orderPaymentLabel(order) : null,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -85,7 +85,7 @@ export function OrderCard({
             </Tag>
             {order.paymentMethod ? (
               <Tag color={PAYMENT_COLOR[order.paymentMethod]}>
-                {PAYMENT_LABEL[order.paymentMethod]}
+                {orderPaymentLabel(order)}
               </Tag>
             ) : null}
             {order.paymentMethod === "cash" && order.changeForCents != null ? (

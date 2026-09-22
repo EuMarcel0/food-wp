@@ -133,6 +133,7 @@ const PAYMENT = {
   card: "Cartao",
   credit: "Credito",
   debit: "Debito",
+  other: "Outro",
 };
 
 function addonNames(extras) {
@@ -232,9 +233,15 @@ export function buildReceiptEscPos(input) {
   }
 
   section("Pagamento");
-  const payment = order.paymentMethod
-    ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
-    : "";
+  const paymentLabel =
+    (typeof order.paymentMethodLabel === "string" &&
+      order.paymentMethodLabel.trim()) ||
+    "";
+  const payment =
+    paymentLabel ||
+    (order.paymentMethod
+      ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
+      : "");
   if (payment) emit(`Forma: ${payment}`);
   emit(line(textColumns, "Subtotal", formatBRL(order.subtotalCents)));
   if (order.fulfillment === "delivery") {

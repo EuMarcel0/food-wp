@@ -30,7 +30,9 @@ import {
 import { useConversationViewing, CONVERSATIONS_LIVE_EVENT } from "../../conversations/ConversationAlerts";
 import {
   mapRealtimeConversationMessage,
+  patchLiveConversationInCache,
   upsertMessageInCache,
+  type LiveConversationsInfinite,
   type MessagesInfinite
 } from "../../conversations/realtimeCache";
 import type { ConversationMessage, ConversationMessageActions, LiveConversation } from "../../types";
@@ -142,6 +144,7 @@ export function WhatsAppInbox({
   onTakeover,
   onRelease,
   onClose,
+  onCloseAll,
   onMobileChatOpenChange
 }: {
   items: LiveConversation[];
@@ -157,6 +160,7 @@ export function WhatsAppInbox({
   onTakeover?: (item: LiveConversation) => void;
   onRelease?: (item: LiveConversation) => void;
   onClose?: (item: LiveConversation) => void;
+  onCloseAll?: () => void;
   onMobileChatOpenChange?: (open: boolean) => void;
 }) {
   const { user } = useAuth();
@@ -463,18 +467,19 @@ export function WhatsAppInbox({
         return { ...current, pages };
       });
 
-      queryClient.setQueryData<LiveConversation[]>(queryKeys.conversations.live, current =>
-        (current ?? []).map(item =>
-          item.id === conversationId
-            ? {
-                ...item,
-                handoffMode: "human" as const,
-                handoffBy: displayName(user) || item.handoffBy,
-                lastMessageAt: optimistic.createdAt,
-                lastMessagePreview: text.slice(0, 160),
-                lastMessageDirection: "outbound" as const
-              }
-            : item
+      queryClient.setQueryData<LiveConversationsInfinite>(queryKeys.conversations.live, current =>
+        patchLiveConversationInCache(
+          current,
+          conversationId,
+          item => ({
+            ...item,
+            handoffMode: "human" as const,
+            handoffBy: displayName(user) || item.handoffBy,
+            lastMessageAt: optimistic.createdAt,
+            lastMessagePreview: text.slice(0, 160),
+            lastMessageDirection: "outbound" as const
+          }),
+          { moveToTop: true }
         )
       );
 
@@ -578,9 +583,21 @@ export function WhatsAppInbox({
         <div className='shrink-0 space-y-2 border-b border-food-border p-3 max-lg:px-3'>
           <div className='flex items-center justify-between gap-2'>
             <strong className='text-sm text-food-text'>{isDesktop ? "WhatsApp" : "Conversas"}</strong>
-            <Tag className='!m-0' color={readOnly ? undefined : "success"}>
-              {readOnly ? `${listTotal ?? items.length}` : `${items.length} ativas`}
-            </Tag>
+            <div className='flex shrink-0 items-center gap-1.5'>
+              {/* {!readOnly && onCloseAll && items.length > 0 ? (
+                <Button
+                  size='small'
+                  danger
+                  loading={busyId === "close-all"}
+                  onClick={onCloseAll}
+                >
+                  Encerrar todos
+                </Button>
+              ) : null} */}
+              <Tag className='!m-0' color={readOnly ? undefined : "success"}>
+                {readOnly ? `${listTotal ?? items.length}` : `${listTotal ?? items.length} ativas`}
+              </Tag>
+            </div>
           </div>
           <Input
             allowClear

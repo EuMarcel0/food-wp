@@ -194,6 +194,14 @@ export const sizeSchema = Yup.object({
     .default("replace"),
 });
 
+export const paymentMethodSchema = Yup.object({
+  name: Yup.string().trim().required("Informe o nome da forma de pagamento"),
+  kind: Yup.string()
+    .oneOf(["pix", "cash", "credit", "debit", "other"], "Informe o tipo")
+    .required("Informe o tipo"),
+  active: Yup.boolean().default(true),
+});
+
 const timeSchema = Yup.string().matches(
   /^([01]\d|2[0-3]):[0-5]\d$/,
   "Informe um horário válido",
@@ -294,6 +302,7 @@ export type CategoryValues = Yup.InferType<typeof categorySchema>;
 export type AddonValues = Yup.InferType<typeof addonSchema>;
 export type CrustValues = Yup.InferType<typeof crustSchema>;
 export type SizeValues = Yup.InferType<typeof sizeSchema>;
+export type PaymentMethodValues = Yup.InferType<typeof paymentMethodSchema>;
 export type StoreBrandingValues = Yup.InferType<typeof storeBrandingSchema>;
 export type StoreReceiptValues = Yup.InferType<typeof storeReceiptSchema>;
 export type BotSettingsValues = Yup.InferType<typeof botSettingsSchema>;

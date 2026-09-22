@@ -13,7 +13,7 @@ import {
 } from "@ant-design/icons";
 import { Badge, Button, Drawer, Grid, Layout, Menu, Tooltip, Typography, theme } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { NotificationProvider } from "../notifications/NotificationProvider";
@@ -25,9 +25,12 @@ import {
 } from "../lib/conversationBadge";
 import { queryKeys } from "../lib/queryKeys";
 import { ConversationAlertsProvider, CONVERSATIONS_LIVE_EVENT } from "../conversations/ConversationAlerts";
+import { flattenLiveConversationPages } from "../conversations/realtimeCache";
 import { cn } from "../lib/cn";
 import { foodMark } from "../ui";
 
+const LIVE_LIST_FIRST_PAGE = 30;
+const LIVE_LIST_PAGE_SIZE = 15;
 const SIDER_STORAGE_KEY = "food-wp-sider-collapsed";
 
 function readSiderCollapsed() {
@@ -92,13 +95,25 @@ export function AppLayout() {
   const storeName = storeQuery.data?.name;
   const storePhoto = storeQuery.data?.profilePhotoUrl;
   const [seenTick, setSeenTick] = useState(0);
-  const liveQuery = useQuery({
+  const liveQuery = useInfiniteQuery({
     queryKey: queryKeys.conversations.live,
-    queryFn: () => api.conversations("active", true),
+    queryFn: ({ pageParam }) =>
+      api.conversations(true, {
+        limit: pageParam === 0 ? LIVE_LIST_FIRST_PAGE : LIVE_LIST_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextOffset != null
+        ? lastPage.nextOffset
+        : undefined,
     refetchInterval: 12_000,
     networkMode: "always",
   });
-  const liveConversations = liveQuery.data ?? [];
+  const liveConversations = useMemo(
+    () => flattenLiveConversationPages(liveQuery.data?.pages),
+    [liveQuery.data],
+  );
   const liveKey = liveConversations
     .map(
       (item) =>

@@ -1,5 +1,6 @@
 export type Fulfillment = "delivery" | "pickup";
-export type PaymentMethod = "pix" | "cash" | "card" | "credit" | "debit";
+export type PaymentMethod = "pix" | "cash" | "card" | "credit" | "debit" | "other";
+export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "other";
 
 export type OrderStatus =
   | "received"
@@ -119,6 +120,8 @@ export type ConversationContext = {
   neighborhoodPage?: number | null;
   addressText?: string;
   paymentMethod?: PaymentMethod;
+  paymentMethodId?: string;
+  paymentMethodLabel?: string;
   changeForCents?: number;
   /** Nome informado no checkout para contato/cupom. */
   contactName?: string;
@@ -223,6 +226,14 @@ export type Size = {
   price: number;
   maxSelect: number;
   priceMode: "addon" | "replace";
+  sortOrder: number;
+  active: boolean;
+};
+
+export type StorePaymentMethod = {
+  id: string;
+  name: string;
+  kind: PaymentMethodKind;
   sortOrder: number;
   active: boolean;
 };
@@ -369,6 +380,7 @@ export type Order = {
   status: OrderStatus;
   fulfillment: Fulfillment;
   paymentMethod: PaymentMethod | null;
+  paymentMethodLabel: string | null;
   changeForCents: number | null;
   addressText: string | null;
   neighborhoodName: string | null;

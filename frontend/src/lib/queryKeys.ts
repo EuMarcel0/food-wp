@@ -39,6 +39,14 @@ export const queryKeys = {
       filters: { q?: string },
     ) => ["sizes", "list", page, limit, filters] as const,
   },
+  paymentMethods: {
+    all: ["payment-methods"] as const,
+    list: (
+      page: number,
+      limit: number,
+      filters: { q?: string; active?: boolean },
+    ) => ["payment-methods", "list", page, limit, filters] as const,
+  },
   products: {
     all: ["products"] as const,
     list: (
@@ -63,7 +71,8 @@ export const queryKeys = {
   },
   conversations: {
     all: ["conversations"] as const,
-    live: ["conversations", "live"] as const,
+    /** v2: InfiniteData<LiveConversationPage> (antes era LiveConversation[]) */
+    live: ["conversations", "live", "v2"] as const,
     history: ["conversations", "history"] as const,
     messages: (id: string) => ["conversations", "messages", id] as const,
   },
