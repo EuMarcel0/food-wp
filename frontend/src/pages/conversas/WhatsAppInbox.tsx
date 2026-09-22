@@ -144,7 +144,7 @@ export function WhatsAppInbox({
   onTakeover,
   onRelease,
   onClose,
-  onCloseAll,
+  // onCloseAll,
   onMobileChatOpenChange
 }: {
   items: LiveConversation[];
@@ -160,7 +160,7 @@ export function WhatsAppInbox({
   onTakeover?: (item: LiveConversation) => void;
   onRelease?: (item: LiveConversation) => void;
   onClose?: (item: LiveConversation) => void;
-  onCloseAll?: () => void;
+  // onCloseAll?: () => void;
   onMobileChatOpenChange?: (open: boolean) => void;
 }) {
   const { user } = useAuth();

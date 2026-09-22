@@ -8,6 +8,7 @@ import {
 import { Button, DatePicker, Input, Select, Table, Tag, Tooltip } from "antd";
 import { FileTextOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
@@ -44,6 +45,11 @@ const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
 ).map(([value, label]) => ({ value, label }));
 
+function todayRange(): [Dayjs, Dayjs] {
+  const today = dayjs().startOf("day");
+  return [today, today];
+}
+
 export function OrdersPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -58,7 +64,7 @@ export function OrdersPage() {
   >();
   const [dateRange, setDateRange] = useState<
     [Dayjs | null, Dayjs | null] | null
-  >(null);
+  >(() => todayRange());
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const q = useDebouncedValue(qInput.trim(), 300);
   const from = dateRange?.[0]?.format("YYYY-MM-DD");
@@ -190,7 +196,7 @@ export function OrdersPage() {
           setQInput("");
           setStatus(undefined);
           setFulfillment(undefined);
-          setDateRange(null);
+          setDateRange(todayRange());
         }}
       >
         <Input.Search
@@ -224,7 +230,7 @@ export function OrdersPage() {
           format="DD/MM/YYYY"
           placeholder={["Data início", "Data fim"]}
           value={dateRange}
-          onChange={(dates) => setDateRange(dates)}
+          onChange={(dates) => setDateRange(dates ?? todayRange())}
         />
       </ListFilters>
       <FillTable
