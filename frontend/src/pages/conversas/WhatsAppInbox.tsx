@@ -584,7 +584,7 @@ export function WhatsAppInbox({
           <div className='flex items-center justify-between gap-2'>
             <strong className='text-sm text-food-text'>{isDesktop ? "WhatsApp" : "Conversas"}</strong>
             <div className='flex shrink-0 items-center gap-1.5'>
-              {!readOnly && onCloseAll && items.length > 0 ? (
+              {/* {!readOnly && onCloseAll && items.length > 0 ? (
                 <Button
                   size='small'
                   danger
@@ -593,7 +593,7 @@ export function WhatsAppInbox({
                 >
                   Encerrar todos
                 </Button>
-              ) : null}
+              ) : null} */}
               <Tag className='!m-0' color={readOnly ? undefined : "success"}>
                 {readOnly ? `${listTotal ?? items.length}` : `${listTotal ?? items.length} ativas`}
               </Tag>
