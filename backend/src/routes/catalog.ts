@@ -262,9 +262,14 @@ catalogRouter.patch("/store", async (req, res) => {
   }
 
   try {
+    const previous = await getStore();
     const store = await updateStore(patch);
     let whatsappError: string | undefined;
-    if (patch.name || picture) {
+    const nameChanged =
+      typeof patch.name === "string" &&
+      patch.name.trim().toLowerCase() !== previous.name.trim().toLowerCase();
+    // Horário só no painel — não precisa (nem deve) bater no perfil do WhatsApp.
+    if (nameChanged || picture) {
       try {
         await updateWhatsAppBusinessProfile({
           about: store.name,

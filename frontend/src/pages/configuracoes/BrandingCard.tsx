@@ -123,31 +123,47 @@ export function BrandingCard({
           data: await fileToBase64(prepared),
         };
       }
-      return api.updateStore({
-        name: values.name.trim(),
-        photo: photoPayload,
-        businessHours: values.hours.map(
-          (day): BusinessHoursDay => ({
-            day: Number(day.day) as BusinessHoursDay["day"],
-            closed: Boolean(day.closed),
-            open: day.open || "18:00",
-            close: day.close || "23:00",
-          }),
-        ),
-      });
+      return {
+        result: await api.updateStore({
+          name: values.name.trim(),
+          photo: photoPayload,
+          businessHours: values.hours.map(
+            (day): BusinessHoursDay => ({
+              day: Number(day.day) as BusinessHoursDay["day"],
+              closed: Boolean(day.closed),
+              open: day.open || "18:00",
+              close: day.close || "23:00",
+            }),
+          ),
+        }),
+        changedPhoto: Boolean(photoPayload),
+        changedName:
+          values.name.trim().toLowerCase() !==
+          (store?.name ?? "").trim().toLowerCase(),
+      };
     },
-    onSuccess: async (result) => {
+    onSuccess: async ({ result, changedPhoto, changedName }) => {
       setPhoto(null);
       await queryClient.invalidateQueries({ queryKey: queryKeys.store });
       if (result.whatsappError) {
-        toast.error(`Salvo no painel. WhatsApp: ${result.whatsappError}`);
+        toast.error(
+          `Salvo no painel. A sincronização do perfil no WhatsApp falhou: ${result.whatsappError}`,
+        );
         return;
       }
-      toast.success(
-        whatsappReady
-          ? "Perfil atualizado. A foto entra no WhatsApp em alguns minutos."
-          : "Perfil salvo. Conecte o WhatsApp para a foto ir para a conversa.",
-      );
+      if (changedPhoto) {
+        toast.success(
+          whatsappReady
+            ? "Perfil atualizado. A foto entra no WhatsApp em alguns minutos."
+            : "Perfil salvo. Conecte o WhatsApp para a foto ir para a conversa.",
+        );
+        return;
+      }
+      if (changedName) {
+        toast.success("Nome e horário salvos.");
+        return;
+      }
+      toast.success("Horário de funcionamento salvo.");
     },
   });
 
