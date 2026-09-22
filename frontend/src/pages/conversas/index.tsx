@@ -17,7 +17,7 @@ import { supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
 import { cn } from "../../lib/cn";
 import { listPage } from "../../ui";
-import type { LiveConversation } from "../../types";
+import type { ConversationHistoryItem, LiveConversation } from "../../types";
 import {
   flattenLiveConversationPages,
   flattenPagedItems,
@@ -207,7 +207,8 @@ export function ConversationsPage() {
     [activeQuery.data],
   );
   const historyItems = useMemo(
-    () => flattenPagedItems(historyQuery.data?.pages),
+    () =>
+      flattenPagedItems<ConversationHistoryItem>(historyQuery.data?.pages),
     [historyQuery.data],
   );
   const activeTotal = activeQuery.data?.pages[0]?.total ?? activeItems.length;
@@ -314,7 +315,7 @@ export function ConversationsPage() {
         {tab === "history" ? (
           <WhatsAppInbox
             key="history"
-            items={historyItems}
+            items={historyItems as LiveConversation[]}
             error={historyQuery.error}
             loading={historyQuery.isLoading}
             readOnly

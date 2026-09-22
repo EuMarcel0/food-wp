@@ -48,7 +48,7 @@ export function PaymentMethodForm({
         }
       }}
     >
-      {({ isSubmitting, status, values, setFieldValue, submitForm }) => (
+      {({ isSubmitting, status, submitForm }) => (
         <FormModal
           open={open}
           onCancel={onCancel}
@@ -82,28 +82,36 @@ export function PaymentMethodForm({
               <Input placeholder="Ex.: Pix na entrega" maxLength={40} />
             </FormField>
             <FormControl name="kind" label="Tipo (comportamento no bot)">
-              <Radio.Group
-                className="flex flex-col gap-2"
-                value={values.kind}
-                onChange={(event) =>
-                  void setFieldValue("kind", event.target.value)
-                }
-                options={(
-                  Object.keys(PAYMENT_KIND_LABEL) as StorePaymentMethod["kind"][]
-                ).map((kind) => ({
-                  value: kind,
-                  label: PAYMENT_KIND_LABEL[kind],
-                }))}
-              />
+              {({ value, setValue, setTouched, invalid }) => (
+                <Radio.Group
+                  className={cn(
+                    "flex flex-col gap-2",
+                    invalid ? "ring-2 ring-red-400 rounded-md" : undefined,
+                  )}
+                  value={(value as string) ?? undefined}
+                  onChange={(event) => setValue(event.target.value)}
+                  onBlur={setTouched}
+                  options={(
+                    Object.keys(PAYMENT_KIND_LABEL) as StorePaymentMethod["kind"][]
+                  ).map((kind) => ({
+                    value: kind,
+                    label: PAYMENT_KIND_LABEL[kind],
+                  }))}
+                />
+              )}
             </FormControl>
             <FormControl name="active" label="Ativo no WhatsApp">
-              <div className={cn(formToggle, "mt-1")}>
-                <Switch
-                  checked={values.active}
-                  onChange={(checked) => void setFieldValue("active", checked)}
-                />
-                <span>{values.active ? "Visível para o cliente" : "Oculto"}</span>
-              </div>
+              {({ value, setValue }) => (
+                <div className={cn(formToggle, "mt-1")}>
+                  <Switch
+                    checked={Boolean(value)}
+                    onChange={(checked) => setValue(checked)}
+                  />
+                  <span>
+                    {value ? "Visível para o cliente" : "Oculto"}
+                  </span>
+                </div>
+              )}
             </FormControl>
           </FormikForm>
         </FormModal>
