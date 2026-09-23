@@ -136,8 +136,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
   const items = order.items ?? [];
   const payment = orderPaymentLabel(order);
   const neighborhood = receiptNeighborhood(order, store);
-  const customerName =
-    order.contactName?.trim() || order.customerName?.trim() || "Cliente";
+  const customerName = order.customerName?.trim() || "Cliente";
   const phone = formatPhoneDisplay(order.customerPhone);
 
   return (

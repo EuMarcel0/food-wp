@@ -1375,11 +1375,16 @@ async function showMenu(
     const categoryName =
       inCategory[0]?.categoryName ?? categories.find(item => item.id === context.menuCategoryId)?.name ?? "Cardápio";
     const flavorMenu = isBatchFlavorMenu(context);
+    const drinksMenu = normalize(categoryName).includes("bebida");
     await showMenuProducts(to, intro, inCategory, {
       categoryName,
       offset,
       canGoBack: canGoBackToCategories(context, categories.length),
-      listButton: flavorMenu ? "Escolher sabor" : "Ver itens"
+      listButton: drinksMenu
+        ? "Escolher bebida"
+        : flavorMenu
+          ? "Escolher sabor"
+          : "Ver itens"
     });
     return;
   }

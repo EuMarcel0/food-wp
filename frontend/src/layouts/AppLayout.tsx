@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AppstoreOutlined,
+  BarChartOutlined,
   CommentOutlined,
   MenuFoldOutlined,
   MenuOutlined,
@@ -81,6 +82,7 @@ export function AppLayout() {
   const screens = Grid.useBreakpoint();
   const isMobile = screens.lg === false;
   const isConversasPage = location.pathname === "/conversas";
+  const isRelatoriosPage = location.pathname.startsWith("/relatorios");
   const usesFillLayout =
     location.pathname === "/pedidos" ||
     isConversasPage ||
@@ -89,6 +91,17 @@ export function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
   const [mobileWaChatOpen, setMobileWaChatOpen] = useState(false);
+  const [openKeys, setOpenKeys] = useState<string[]>(() =>
+    location.pathname.startsWith("/relatorios") ? ["relatorios"] : [],
+  );
+
+  useEffect(() => {
+    if (isRelatoriosPage) {
+      setOpenKeys((keys) =>
+        keys.includes("relatorios") ? keys : [...keys, "relatorios"],
+      );
+    }
+  }, [isRelatoriosPage]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -163,6 +176,17 @@ export function AppLayout() {
       { key: "/cardapio", icon: <AppstoreOutlined />, label: "Cardápio" },
       { key: "/categorias", icon: <TagsOutlined />, label: "Categorias" },
       { key: "/adicionais", icon: <PlusCircleOutlined />, label: "Adicionais" },
+      {
+        key: "relatorios",
+        icon: <BarChartOutlined />,
+        label: "Relatórios",
+        children: [
+          {
+            key: "/relatorios/vendas-por-pagamento",
+            label: "Vendas por forma de pagamento",
+          },
+        ],
+      },
       { key: "/configuracoes", icon: <SettingOutlined />, label: "Configurações" },
     ],
     [showConversasDot],
@@ -190,8 +214,12 @@ export function AppLayout() {
       theme='dark'
       mode='inline'
       selectedKeys={[location.pathname]}
+      openKeys={collapsed && !isMobile ? undefined : openKeys}
+      onOpenChange={keys => setOpenKeys(keys as string[])}
       items={menuItems}
-      onClick={item => go(item.key)}
+      onClick={item => {
+        if (String(item.key).startsWith("/")) go(String(item.key));
+      }}
     />
   );
 

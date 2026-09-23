@@ -244,6 +244,18 @@ body,
   }
 }
 
+/* Popup do submenu com sidebar colapsado (ex.: Relatórios) — mesma cor do sider. */
+.ant-menu-submenu-popup .ant-menu-dark,
+.ant-menu-dark.ant-menu-submenu-popup > .ant-menu,
+.ant-menu-submenu-popup.ant-menu-dark {
+  background-color: #050506 !important;
+}
+
+.ant-menu-submenu-popup .ant-menu-dark .ant-menu-item,
+.ant-menu-dark.ant-menu-submenu-popup > .ant-menu > .ant-menu-item {
+  background-color: transparent;
+}
+
 @media print {
   @page {
     margin: 4mm;

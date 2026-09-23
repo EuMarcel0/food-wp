@@ -3432,6 +3432,175 @@ export async function listOrdersPage(
   };
 }
 
+const SALES_REPORT_LIMIT = 5000;
+
+const PAYMENT_FALLBACK_LABEL: Record<string, string> = {
+  pix: "Pix",
+  cash: "Dinheiro",
+  card: "Cartão",
+  credit: "Crédito",
+  debit: "Débito",
+  other: "Outro",
+};
+
+function paymentMethodsMatching(kind: string): string[] {
+  const key = kind.trim().toLowerCase();
+  if (key === "credit") return ["credit", "card"];
+  if (key === "card") return ["card", "credit"];
+  return [key];
+}
+
+function salesPaymentLabel(
+  method: string | null | undefined,
+  customLabel: string | null | undefined,
+) {
+  const custom = String(customLabel ?? "").trim();
+  if (custom) return custom;
+  if (!method) return "Sem pagamento";
+  return PAYMENT_FALLBACK_LABEL[method] ?? method;
+}
+
+export type SalesByPaymentReportRow = {
+  id: string;
+  code: string;
+  createdAt: string;
+  status: Order["status"];
+  paymentMethod: PaymentMethod | null;
+  paymentMethodLabel: string | null;
+  displayPaymentLabel: string;
+  totalCents: number;
+  customerName: string | null;
+};
+
+export type SalesByPaymentSummaryRow = {
+  paymentMethod: string | null;
+  paymentMethodLabel: string;
+  orderCount: number;
+  totalCents: number;
+};
+
+export type SalesByPaymentReport = {
+  from: string | null;
+  to: string | null;
+  paymentMethod: string | null;
+  summary: SalesByPaymentSummaryRow[];
+  orders: SalesByPaymentReportRow[];
+  totals: { orderCount: number; totalCents: number };
+};
+
+/** Relatório de vendas agrupado por forma de pagamento (exclui cancelados). */
+export async function getSalesByPaymentReport(input: {
+  createdFrom?: string;
+  createdTo?: string;
+  paymentMethod?: string;
+}): Promise<SalesByPaymentReport> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.getSalesByPaymentReport(input);
+  }
+
+  let query = supabase
+    .from("orders")
+    .select(
+      "id, code, created_at, status, payment_method, payment_method_label, total_cents, contact_name, customers(name)",
+    )
+    .neq("status", "cancelled")
+    .order("created_at", { ascending: true })
+    .limit(SALES_REPORT_LIMIT);
+
+  if (input.createdFrom) {
+    query = query.gte("created_at", input.createdFrom);
+  }
+  if (input.createdTo) {
+    query = query.lte("created_at", input.createdTo);
+  }
+  if (input.paymentMethod) {
+    const methods = paymentMethodsMatching(input.paymentMethod);
+    query =
+      methods.length === 1
+        ? query.eq("payment_method", methods[0])
+        : query.in("payment_method", methods);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    return memoryStore.getSalesByPaymentReport(input);
+  }
+
+  const orders: SalesByPaymentReportRow[] = (data ?? []).map((row) => {
+    const record = row as Record<string, unknown>;
+    const customers = record.customers as { name?: string } | null;
+    const method = (record.payment_method as PaymentMethod | null) ?? null;
+    const label =
+      record.payment_method_label != null
+        ? String(record.payment_method_label).trim() || null
+        : null;
+    return {
+      id: String(record.id),
+      code: String(record.code ?? ""),
+      createdAt: String(record.created_at ?? ""),
+      status: String(record.status ?? "received") as Order["status"],
+      paymentMethod: method,
+      paymentMethodLabel: label,
+      displayPaymentLabel: salesPaymentLabel(method, label),
+      totalCents: Number(record.total_cents ?? 0),
+      customerName:
+        String(record.contact_name ?? "").trim() ||
+        String(customers?.name ?? "").trim() ||
+        null,
+    };
+  });
+
+  return buildSalesByPaymentReport(orders, input);
+}
+
+function buildSalesByPaymentReport(
+  orders: SalesByPaymentReportRow[],
+  input: {
+    createdFrom?: string;
+    createdTo?: string;
+    paymentMethod?: string;
+  },
+): SalesByPaymentReport {
+  const buckets = new Map<string, SalesByPaymentSummaryRow>();
+  for (const order of orders) {
+    const key = `${order.paymentMethod ?? ""}::${order.displayPaymentLabel}`;
+    const current = buckets.get(key);
+    if (current) {
+      current.orderCount += 1;
+      current.totalCents += order.totalCents;
+    } else {
+      buckets.set(key, {
+        paymentMethod: order.paymentMethod,
+        paymentMethodLabel: order.displayPaymentLabel,
+        orderCount: 1,
+        totalCents: order.totalCents,
+      });
+    }
+  }
+
+  const summary = [...buckets.values()].sort((a, b) =>
+    a.paymentMethodLabel.localeCompare(b.paymentMethodLabel, "pt-BR"),
+  );
+  const totals = orders.reduce(
+    (acc, order) => {
+      acc.orderCount += 1;
+      acc.totalCents += order.totalCents;
+      return acc;
+    },
+    { orderCount: 0, totalCents: 0 },
+  );
+
+  return {
+    from: input.createdFrom ?? null,
+    to: input.createdTo ?? null,
+    paymentMethod: input.paymentMethod ?? null,
+    summary,
+    orders,
+    totals,
+  };
+}
+
 export async function getOrder(id: string) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.getOrder(id);

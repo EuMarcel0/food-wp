@@ -6,6 +6,7 @@ import { listPrinters } from "./printers.js";
 import { refreshPrintQueuePoller } from "./printQueue.js";
 import { rawPrintWindows } from "./rawPrint.js";
 import { buildReceiptEscPos } from "./receipt.js";
+import { buildSalesByPaymentEscPos } from "./salesReport.js";
 
 const config = loadConfig();
 const app = express();
@@ -152,6 +153,46 @@ app.post("/print", auth, async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao imprimir.",
+    });
+  }
+});
+
+app.post("/print-report", auth, async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const type = String(body.type || "").trim();
+    if (type !== "sales-by-payment") {
+      res.status(400).json({ error: "Tipo de relatório inválido." });
+      return;
+    }
+    if (!body.report || typeof body.report !== "object") {
+      res.status(400).json({ error: "Envie o relatório em report." });
+      return;
+    }
+    const printerName = String(body.printer || config.printerName || "").trim();
+    if (!printerName) {
+      res.status(400).json({
+        error: "Nenhuma impressora configurada. Escolha uma em Configurações.",
+      });
+      return;
+    }
+    const columns =
+      body.columns !== undefined
+        ? Math.min(48, Math.max(32, Number(body.columns) || 48))
+        : config.columns;
+    const buffer = buildSalesByPaymentEscPos({
+      store: body.store,
+      report: body.report,
+      columns,
+    });
+    const result = await enqueuePrint(async () => {
+      await rawPrintWindows(printerName, buffer);
+      return { ok: true, printer: printerName, bytes: buffer.length };
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao imprimir relatório.",
     });
   }
 });

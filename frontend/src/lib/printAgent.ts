@@ -216,3 +216,43 @@ export async function printOrderViaAgent(input: {
     }),
   }) as Promise<{ ok: boolean; printer: string; bytes: number }>;
 }
+
+export async function printSalesByPaymentReportViaAgent(input: {
+  storeName?: string;
+  fromDay?: string | null;
+  toDay?: string | null;
+  paymentFilterLabel?: string | null;
+  report: {
+    summary: Array<{
+      paymentMethodLabel: string;
+      orderCount: number;
+      totalCents: number;
+    }>;
+    orders: Array<{
+      code: string;
+      createdAt: string;
+      displayPaymentLabel: string;
+      totalCents: number;
+      customerName?: string | null;
+    }>;
+    totals: { orderCount: number; totalCents: number };
+  };
+  printer?: string;
+}) {
+  return authedFetch("/print-report", {
+    method: "POST",
+    body: JSON.stringify({
+      type: "sales-by-payment",
+      store: { name: input.storeName },
+      printer: input.printer,
+      report: {
+        fromDay: input.fromDay,
+        toDay: input.toDay,
+        paymentFilterLabel: input.paymentFilterLabel,
+        summary: input.report.summary,
+        orders: input.report.orders,
+        totals: input.report.totals,
+      },
+    }),
+  }) as Promise<{ ok: boolean; printer: string; bytes: number }>;
+}

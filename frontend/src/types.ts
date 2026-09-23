@@ -281,6 +281,34 @@ export type OrderStats = {
   avgPrepMinutesToday: number | null;
 };
 
+export type SalesByPaymentReportRow = {
+  id: string;
+  code: string;
+  createdAt: string;
+  status: OrderStatus;
+  paymentMethod: Order["paymentMethod"];
+  paymentMethodLabel: string | null;
+  displayPaymentLabel: string;
+  totalCents: number;
+  customerName: string | null;
+};
+
+export type SalesByPaymentSummaryRow = {
+  paymentMethod: string | null;
+  paymentMethodLabel: string;
+  orderCount: number;
+  totalCents: number;
+};
+
+export type SalesByPaymentReport = {
+  from: string | null;
+  to: string | null;
+  paymentMethod: string | null;
+  summary: SalesByPaymentSummaryRow[];
+  orders: SalesByPaymentReportRow[];
+  totals: { orderCount: number; totalCents: number };
+};
+
 export type NotificationType = "order_created" | "order_updated";
 
 export type AppNotification = {

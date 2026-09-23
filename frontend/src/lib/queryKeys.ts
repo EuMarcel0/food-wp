@@ -68,6 +68,11 @@ export const queryKeys = {
         to?: string;
       },
     ) => ["orders", "list", page, limit, filters] as const,
+    salesByPayment: (filters: {
+      from?: string;
+      to?: string;
+      paymentMethod?: string;
+    }) => ["orders", "reports", "sales-by-payment", filters] as const,
   },
   conversations: {
     all: ["conversations"] as const,

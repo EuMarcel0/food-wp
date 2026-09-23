@@ -5,6 +5,7 @@ import {
   failAutoPrint,
   getOrder,
   getOrderStats,
+  getSalesByPaymentReport,
   listAutoPrintQueue,
   listOrdersPage,
   updateOrderStatus,
@@ -28,6 +29,15 @@ const STATUSES = new Set<OrderStatus>([
   "cancelled",
 ]);
 
+const PAYMENT_METHODS = new Set([
+  "pix",
+  "cash",
+  "card",
+  "credit",
+  "debit",
+  "other",
+]);
+
 export const ordersRouter = Router();
 
 ordersRouter.get("/stats", async (req, res) => {
@@ -37,6 +47,39 @@ ordersRouter.get("/stats", async (req, res) => {
     return;
   }
   res.json(await getOrderStats(day));
+});
+
+ordersRouter.get("/reports/sales-by-payment", async (req, res) => {
+  try {
+    let fromDay = parseOptionalText(req.query.from ?? req.query.createdFrom);
+    let toDay = parseOptionalText(req.query.to ?? req.query.createdTo);
+    if (fromDay && toDay && fromDay > toDay) {
+      const swap = fromDay;
+      fromDay = toDay;
+      toDay = swap;
+    }
+    const paymentRaw = parseOptionalText(req.query.paymentMethod);
+    if (paymentRaw && paymentRaw !== "all" && !PAYMENT_METHODS.has(paymentRaw)) {
+      res.status(400).json({ error: "Forma de pagamento inválida." });
+      return;
+    }
+    const paymentMethod =
+      paymentRaw && paymentRaw !== "all" ? paymentRaw : undefined;
+    res.json(
+      await getSalesByPaymentReport({
+        createdFrom: parseDateDay(fromDay, false),
+        createdTo: parseDateDay(toDay, true),
+        paymentMethod,
+      }),
+    );
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Falha ao montar o relatório de vendas.",
+    });
+  }
 });
 
 /** Fila de cupons pendentes (agente / estação da cozinha). */

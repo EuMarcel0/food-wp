@@ -1629,6 +1629,111 @@ export const memoryStore = {
     return paginateItems(items, page, limit);
   },
 
+  getSalesByPaymentReport(input: {
+    createdFrom?: string;
+    createdTo?: string;
+    paymentMethod?: string;
+  }) {
+    const fromMs = input.createdFrom ? Date.parse(input.createdFrom) : Number.NaN;
+    const toMs = input.createdTo ? Date.parse(input.createdTo) : Number.NaN;
+    const methods = input.paymentMethod
+      ? input.paymentMethod === "credit" || input.paymentMethod === "card"
+        ? new Set(["credit", "card"])
+        : new Set([input.paymentMethod])
+      : null;
+
+    const FALLBACK: Record<string, string> = {
+      pix: "Pix",
+      cash: "Dinheiro",
+      card: "Cartão",
+      credit: "Crédito",
+      debit: "Débito",
+      other: "Outro",
+    };
+
+    const orders = this.listOrders()
+      .filter((order) => {
+        if (order.status === "cancelled") return false;
+        if (Number.isFinite(fromMs) || Number.isFinite(toMs)) {
+          const created = Date.parse(order.createdAt);
+          if (!Number.isFinite(created)) return false;
+          if (Number.isFinite(fromMs) && created < fromMs) return false;
+          if (Number.isFinite(toMs) && created > toMs) return false;
+        }
+        if (methods && (!order.paymentMethod || !methods.has(order.paymentMethod))) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+      .map((order) => {
+        const custom = order.paymentMethodLabel?.trim() || null;
+        const displayPaymentLabel =
+          custom ||
+          (order.paymentMethod
+            ? FALLBACK[order.paymentMethod] ?? order.paymentMethod
+            : "Sem pagamento");
+        return {
+          id: order.id,
+          code: order.code,
+          createdAt: order.createdAt,
+          status: order.status,
+          paymentMethod: order.paymentMethod,
+          paymentMethodLabel: custom,
+          displayPaymentLabel,
+          totalCents: order.totalCents,
+          customerName:
+            order.customerName?.trim() || null,
+        };
+      });
+
+    const buckets = new Map<
+      string,
+      {
+        paymentMethod: string | null;
+        paymentMethodLabel: string;
+        orderCount: number;
+        totalCents: number;
+      }
+    >();
+    for (const order of orders) {
+      const key = `${order.paymentMethod ?? ""}::${order.displayPaymentLabel}`;
+      const current = buckets.get(key);
+      if (current) {
+        current.orderCount += 1;
+        current.totalCents += order.totalCents;
+      } else {
+        buckets.set(key, {
+          paymentMethod: order.paymentMethod,
+          paymentMethodLabel: order.displayPaymentLabel,
+          orderCount: 1,
+          totalCents: order.totalCents,
+        });
+      }
+    }
+
+    const summary = [...buckets.values()].sort((a, b) =>
+      a.paymentMethodLabel.localeCompare(b.paymentMethodLabel, "pt-BR"),
+    );
+    const totals = orders.reduce(
+      (acc, order) => {
+        acc.orderCount += 1;
+        acc.totalCents += order.totalCents;
+        return acc;
+      },
+      { orderCount: 0, totalCents: 0 },
+    );
+
+    return {
+      from: input.createdFrom ?? null,
+      to: input.createdTo ?? null,
+      paymentMethod: input.paymentMethod ?? null,
+      summary,
+      orders,
+      totals,
+    };
+  },
+
   getOrderStats(day?: string) {
     const store = this.getStore();
     return buildOrderStats(

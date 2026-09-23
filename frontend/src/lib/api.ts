@@ -17,7 +17,8 @@ import type {
   Product,
   Size,
   Store,
-  StorePaymentMethod
+  StorePaymentMethod,
+  SalesByPaymentReport,
 } from "../types";
 
 const base = import.meta.env.VITE_API_URL ?? "";
@@ -347,6 +348,22 @@ export const api = {
     ),
   orderStats: (day?: string) =>
     request<OrderStats>(withQuery("/api/orders/stats", { day })),
+  salesByPaymentReport: (
+    filters: {
+      from?: string;
+      to?: string;
+      paymentMethod?: string;
+    },
+    silent = false,
+  ) =>
+    request<SalesByPaymentReport>(
+      withQuery("/api/orders/reports/sales-by-payment", {
+        from: filters.from,
+        to: filters.to,
+        paymentMethod: filters.paymentMethod,
+      }),
+      { silent },
+    ),
   order: (id: string, silent = false) => request<Order>(`/api/orders/${id}`, { silent }),
   orderPrintQueue: (silent = true) =>
     request<{ items: { id: string; code: string; requestedAt: string }[] }>(

@@ -17,6 +17,8 @@ export type OrderFilter = {
   createdFrom?: string;
   /** Fim inclusivo (ISO), filtrando por created_at */
   createdTo?: string;
+  /** Forma de pagamento (kind): pix, cash, credit, debit, other, card */
+  paymentMethod?: string;
 };
 
 /** Aceita YYYY-MM-DD e interpreta o dia no fuso America/Sao_Paulo. */

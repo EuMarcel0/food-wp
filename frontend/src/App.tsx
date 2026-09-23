@@ -10,6 +10,7 @@ import { DashboardPage } from "./pages/dashboard";
 import { LoginPage } from "./pages/login";
 import { ConversationsPage } from "./pages/conversas";
 import { OrdersPage } from "./pages/pedidos";
+import { SalesByPaymentPage } from "./pages/relatorios/vendas-por-pagamento";
 
 export function App() {
   return (
@@ -26,6 +27,10 @@ export function App() {
           <Route path="/cardapio" element={<CatalogPage />} />
           <Route path="/categorias" element={<CategoriesPage />} />
           <Route path="/adicionais" element={<AddonsPage />} />
+          <Route
+            path="/relatorios/vendas-por-pagamento"
+            element={<SalesByPaymentPage />}
+          />
           <Route path="/configuracoes" element={<SettingsPage />} />
         </Route>
       </Route>
