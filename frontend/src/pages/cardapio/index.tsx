@@ -5,11 +5,10 @@ import { Button, Input, Select, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { FillTable } from "../../components/FillTable";
 import { ListFilters } from "../../components/ListFilters";
-import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { useDialog } from "../../dialog";
-import { ProductCard } from "./ProductCard";
+import { ProductMobileList } from "./ProductMobileList";
 import { ProductSortableTable } from "./ProductSortableTable";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
@@ -383,7 +382,8 @@ export function CatalogPage() {
         />
       </FillTable>
       <div className={listCards}>
-        <MobileCardList
+        <ProductMobileList
+          products={localProducts}
           loading={listQuery.isPending && !result}
           isEmpty={localProducts.length === 0}
           empty={
@@ -399,20 +399,15 @@ export function CatalogPage() {
                   setLimit(nextSize);
                 })
           }
-        >
-          {localProducts.map((product, index) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              orderLabel={canReorder ? index + 1 : product.sortOrder + 1}
-              onEdit={(item) => {
-                setEditing(item);
-                setOpen(true);
-              }}
-              onToggle={(item) => toggleMutation.mutate(item)}
-            />
-          ))}
-        </MobileCardList>
+          canReorder={canReorder}
+          reordering={reorderMutation.isPending}
+          onReorder={(orderedIds) => reorderMutation.mutate(orderedIds)}
+          onEdit={(item) => {
+            setEditing(item);
+            setOpen(true);
+          }}
+          onToggle={(item) => toggleMutation.mutate(item)}
+        />
       </div>
       <ProductForm
         open={open}
