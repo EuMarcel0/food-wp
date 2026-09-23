@@ -71,7 +71,7 @@ export const queryKeys = {
     salesByPayment: (filters: {
       from?: string;
       to?: string;
-      paymentMethod?: string;
+      paymentMethods?: string[];
     }) => ["orders", "reports", "sales-by-payment", filters] as const,
   },
   conversations: {

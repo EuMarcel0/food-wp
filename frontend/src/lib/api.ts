@@ -352,7 +352,7 @@ export const api = {
     filters: {
       from?: string;
       to?: string;
-      paymentMethod?: string;
+      paymentMethods?: string[];
     },
     silent = false,
   ) =>
@@ -360,7 +360,9 @@ export const api = {
       withQuery("/api/orders/reports/sales-by-payment", {
         from: filters.from,
         to: filters.to,
-        paymentMethod: filters.paymentMethod,
+        paymentMethods: filters.paymentMethods?.length
+          ? filters.paymentMethods.join(",")
+          : undefined,
       }),
       { silent },
     ),

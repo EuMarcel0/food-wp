@@ -1632,15 +1632,25 @@ export const memoryStore = {
   getSalesByPaymentReport(input: {
     createdFrom?: string;
     createdTo?: string;
-    paymentMethod?: string;
+    paymentMethods?: string[];
   }) {
     const fromMs = input.createdFrom ? Date.parse(input.createdFrom) : Number.NaN;
     const toMs = input.createdTo ? Date.parse(input.createdTo) : Number.NaN;
-    const methods = input.paymentMethod
-      ? input.paymentMethod === "credit" || input.paymentMethod === "card"
-        ? new Set(["credit", "card"])
-        : new Set([input.paymentMethod])
-      : null;
+    const methods = (() => {
+      const raw = input.paymentMethods ?? [];
+      if (!raw.length) return null;
+      const set = new Set<string>();
+      for (const kind of raw) {
+        const key = kind.trim().toLowerCase();
+        if (key === "credit" || key === "card") {
+          set.add("credit");
+          set.add("card");
+        } else if (key) {
+          set.add(key);
+        }
+      }
+      return set.size ? set : null;
+    })();
 
     const FALLBACK: Record<string, string> = {
       pix: "Pix",
@@ -1682,8 +1692,7 @@ export const memoryStore = {
           paymentMethodLabel: custom,
           displayPaymentLabel,
           totalCents: order.totalCents,
-          customerName:
-            order.customerName?.trim() || null,
+          customerName: order.customerName?.trim() || null,
         };
       });
 
@@ -1727,7 +1736,7 @@ export const memoryStore = {
     return {
       from: input.createdFrom ?? null,
       to: input.createdTo ?? null,
-      paymentMethod: input.paymentMethod ?? null,
+      paymentMethods: input.paymentMethods ?? [],
       summary,
       orders,
       totals,

@@ -303,7 +303,7 @@ export type SalesByPaymentSummaryRow = {
 export type SalesByPaymentReport = {
   from: string | null;
   to: string | null;
-  paymentMethod: string | null;
+  paymentMethods: string[];
   summary: SalesByPaymentSummaryRow[];
   orders: SalesByPaymentReportRow[];
   totals: { orderCount: number; totalCents: number };

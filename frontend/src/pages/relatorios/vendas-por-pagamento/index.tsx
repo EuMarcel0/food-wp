@@ -25,7 +25,7 @@ import { printSalesByPaymentReportViaAgent } from "../../../lib/printAgent";
 import { queryKeys } from "../../../lib/queryKeys";
 import { toast } from "../../../lib/toast";
 import type { Order, SalesByPaymentReport } from "../../../types";
-import { filterSelect, listPage, tableClass } from "../../../ui";
+import { listPage, tableClass } from "../../../ui";
 
 function todayRange(): [Dayjs, Dayjs] {
   const today = dayjs().startOf("day");
@@ -148,27 +148,32 @@ function openSalesReportPdfA4(input: {
 </body>
 </html>`;
 
-  const popup = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+  // Não usar "noopener": no Chrome o open() retorna null mesmo com a aba aberta.
+  const popup = window.open("", "_blank", "width=900,height=700");
   if (!popup) {
     throw new Error("Permita pop-ups para gerar o PDF A4.");
+  }
+  try {
+    popup.opener = null;
+  } catch {
+    // ignore
   }
   popup.document.open();
   popup.document.write(html);
   popup.document.close();
 }
 
-const PAYMENT_FILTER_OPTIONS = [
-  { value: "all", label: "Todas" },
-  ...(Object.entries(PAYMENT_LABEL) as [NonNullable<Order["paymentMethod"]>, string][])
-    .filter(([value]) => value !== "card")
-    .map(([value, label]) => ({ value, label })),
-];
+const PAYMENT_FILTER_OPTIONS = (
+  Object.entries(PAYMENT_LABEL) as [NonNullable<Order["paymentMethod"]>, string][]
+)
+  .filter(([value]) => value !== "card")
+  .map(([value, label]) => ({ value, label }));
 
 export function SalesByPaymentPage() {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
     () => todayRange(),
   );
-  const [paymentMethod, setPaymentMethod] = useState<string>("all");
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [printOpen, setPrintOpen] = useState(false);
   const [printTarget, setPrintTarget] = useState<"thermal" | "pdf">("thermal");
   const [printing, setPrinting] = useState(false);
@@ -178,9 +183,9 @@ export function SalesByPaymentPage() {
   const filters = {
     from: from || undefined,
     to: to || undefined,
-    paymentMethod: paymentMethod === "all" ? undefined : paymentMethod,
+    paymentMethods: paymentMethods.length ? paymentMethods : undefined,
   };
-  const activeCount = [from, to, paymentMethod !== "all" ? paymentMethod : ""]
+  const activeCount = [from, to, paymentMethods.length ? "pay" : ""]
     .filter(Boolean).length;
 
   const storeQuery = useQuery({
@@ -195,12 +200,15 @@ export function SalesByPaymentPage() {
 
   const report = reportQuery.data;
   const paymentFilterLabel = useMemo(() => {
-    if (paymentMethod === "all") return "Todas";
-    return (
-      PAYMENT_FILTER_OPTIONS.find((item) => item.value === paymentMethod)
-        ?.label ?? paymentMethod
-    );
-  }, [paymentMethod]);
+    if (!paymentMethods.length) return "Todas";
+    return paymentMethods
+      .map(
+        (value) =>
+          PAYMENT_FILTER_OPTIONS.find((item) => item.value === value)?.label ??
+          value,
+      )
+      .join(", ");
+  }, [paymentMethods]);
 
   async function handlePrint() {
     if (!report) return;
@@ -265,7 +273,7 @@ export function SalesByPaymentPage() {
         activeCount={activeCount}
         onClear={() => {
           setDateRange(todayRange());
-          setPaymentMethod("all");
+          setPaymentMethods([]);
         }}
       >
         <DatePicker.RangePicker
@@ -276,11 +284,14 @@ export function SalesByPaymentPage() {
           className="!w-[260px]"
         />
         <Select
-          className={filterSelect}
-          value={paymentMethod}
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          className="!min-w-[240px] !w-[280px] shrink-0"
+          value={paymentMethods}
           options={PAYMENT_FILTER_OPTIONS}
-          onChange={setPaymentMethod}
-          placeholder="Forma de pagamento"
+          onChange={setPaymentMethods}
+          placeholder="Todas as formas"
         />
       </ListFilters>
 

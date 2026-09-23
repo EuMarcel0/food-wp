@@ -3450,6 +3450,14 @@ function paymentMethodsMatching(kind: string): string[] {
   return [key];
 }
 
+function expandPaymentMethodFilters(kinds: string[]): string[] {
+  const set = new Set<string>();
+  for (const kind of kinds) {
+    for (const item of paymentMethodsMatching(kind)) set.add(item);
+  }
+  return [...set];
+}
+
 function salesPaymentLabel(
   method: string | null | undefined,
   customLabel: string | null | undefined,
@@ -3482,7 +3490,7 @@ export type SalesByPaymentSummaryRow = {
 export type SalesByPaymentReport = {
   from: string | null;
   to: string | null;
-  paymentMethod: string | null;
+  paymentMethods: string[];
   summary: SalesByPaymentSummaryRow[];
   orders: SalesByPaymentReportRow[];
   totals: { orderCount: number; totalCents: number };
@@ -3492,12 +3500,14 @@ export type SalesByPaymentReport = {
 export async function getSalesByPaymentReport(input: {
   createdFrom?: string;
   createdTo?: string;
-  paymentMethod?: string;
+  paymentMethods?: string[];
 }): Promise<SalesByPaymentReport> {
   const supabase = getSupabase();
   if (!supabase) {
     return memoryStore.getSalesByPaymentReport(input);
   }
+
+  const paymentFilter = expandPaymentMethodFilters(input.paymentMethods ?? []);
 
   let query = supabase
     .from("orders")
@@ -3514,12 +3524,8 @@ export async function getSalesByPaymentReport(input: {
   if (input.createdTo) {
     query = query.lte("created_at", input.createdTo);
   }
-  if (input.paymentMethod) {
-    const methods = paymentMethodsMatching(input.paymentMethod);
-    query =
-      methods.length === 1
-        ? query.eq("payment_method", methods[0])
-        : query.in("payment_method", methods);
+  if (paymentFilter.length) {
+    query = query.in("payment_method", paymentFilter);
   }
 
   const { data, error } = await query;
@@ -3551,7 +3557,11 @@ export async function getSalesByPaymentReport(input: {
     };
   });
 
-  return buildSalesByPaymentReport(orders, input);
+  return buildSalesByPaymentReport(orders, {
+    createdFrom: input.createdFrom,
+    createdTo: input.createdTo,
+    paymentMethods: input.paymentMethods ?? [],
+  });
 }
 
 function buildSalesByPaymentReport(
@@ -3559,7 +3569,7 @@ function buildSalesByPaymentReport(
   input: {
     createdFrom?: string;
     createdTo?: string;
-    paymentMethod?: string;
+    paymentMethods?: string[];
   },
 ): SalesByPaymentReport {
   const buckets = new Map<string, SalesByPaymentSummaryRow>();
@@ -3594,7 +3604,7 @@ function buildSalesByPaymentReport(
   return {
     from: input.createdFrom ?? null,
     to: input.createdTo ?? null,
-    paymentMethod: input.paymentMethod ?? null,
+    paymentMethods: input.paymentMethods ?? [],
     summary,
     orders,
     totals,

@@ -58,18 +58,34 @@ ordersRouter.get("/reports/sales-by-payment", async (req, res) => {
       fromDay = toDay;
       toDay = swap;
     }
-    const paymentRaw = parseOptionalText(req.query.paymentMethod);
-    if (paymentRaw && paymentRaw !== "all" && !PAYMENT_METHODS.has(paymentRaw)) {
+
+    const rawParts: string[] = [];
+    const multi = req.query.paymentMethods ?? req.query.paymentMethod;
+    if (Array.isArray(multi)) {
+      for (const item of multi) {
+        rawParts.push(...String(item).split(","));
+      }
+    } else if (multi != null && String(multi).trim()) {
+      rawParts.push(...String(multi).split(","));
+    }
+
+    const paymentMethods = [
+      ...new Set(
+        rawParts
+          .map((item) => item.trim().toLowerCase())
+          .filter((item) => item && item !== "all"),
+      ),
+    ];
+    if (paymentMethods.some((item) => !PAYMENT_METHODS.has(item))) {
       res.status(400).json({ error: "Forma de pagamento inválida." });
       return;
     }
-    const paymentMethod =
-      paymentRaw && paymentRaw !== "all" ? paymentRaw : undefined;
+
     res.json(
       await getSalesByPaymentReport({
         createdFrom: parseDateDay(fromDay, false),
         createdTo: parseDateDay(toDay, true),
-        paymentMethod,
+        paymentMethods,
       }),
     );
   } catch (error) {
