@@ -1,7 +1,8 @@
-import { useEffect, useState, type Key } from "react";
+import { useEffect, useMemo, useState, type Key } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined } from "@ant-design/icons";
-import { Button, Input, Select, Table, Tag } from "antd";
+import { Button, Input, Select, Tag } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { FillTable } from "../../components/FillTable";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
@@ -9,6 +10,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { useDialog } from "../../dialog";
 import { ProductCard } from "./ProductCard";
+import { ProductSortableTable } from "./ProductSortableTable";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
@@ -19,7 +21,9 @@ import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import type { Product } from "../../types";
 import { ProductForm, toProductPayload } from "./ProductForm";
 import type { ProductValues } from "../../lib/validation";
-import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
+import { filterSearch, filterSelect, listCards, listPage } from "../../ui";
+
+const REORDER_LIMIT = 200;
 
 export function CatalogPage() {
   const dialog = useDialog();
@@ -34,7 +38,12 @@ export function CatalogPage() {
   const [qInput, setQInput] = useState("");
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [active, setActive] = useState<boolean | undefined>();
+  const [localProducts, setLocalProducts] = useState<Product[]>([]);
   const q = useDebouncedValue(qInput.trim(), 300);
+  /** DnD só com categoria (ordem = lista do WhatsApp daquela categoria). */
+  const canReorder = Boolean(categoryId) && !q;
+  const listPageNum = canReorder ? 1 : page;
+  const listLimit = canReorder ? REORDER_LIMIT : limit;
   const filters = { q: q || undefined, categoryId, active };
   const activeCount = [q, categoryId, active !== undefined].filter(Boolean).length;
 
@@ -56,29 +65,35 @@ export function CatalogPage() {
   const addons = addonsQuery.data ?? [];
 
   const listQuery = useQuery({
-    queryKey: queryKeys.products.list(page, limit, filters),
-    queryFn: () => api.products(page, limit, filters),
+    queryKey: queryKeys.products.list(listPageNum, listLimit, filters),
+    queryFn: () => api.products(listPageNum, listLimit, filters),
     placeholderData: keepPreviousData
   });
 
   const result = listQuery.data;
   const products = result?.items ?? [];
   const total = result?.total ?? 0;
-  const selectedProducts = products.filter(product => selectedKeys.includes(product.id));
+  const selectedProducts = localProducts.filter(product =>
+    selectedKeys.includes(product.id),
+  );
 
   useEffect(() => {
-    if (!result) return;
+    setLocalProducts(products);
+  }, [products]);
+
+  useEffect(() => {
+    if (!result || canReorder) return;
     const nextPage = clampPage(page, limit, result.total);
     if (nextPage !== page) setPage(nextPage);
-  }, [limit, page, result]);
+  }, [canReorder, limit, page, result]);
 
   useEffect(() => {
-    const ids = new Set(products.map(product => product.id));
+    const ids = new Set(localProducts.map(product => product.id));
     setSelectedKeys(keys => {
       const next = keys.filter(key => ids.has(String(key)));
       return next.length === keys.length ? keys : next;
     });
-  }, [products]);
+  }, [localProducts]);
 
   async function refreshCatalog() {
     await Promise.all([
@@ -108,6 +123,34 @@ export function CatalogPage() {
       toast.success(product.active ? "Item desativado no WhatsApp." : "Item ativado no WhatsApp.");
       await refreshCatalog();
     }
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (orderedIds: string[]) => {
+      if (!categoryId) throw new Error("Selecione uma categoria.");
+      return api.reorderProducts(categoryId, orderedIds);
+    },
+    onMutate: async (orderedIds) => {
+      const byId = new Map(localProducts.map((item) => [item.id, item]));
+      setLocalProducts(
+        orderedIds
+          .map((id, index) => {
+            const item = byId.get(id);
+            return item ? { ...item, sortOrder: index } : null;
+          })
+          .filter((item): item is Product => Boolean(item)),
+      );
+    },
+    onSuccess: async () => {
+      toast.success("Ordem do cardápio atualizada.");
+      await refreshCatalog();
+    },
+    onError: async (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao reordenar.",
+      );
+      await refreshCatalog();
+    },
   });
 
   const bulkActiveMutation = useMutation({
@@ -164,16 +207,102 @@ export function CatalogPage() {
       </>
     ) : null;
 
+  const columns: ColumnsType<Product> = useMemo(
+    () => [
+      { title: "Categoria", dataIndex: "categoryName", width: 160 },
+      { title: "Item", dataIndex: "name" },
+      {
+        title: "Tipo",
+        width: 220,
+        render: (_, product) => (
+          <>
+            {product.customizable ? (
+              <Tag color="orange">
+                {product.pizzaKind === "doce"
+                  ? "Pizza doce"
+                  : product.pizzaKind === "salgada"
+                    ? "Pizza salgada"
+                    : "Pizza"}
+              </Tag>
+            ) : (
+              <Tag>Simples</Tag>
+            )}
+            {product.notesEnabled ? <Tag color="blue">Observação</Tag> : null}
+            {product.addonsEnabled ? <Tag color="purple">Adicional</Tag> : null}
+            {product.crustsEnabled ? <Tag color="gold">Borda</Tag> : null}
+            {product.quantityEnabled ? <Tag color="cyan">Qtd.</Tag> : null}
+          </>
+        ),
+      },
+      {
+        title: "Descrição",
+        dataIndex: "description",
+        ellipsis: true,
+        render: (value: string | null | undefined) => {
+          const text = typeof value === "string" ? value.trim() : "";
+          if (!text || text.toLowerCase() === "null") return "-";
+          return text;
+        },
+      },
+      {
+        title: "Preço",
+        dataIndex: "price",
+        width: 120,
+        render: (_, product) => catalogPriceLabel(product),
+      },
+      {
+        title: "Ativo",
+        dataIndex: "active",
+        width: 90,
+        render: (value: boolean) => (
+          <Tag color={value ? "green" : "default"}>{value ? "Sim" : "Não"}</Tag>
+        ),
+      },
+      {
+        title: "Ações",
+        width: 72,
+        align: "center",
+        render: (_, product) => (
+          <RowActions
+            items={[
+              {
+                key: "edit",
+                label: "Editar",
+                onClick: () => {
+                  setEditing(product);
+                  setOpen(true);
+                },
+              },
+              {
+                key: "toggle",
+                label: product.active ? "Desativar" : "Ativar",
+                onClick: () => toggleMutation.mutate(product),
+              },
+            ]}
+          />
+        ),
+      },
+    ],
+    [toggleMutation],
+  );
+
+  const categoryName =
+    categories.find((item) => item.id === categoryId)?.name ?? "categoria";
+
   return (
     <div className={listPage}>
       <PageHeader
-        className='mb-3 shrink-0'
-        kicker='Itens'
-        title='Cardápio'
-        subtitle='Os itens ativos aparecem para o cliente no WhatsApp.'
+        className="mb-3 shrink-0"
+        kicker="Itens"
+        title="Cardápio"
+        subtitle={
+          canReorder
+            ? `Arraste os itens para definir a ordem no WhatsApp (${categoryName}). Os 10 primeiros entram na 1ª lista.`
+            : "Os itens ativos aparecem para o cliente no WhatsApp. Selecione uma categoria para reordenar arrastando."
+        }
         extra={
           <Button
-            type='primary'
+            type="primary"
             icon={<PlusOutlined />}
             onClick={() => {
               setEditing(null);
@@ -185,7 +314,7 @@ export function CatalogPage() {
         }
       />
       <ListFilters
-        className='mb-3 shrink-0'
+        className="mb-3 shrink-0"
         activeCount={activeCount}
         trailing={bulkTrailing}
         onClear={() => {
@@ -197,149 +326,90 @@ export function CatalogPage() {
         <Input.Search
           className={filterSearch}
           allowClear
-          placeholder='Nome ou descrição…'
+          placeholder="Nome ou descrição…"
           value={qInput}
-          onChange={event => setQInput(event.target.value)}
+          onChange={(event) => setQInput(event.target.value)}
         />
         <Select
           className={filterSelect}
           allowClear
           showSearch
-          optionFilterProp='label'
-          placeholder='Categoria'
+          optionFilterProp="label"
+          placeholder="Categoria"
           value={categoryId}
           onChange={setCategoryId}
-          options={categories.map(category => ({
+          options={categories.map((category) => ({
             value: category.id,
-            label: category.name
+            label: category.name,
           }))}
         />
         <Select
           className={filterSelect}
           allowClear
-          placeholder='Situação'
+          placeholder="Situação"
           value={active === undefined ? undefined : active ? "1" : "0"}
-          onChange={value => setActive(value === undefined ? undefined : value === "1")}
+          onChange={(value) =>
+            setActive(value === undefined ? undefined : value === "1")
+          }
           options={[
             { value: "1", label: "Ativos" },
-            { value: "0", label: "Inativos" }
+            { value: "0", label: "Inativos" },
           ]}
         />
       </ListFilters>
       <FillTable
         shellRef={shellRef}
         tableAreaRef={tableAreaRef}
-        pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-          setPage(nextPage);
-          setLimit(nextSize);
-          setSelectedKeys([]);
-        })}
+        pagination={
+          canReorder
+            ? undefined
+            : serverPagination(page, limit, total, (nextPage, nextSize) => {
+                setPage(nextPage);
+                setLimit(nextSize);
+                setSelectedKeys([]);
+              })
+        }
       >
-        <Table
-          rowKey='id'
-          className={`${tableClass} ${tableGridFill}`}
+        <ProductSortableTable
+          products={localProducts}
           loading={listQuery.isPending && !result}
-          dataSource={products}
-          pagination={false}
-          scroll={{ x: 800, y: bodyHeight }}
-          rowSelection={{
-            selectedRowKeys: selectedKeys,
-            onChange: setSelectedKeys
-          }}
-          columns={[
-            { title: "Categoria", dataIndex: "categoryName", width: 180 },
-            { title: "Item", dataIndex: "name" },
-            {
-              title: "Tipo",
-              width: 240,
-              render: (_, product) => (
-                <>
-                  {product.customizable ? (
-                    <Tag color='orange'>
-                      {product.pizzaKind === "doce"
-                        ? "Pizza doce"
-                        : product.pizzaKind === "salgada"
-                          ? "Pizza salgada"
-                          : "Pizza"}
-                    </Tag>
-                  ) : (
-                    <Tag>Simples</Tag>
-                  )}
-                  {product.notesEnabled ? <Tag color='blue'>Observação</Tag> : null}
-                  {product.addonsEnabled ? <Tag color='purple'>Adicional</Tag> : null}
-                  {product.crustsEnabled ? <Tag color='gold'>Borda</Tag> : null}
-                  {product.quantityEnabled ? <Tag color='cyan'>Qtd.</Tag> : null}
-                </>
-              )
-            },
-            {
-              title: "Descrição",
-              dataIndex: "description",
-              ellipsis: true,
-              render: (value: string | null | undefined) => {
-                const text = typeof value === "string" ? value.trim() : "";
-                if (!text || text.toLowerCase() === "null") return "-";
-                return text;
-              }
-            },
-            {
-              title: "Preço",
-              dataIndex: "price",
-              width: 120,
-              render: (_, product) => catalogPriceLabel(product)
-            },
-            {
-              title: "Ativo",
-              dataIndex: "active",
-              width: 100,
-              render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "Sim" : "Não"}</Tag>
-            },
-            {
-              title: "Ações",
-              width: 72,
-              align: "center",
-              render: (_, product) => (
-                <RowActions
-                  items={[
-                    {
-                      key: "edit",
-                      label: "Editar",
-                      onClick: () => {
-                        setEditing(product);
-                        setOpen(true);
-                      }
-                    },
-                    {
-                      key: "toggle",
-                      label: product.active ? "Desativar" : "Ativar",
-                      onClick: () => toggleMutation.mutate(product)
-                    }
-                  ]}
-                />
-              )
-            }
-          ]}
+          bodyHeight={bodyHeight}
+          selectedKeys={selectedKeys}
+          onSelectedKeysChange={setSelectedKeys}
+          columns={columns}
+          canReorder={canReorder}
+          reordering={reorderMutation.isPending}
+          onReorder={(orderedIds) => reorderMutation.mutate(orderedIds)}
         />
       </FillTable>
       <div className={listCards}>
         <MobileCardList
           loading={listQuery.isPending && !result}
-          isEmpty={products.length === 0}
-          empty={activeCount > 0 ? "Nenhum item encontrado com esses filtros." : "Inclua o primeiro item do cardápio."}
-          pagination={serverPagination(page, limit, total, (nextPage, nextSize) => {
-            setPage(nextPage);
-            setLimit(nextSize);
-          })}
+          isEmpty={localProducts.length === 0}
+          empty={
+            activeCount > 0
+              ? "Nenhum item encontrado com esses filtros."
+              : "Inclua o primeiro item do cardápio."
+          }
+          pagination={
+            canReorder
+              ? undefined
+              : serverPagination(page, limit, total, (nextPage, nextSize) => {
+                  setPage(nextPage);
+                  setLimit(nextSize);
+                })
+          }
         >
-          {products.map(product => (
+          {localProducts.map((product, index) => (
             <ProductCard
               key={product.id}
               product={product}
-              onEdit={item => {
+              orderLabel={canReorder ? index + 1 : product.sortOrder + 1}
+              onEdit={(item) => {
                 setEditing(item);
                 setOpen(true);
               }}
-              onToggle={item => toggleMutation.mutate(item)}
+              onToggle={(item) => toggleMutation.mutate(item)}
             />
           ))}
         </MobileCardList>
@@ -347,14 +417,16 @@ export function CatalogPage() {
       <ProductForm
         open={open}
         product={editing}
-        categories={categories.filter(category => category.active || category.id === editing?.categoryId)}
+        categories={categories.filter(
+          (category) => category.active || category.id === editing?.categoryId,
+        )}
         addons={addons}
         submitting={saveMutation.isPending}
         onCancel={() => {
           setOpen(false);
           setEditing(null);
         }}
-        onSubmit={async values => {
+        onSubmit={async (values) => {
           await saveMutation.mutateAsync(values);
         }}
       />

@@ -14,7 +14,7 @@ export function MobileCardList({
   empty?: string;
   isEmpty: boolean;
   children: ReactNode;
-  pagination: TablePaginationConfig;
+  pagination?: TablePaginationConfig;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -31,7 +31,7 @@ export function MobileCardList({
       ) : (
         <div className="grid gap-3">{children}</div>
       )}
-      {!loading && (pagination.total ?? 0) > 0 ? (
+      {!loading && pagination && (pagination.total ?? 0) > 0 ? (
         <div className="flex justify-center py-2 pb-0.5">
           <Pagination
             current={pagination.current}

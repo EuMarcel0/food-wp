@@ -264,6 +264,7 @@ function mapProduct(row: Record<string, unknown>): Product {
     categoryId: String(row.category_id),
     categoryName: category?.name ?? "Cardápio",
     categorySortOrder: Number(category?.sort_order ?? 0),
+    sortOrder: Number(row.sort_order ?? 0),
     name: String(row.name),
     description: (() => {
       const raw = (row.description as string | null) ?? null;
@@ -286,6 +287,21 @@ function mapProduct(row: Record<string, unknown>): Product {
     addons: mapProductAddons(row),
     optionGroups: mapOptionGroups(row),
   };
+}
+
+function missingProductSortOrderColumn(message?: string) {
+  return Boolean(
+    message?.includes("sort_order") &&
+      (message.includes("products") || message.includes('column "sort_order"')),
+  );
+}
+
+function compareProductsByOrder(a: Product, b: Product) {
+  return (
+    a.categorySortOrder - b.categorySortOrder ||
+    a.sortOrder - b.sortOrder ||
+    a.name.localeCompare(b.name, "pt-BR")
+  );
 }
 
 function parsePizzaKind(raw: unknown): PizzaKind | null {
@@ -601,18 +617,31 @@ export async function listProducts(): Promise<Product[]> {
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("active", true)
+    .order("sort_order")
     .order("name");
-  const { data, error } =
+  let { data, error } =
     first.error && missingAddonsTable(first.error.message)
       ? await supabase
           .from("products")
           .select(PRODUCT_SELECT_CORE)
           .eq("active", true)
+          .order("sort_order")
           .order("name")
       : first;
+  if (error && missingProductSortOrderColumn(error.message)) {
+    const fallback = await supabase
+      .from("products")
+      .select(PRODUCT_SELECT_CORE)
+      .eq("active", true)
+      .order("name");
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error || !data) return enrichProductsSizes(memoryStore.listProducts());
   return enrichProductsSizes(
-    data.map((row) => mapProduct(row as Record<string, unknown>)),
+    data
+      .map((row) => mapProduct(row as Record<string, unknown>))
+      .sort(compareProductsByOrder),
   );
 }
 
@@ -620,14 +649,32 @@ export async function listAllProducts(): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return enrichProductsSizes(memoryStore.listAllProducts());
 
-  const first = await supabase.from("products").select(PRODUCT_SELECT).order("name");
-  const { data, error } =
+  const first = await supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .order("sort_order")
+    .order("name");
+  let { data, error } =
     first.error && missingAddonsTable(first.error.message)
-      ? await supabase.from("products").select(PRODUCT_SELECT_CORE).order("name")
+      ? await supabase
+          .from("products")
+          .select(PRODUCT_SELECT_CORE)
+          .order("sort_order")
+          .order("name")
       : first;
+  if (error && missingProductSortOrderColumn(error.message)) {
+    const fallback = await supabase
+      .from("products")
+      .select(PRODUCT_SELECT_CORE)
+      .order("name");
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error || !data) return enrichProductsSizes(memoryStore.listAllProducts());
   return enrichProductsSizes(
-    data.map((row) => mapProduct(row as Record<string, unknown>)),
+    data
+      .map((row) => mapProduct(row as Record<string, unknown>))
+      .sort(compareProductsByOrder),
   );
 }
 
@@ -647,32 +694,39 @@ export async function listProductsPage(
 
   const from = (page - 1) * limit;
   const to = from + limit - 1;
-  let query = supabase
-    .from("products")
-    .select(PRODUCT_SELECT, { count: "exact" })
-    .order("name");
-  if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
-  if (filter.active !== undefined) query = query.eq("active", filter.active);
-  if (filter.q) {
-    query = query.or(
-      `name.ilike.%${filter.q}%,description.ilike.%${filter.q}%`,
-    );
-  }
-
-  let { data, error, count } = await query.range(from, to);
-  if (error && missingAddonsTable(error.message)) {
-    let fallback = supabase
-      .from("products")
-      .select(PRODUCT_SELECT_CORE, { count: "exact" })
-      .order("name");
-    if (filter.categoryId) fallback = fallback.eq("category_id", filter.categoryId);
-    if (filter.active !== undefined) fallback = fallback.eq("active", filter.active);
+  const applyFilters = <T extends { eq: Function; or: Function }>(query: T) => {
+    let next = query;
+    if (filter.categoryId) next = next.eq("category_id", filter.categoryId);
+    if (filter.active !== undefined) next = next.eq("active", filter.active);
     if (filter.q) {
-      fallback = fallback.or(
+      next = next.or(
         `name.ilike.%${filter.q}%,description.ilike.%${filter.q}%`,
       );
     }
-    ({ data, error, count } = await fallback.range(from, to));
+    return next;
+  };
+
+  let query = applyFilters(
+    supabase
+      .from("products")
+      .select(PRODUCT_SELECT, { count: "exact" })
+      .order("sort_order")
+      .order("name"),
+  );
+
+  let { data, error, count } = await query.range(from, to);
+  if (error && missingAddonsTable(error.message)) {
+    query = applyFilters(
+      supabase
+        .from("products")
+        .select(PRODUCT_SELECT_CORE, { count: "exact" })
+        .order("sort_order")
+        .order("name"),
+    );
+    ({ data, error, count } = await query.range(from, to));
+  }
+  if (error && missingProductSortOrderColumn(error.message)) {
+    throw new Error("Rode a migration 049_product_sort_order.sql no Supabase.");
   }
   if (error) {
     const fallback = memoryStore.listProductsPage(page, limit, filter);
@@ -1635,6 +1689,17 @@ export async function createProduct(input: {
 
   const store = await getStore();
   const customizable = Boolean(input.customizable);
+
+  const { data: lastInCategory } = await supabase
+    .from("products")
+    .select("sort_order")
+    .eq("store_id", store.id)
+    .eq("category_id", input.categoryId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sortOrder = Number(lastInCategory?.sort_order ?? -1) + 1;
+
   const { data, error } = await supabase
     .from("products")
     .insert({
@@ -1650,12 +1715,15 @@ export async function createProduct(input: {
       addons_enabled: Boolean(input.addonsEnabled),
       crusts_enabled: Boolean(input.crustsEnabled),
       quantity_enabled: Boolean(input.quantityEnabled),
+      sort_order: sortOrder,
     })
     .select(PRODUCT_SELECT)
     .single();
   if (error || !data) {
     throw new Error(
-      missingPizzaKindColumn(error?.message)
+      missingProductSortOrderColumn(error?.message)
+        ? "Rode a migration 049_product_sort_order.sql no Supabase."
+        : missingPizzaKindColumn(error?.message)
         ? "Rode a migration 028_pizza_kind.sql no Supabase."
         : missingCrustsTable(error?.message)
         ? "Rode a migration 025_crusts.sql no Supabase."
@@ -1734,6 +1802,65 @@ export async function updateProduct(
     );
   }
   return getProduct(id);
+}
+
+/** Redefine a ordem dos itens de uma categoria (0..n-1). */
+export async function reorderProducts(categoryId: string, orderedIds: string[]) {
+  const ids = orderedIds.map((id) => String(id).trim()).filter(Boolean);
+  if (!categoryId.trim() || !ids.length) {
+    throw new Error("Informe a categoria e a lista de itens.");
+  }
+  const unique = new Set(ids);
+  if (unique.size !== ids.length) {
+    throw new Error("Lista de itens inválida (ids duplicados).");
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.reorderProducts(categoryId, ids);
+  }
+
+  const { data: rows, error } = await supabase
+    .from("products")
+    .select("id, category_id, sort_order, name")
+    .eq("category_id", categoryId);
+  if (error) {
+    if (missingProductSortOrderColumn(error.message)) {
+      throw new Error("Rode a migration 049_product_sort_order.sql no Supabase.");
+    }
+    throw new Error(error.message);
+  }
+
+  const inCategory = rows ?? [];
+  const byId = new Map(inCategory.map((row) => [String(row.id), row]));
+  for (const id of ids) {
+    if (!byId.has(id)) {
+      throw new Error("Um ou mais itens não pertencem a esta categoria.");
+    }
+  }
+
+  const remaining = inCategory
+    .filter((row) => !unique.has(String(row.id)))
+    .sort(
+      (a, b) =>
+        Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) ||
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), "pt-BR"),
+    );
+  const finalIds = [...ids, ...remaining.map((row) => String(row.id))];
+
+  const updates = finalIds.map((id, index) =>
+    supabase.from("products").update({ sort_order: index }).eq("id", id),
+  );
+  const results = await Promise.all(updates);
+  const failed = results.find((result) => result.error);
+  if (failed?.error) {
+    if (missingProductSortOrderColumn(failed.error.message)) {
+      throw new Error("Rode a migration 049_product_sort_order.sql no Supabase.");
+    }
+    throw new Error(failed.error.message);
+  }
+
+  return listProductsPage(1, Math.max(finalIds.length, 50), { categoryId });
 }
 
 async function replaceProductOptions(

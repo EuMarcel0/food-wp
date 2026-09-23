@@ -184,6 +184,8 @@ export type Product = {
   id: string;
   categoryId: string;
   categoryName: string;
+  /** Ordem do item na categoria (lista do WhatsApp). */
+  sortOrder: number;
   name: string;
   description: string | null;
   price: number;

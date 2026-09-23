@@ -300,6 +300,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  reorderProducts: (categoryId: string, orderedIds: string[]) =>
+    request<PageResult<Product>>("/api/products/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ categoryId, orderedIds }),
+    }),
   updateProduct: (
     id: string,
     payload: Partial<{

@@ -30,6 +30,7 @@ import {
   listProductsPage,
   listSizes,
   listSizesPage,
+  reorderProducts,
   saveStoreProfilePhoto,
   updateAddon,
   updateCategory,
@@ -764,14 +765,44 @@ catalogRouter.delete("/payment-methods/:id", async (req, res) => {
 });
 
 catalogRouter.get("/products", async (req, res) => {
-  const { page, limit } = parsePageQuery(req.query);
-  res.json(
-    await listProductsPage(page, limit, {
-      q: parseSearch(req.query.q),
-      categoryId: parseOptionalText(req.query.categoryId),
-      active: parseOptionalBoolean(req.query.active),
-    }),
-  );
+  try {
+    const { page, limit } = parsePageQuery(req.query);
+    res.json(
+      await listProductsPage(page, limit, {
+        q: parseSearch(req.query.q),
+        categoryId: parseOptionalText(req.query.categoryId),
+        active: parseOptionalBoolean(req.query.active),
+      }),
+    );
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Falha ao listar o cardápio.",
+    });
+  }
+});
+
+catalogRouter.put("/products/reorder", async (req, res) => {
+  const categoryId = String(req.body?.categoryId ?? "").trim();
+  const orderedIds = Array.isArray(req.body?.orderedIds)
+    ? req.body.orderedIds.map((id: unknown) => String(id ?? "").trim()).filter(Boolean)
+    : [];
+  if (!categoryId || !orderedIds.length) {
+    res.status(400).json({
+      error: "Informe categoryId e orderedIds.",
+    });
+    return;
+  }
+  try {
+    res.json(await reorderProducts(categoryId, orderedIds));
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível reordenar o cardápio.",
+    });
+  }
 });
 
 catalogRouter.post("/products", async (req, res) => {

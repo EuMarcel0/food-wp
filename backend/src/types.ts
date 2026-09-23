@@ -246,6 +246,8 @@ export type Product = {
   categoryName: string;
   /** Ordem da categoria no cardápio (campo Ordem do admin). */
   categorySortOrder: number;
+  /** Ordem do item na categoria (lista do WhatsApp). */
+  sortOrder: number;
   name: string;
   description: string | null;
   price: number;

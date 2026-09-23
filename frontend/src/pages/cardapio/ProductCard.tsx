@@ -7,17 +7,23 @@ import type { Product } from "../../types";
 
 export function ProductCard({
   product,
+  orderLabel,
   onEdit,
   onToggle,
 }: {
   product: Product;
+  orderLabel?: number;
   onEdit: (product: Product) => void;
   onToggle: (product: Product) => void;
 }) {
   return (
     <EntityCard
       tone={product.active ? "ready" : "inactive"}
-      kicker={product.categoryName}
+      kicker={
+        orderLabel != null
+          ? `${product.categoryName} · #${orderLabel}`
+          : product.categoryName
+      }
       title={product.name}
       extra={
         <RowActions

@@ -74,6 +74,7 @@ const products: Product[] = [
     categoryId: "cat-lanches",
     categoryName: "Lanches",
     categorySortOrder: 1,
+    sortOrder: 0,
     name: "X-Burguer",
     description: "Pão, carne e queijo",
     price: 22,
@@ -92,6 +93,7 @@ const products: Product[] = [
     categoryId: "cat-lanches",
     categoryName: "Lanches",
     categorySortOrder: 1,
+    sortOrder: 1,
     name: "X-Salada",
     description: "Pão, carne, queijo e salada",
     price: 25,
@@ -110,6 +112,7 @@ const products: Product[] = [
     categoryId: "cat-acompanhamentos",
     categoryName: "Acompanhamentos",
     categorySortOrder: 2,
+    sortOrder: 0,
     name: "Batata frita",
     description: "Porção média",
     price: 14,
@@ -128,6 +131,7 @@ const products: Product[] = [
     categoryId: "cat-bebidas",
     categoryName: "Bebidas",
     categorySortOrder: 3,
+    sortOrder: 0,
     name: "Refrigerante lata",
     description: "350ml",
     price: 7,
@@ -368,11 +372,23 @@ export const memoryStore = {
   },
 
   listProducts() {
-    return products.filter((product) => product.active);
+    return products
+      .filter((product) => product.active)
+      .sort(
+        (a, b) =>
+          a.categorySortOrder - b.categorySortOrder ||
+          a.sortOrder - b.sortOrder ||
+          a.name.localeCompare(b.name, "pt-BR"),
+      );
   },
 
   listAllProducts() {
-    return [...products];
+    return [...products].sort(
+      (a, b) =>
+        a.categorySortOrder - b.categorySortOrder ||
+        a.sortOrder - b.sortOrder ||
+        a.name.localeCompare(b.name, "pt-BR"),
+    );
   },
 
   listProductsPage(page: number, limit: number, filter: ProductFilter = {}) {
@@ -391,7 +407,12 @@ export const memoryStore = {
           (product.description ?? "").toLowerCase().includes(query)
         );
       })
-      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      .sort(
+        (a, b) =>
+          a.categorySortOrder - b.categorySortOrder ||
+          a.sortOrder - b.sortOrder ||
+          a.name.localeCompare(b.name, "pt-BR"),
+      );
     return paginateItems(items, page, limit);
   },
 
@@ -831,11 +852,16 @@ export const memoryStore = {
   }) {
     const category = categories.find((item) => item.id === input.categoryId);
     const customizable = Boolean(input.customizable);
+    const sortOrder =
+      products
+        .filter((item) => item.categoryId === input.categoryId)
+        .reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
     const product: Product = {
       id: `prod-${Date.now()}`,
       categoryId: input.categoryId,
       categoryName: category?.name ?? "Cardápio",
       categorySortOrder: category?.sortOrder ?? 0,
+      sortOrder,
       name: input.name,
       description: input.description,
       price: input.price,
@@ -852,6 +878,30 @@ export const memoryStore = {
     products.push(product);
     if (input.addonIds) this.replaceProductAddons(product.id, input.addonIds);
     return this.getProduct(product.id) ?? product;
+  },
+
+  reorderProducts(categoryId: string, orderedIds: string[]) {
+    const inCategory = products.filter((item) => item.categoryId === categoryId);
+    const byId = new Map(inCategory.map((item) => [item.id, item]));
+    for (const id of orderedIds) {
+      if (!byId.has(id)) {
+        throw new Error("Um ou mais itens não pertencem a esta categoria.");
+      }
+    }
+    const unique = new Set(orderedIds);
+    const remaining = inCategory
+      .filter((item) => !unique.has(item.id))
+      .sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR"),
+      );
+    [...orderedIds, ...remaining.map((item) => item.id)].forEach((id, index) => {
+      const product = byId.get(id);
+      if (product) product.sortOrder = index;
+    });
+    return this.listProductsPage(1, Math.max(inCategory.length, 50), {
+      categoryId,
+    });
   },
 
   updateProduct(
