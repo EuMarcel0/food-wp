@@ -171,7 +171,7 @@ function crustNames(extras) {
  * }} input
  */
 export function buildReceiptEscPos(input) {
-  const columns = Math.min(48, Math.max(32, Number(input.columns) || 42));
+  const columns = Math.min(48, Math.max(32, Number(input.columns) || 48));
   const store = input.store ?? {};
   const order = input.order ?? {};
   const items = Array.isArray(order.items) ? order.items : [];
@@ -181,51 +181,133 @@ export function buildReceiptEscPos(input) {
     chunks.push(encodeText(`${text}\n`));
   };
 
-  // init + negrito + fonte 2x (largura e altura) — proporcional, sem line spacing extra
+  const setBold = (on) => {
+    chunks.push(Buffer.from([ESC, 0x45, on ? 1 : 0]));
+  };
+
+  const setSize = (width, height) => {
+    const w = Math.min(7, Math.max(0, width | 0));
+    const h = Math.min(7, Math.max(0, height | 0));
+    chunks.push(Buffer.from([GS, 0x21, (w << 4) | h]));
+  };
+
+  /** Label em negrito + valor normal (quebra linhas longas). */
+  const emitField = (label, value) => {
+    const v = String(value ?? "").trim();
+    if (!v) return;
+    const prefix = `${label}: `;
+    setBold(true);
+    chunks.push(encodeText(prefix));
+    setBold(false);
+    const firstCols = Math.max(4, columns - prefix.length);
+    const words = v.split(/\s+/).filter(Boolean);
+    let current = "";
+    let first = true;
+    const flush = () => {
+      if (!current) return;
+      if (first) {
+        chunks.push(encodeText(`${current}\n`));
+        first = false;
+      } else {
+        emit(current);
+      }
+      current = "";
+    };
+    for (const word of words) {
+      const limit = first ? firstCols : columns;
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= limit) {
+        current = next;
+        continue;
+      }
+      flush();
+      if (word.length <= columns) {
+        current = word;
+      } else {
+        for (let i = 0; i < word.length; i += columns) {
+          const slice = word.slice(i, i + columns);
+          if (first) {
+            chunks.push(encodeText(`${slice}\n`));
+            first = false;
+          } else {
+            emit(slice);
+          }
+        }
+      }
+    }
+    flush();
+    if (first) chunks.push(encodeText("\n"));
+  };
+
+  /** Linha esquerda/direita: label bold, valor normal. */
+  const emitAmountLine = (label, amountCents, { strong = false } = {}) => {
+    const right = formatBRL(amountCents);
+    const left = String(label);
+    const gap = 1;
+    const maxLeft = columns - right.length - gap;
+    const clipped =
+      left.length <= maxLeft
+        ? left
+        : `${left.slice(0, Math.max(0, maxLeft - 1))}.`;
+    const spaces = Math.max(gap, columns - clipped.length - right.length);
+    setBold(true);
+    chunks.push(encodeText(clipped));
+    setBold(false);
+    if (strong) setBold(true);
+    chunks.push(encodeText(`${" ".repeat(spaces)}${right}\n`));
+    if (strong) setBold(false);
+  };
+
+  const section = (label) => {
+    setBold(true);
+    emit(sectionTitle(columns, label));
+    setBold(false);
+  };
+
+  // Init: fonte A (mais legível), tamanho 1x — o 2x deixava tudo “quadrado” e enorme.
+  // Térmicas não carregam fonte TrueType; tamanho nativo = traço mais limpo.
   chunks.push(Buffer.from([ESC, 0x40]));
-  chunks.push(Buffer.from([ESC, 0x45, 1])); // bold on
-  chunks.push(Buffer.from([GS, 0x21, 0x11])); // double width + double height
-  // Com largura dupla, cabem ~metade dos caracteres por linha.
-  const textColumns = Math.max(16, Math.floor(columns / 2));
-  const section = (label) => emit(sectionTitle(textColumns, label));
+  chunks.push(Buffer.from([ESC, 0x4d, 0])); // Font A
+  setSize(0, 0);
+  setBold(false);
 
-  // ~60px de margem no topo (alimentação em branco)
+  // ~60px de margem no topo
   emit("");
   emit("");
   emit("");
 
+  // Cabeçalho: nome um pouco maior (só altura 2x), sem negrito global
   chunks.push(Buffer.from([ESC, 0x61, 1])); // center
+  setSize(0, 1);
+  setBold(true);
   emit(store.name || "Estabelecimento");
+  setBold(false);
+  setSize(0, 0);
   if (store.legalName) emit(String(store.legalName));
-  // CNPJ em tamanho normal — largura dupla truncava o formatado (ex.: .../0001.).
-  chunks.push(Buffer.from([GS, 0x21, 0x00]));
-  chunks.push(Buffer.from([ESC, 0x45, 0]));
   const cnpj = formatCnpj(store.cnpj);
   if (cnpj) emit(`CNPJ ${cnpj}`);
 
-  chunks.push(Buffer.from([ESC, 0x45, 1]));
-  chunks.push(Buffer.from([GS, 0x21, 0x11]));
   chunks.push(Buffer.from([ESC, 0x61, 0])); // left
   emit("");
   section("Pedido");
-  emit(`Pedido #${order.code ?? ""}`);
-  emit(formatDate(order.createdAt));
+  emitField("Pedido", `#${order.code ?? ""}`);
+  emitField("Data", formatDate(order.createdAt));
 
   emit("");
   section("Cliente");
   const customerName =
     String(order.contactName ?? order.customerName ?? "").trim() ||
     "Cliente";
-  emit(customerName);
+  emitField("Nome", customerName);
   const phone = formatPhone(order.customerPhone);
-  if (phone) emit(phone);
+  if (phone) emitField("Telefone", phone);
   const fulfillment = order.fulfillment === "delivery" ? "Entrega" : "Retirada";
-  emit(`Tipo: ${fulfillment}`);
+  emitField("Tipo", fulfillment);
   if (order.fulfillment === "delivery" && order.neighborhoodName) {
-    emit(`Bairro: ${order.neighborhoodName}`);
+    emitField("Bairro", order.neighborhoodName);
   }
   if (order.fulfillment === "delivery" && order.addressText) {
-    for (const row of wrap(String(order.addressText), textColumns)) emit(row);
+    emitField("Endereco", order.addressText);
   }
 
   emit("");
@@ -234,19 +316,23 @@ export function buildReceiptEscPos(input) {
     const qty = Number(item.quantity) || 1;
     const unit = Number(item.unitPriceCents) || 0;
     const total = qty * unit;
-    const title = `${qty}x ${item.name || "Item"}`;
-    for (const row of wrap(title, textColumns)) emit(row);
-    emit(line(textColumns, `(un ${formatBRL(unit)})`, formatBRL(total)));
+    // Título do item em negrito; preço unitário/total em normal
+    setBold(true);
+    for (const row of wrap(`${qty}x ${item.name || "Item"}`, columns)) {
+      emit(row);
+    }
+    setBold(false);
+    emit(line(columns, `(un ${formatBRL(unit)})`, formatBRL(total)));
     if (item.notes) {
-      for (const row of wrap(`obs.: ${item.notes}`, textColumns)) emit(row);
+      for (const row of wrap(`obs.: ${item.notes}`, columns)) emit(row);
     }
     const crust = crustNames(item.extras);
     if (crust.length) {
-      for (const row of wrap(`Borda: ${crust.join(", ")}`, textColumns)) emit(row);
+      for (const row of wrap(`Borda: ${crust.join(", ")}`, columns)) emit(row);
     }
     const addons = addonNames(item.extras);
     if (addons.length) {
-      for (const row of wrap(`Adicionais: ${addons.join(", ")}`, textColumns)) {
+      for (const row of wrap(`Adicionais: ${addons.join(", ")}`, columns)) {
         emit(row);
       }
     }
@@ -263,15 +349,15 @@ export function buildReceiptEscPos(input) {
     (order.paymentMethod
       ? PAYMENT[order.paymentMethod] || String(order.paymentMethod)
       : "");
-  if (payment) emit(`Forma: ${payment}`);
-  emit(line(textColumns, "Subtotal", formatBRL(order.subtotalCents)));
+  if (payment) emitField("Forma", payment);
+  emitAmountLine("Subtotal", order.subtotalCents);
   if (order.fulfillment === "delivery") {
     const feeLabel = order.neighborhoodName
       ? `Taxa (${order.neighborhoodName})`
       : "Taxa de entrega";
-    emit(line(textColumns, feeLabel, formatBRL(order.deliveryFeeCents)));
+    emitAmountLine(feeLabel, order.deliveryFeeCents);
   }
-  emit(line(textColumns, "TOTAL", formatBRL(order.totalCents)));
+  emitAmountLine("TOTAL", order.totalCents, { strong: true });
 
   if (order.paymentMethod === "cash" && order.changeForCents != null) {
     const changeFor = Number(order.changeForCents) || 0;
@@ -285,24 +371,23 @@ export function buildReceiptEscPos(input) {
   if (order.notes) {
     emit("");
     section("Observacoes");
-    for (const row of wrap(String(order.notes), textColumns)) emit(row);
+    for (const row of wrap(String(order.notes), columns)) emit(row);
   }
 
   if (store.receiptFooter) {
     emit("");
     chunks.push(Buffer.from([ESC, 0x61, 1]));
-    for (const row of wrap(String(store.receiptFooter), textColumns)) emit(row);
+    for (const row of wrap(String(store.receiptFooter), columns)) emit(row);
     chunks.push(Buffer.from([ESC, 0x61, 0]));
   }
 
   emit("");
   chunks.push(Buffer.from([ESC, 0x61, 1]));
-  chunks.push(Buffer.from([GS, 0x21, 0x00])); // normal size for disclaimer
+  setSize(0, 0);
+  setBold(false);
   for (const row of wrap(FISCAL_DISCLAIMER, columns)) emit(row);
   chunks.push(Buffer.from([ESC, 0x61, 0]));
-  chunks.push(Buffer.from([ESC, 0x45, 0])); // bold off
 
-  // ~60px de margem na base antes do corte
   emit("");
   emit("");
   emit("");

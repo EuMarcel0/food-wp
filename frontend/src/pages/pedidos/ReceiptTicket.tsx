@@ -13,13 +13,6 @@ import type { Order, Store } from "../../types";
 
 const FISCAL_DISCLAIMER = "Não é válido como documento fiscal.";
 
-function receiptCustomerLine(order: Order) {
-  const name = order.customerName?.trim();
-  const phone = formatPhoneDisplay(order.customerPhone);
-  if (name && phone) return `${name} · ${phone}`;
-  return name || phone || "Cliente";
-}
-
 function receiptNeighborhood(order: Order, store?: Store) {
   const saved = order.neighborhoodName?.trim();
   if (saved) return saved;
@@ -42,10 +35,10 @@ function SectionTitle({ label }: { label: string }) {
         alignItems: "center",
         gap: 8,
         margin: "10px 0 6px",
-        fontWeight: 800,
+        fontWeight: 700,
         letterSpacing: 0.2,
         textTransform: "uppercase",
-        fontSize: 14,
+        fontSize: 12,
       }}
     >
       <span
@@ -61,18 +54,46 @@ function SectionTitle({ label }: { label: string }) {
   );
 }
 
-function Line({ left, right, strong }: { left: string; right?: string; strong?: boolean }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ marginBottom: 3, fontWeight: 400, lineHeight: 1.35 }}>
+      <span style={{ fontWeight: 700 }}>{label}: </span>
+      <span style={{ fontWeight: 400 }}>{children}</span>
+    </div>
+  );
+}
+
+function Line({
+  left,
+  right,
+  strong,
+  muted,
+}: {
+  left: string;
+  right?: string;
+  strong?: boolean;
+  /** Preço unitário / linhas secundárias — sem negrito no label. */
+  muted?: boolean;
+}) {
   return (
     <div
       style={{
         display: "flex",
         alignItems: "baseline",
         gap: 8,
-        fontWeight: strong ? 800 : 700,
+        fontWeight: 400,
         marginBottom: 2,
       }}
     >
-      <span style={{ minWidth: 0, wordBreak: "break-word" }}>{left}</span>
+      <span
+        style={{
+          minWidth: 0,
+          wordBreak: "break-word",
+          fontWeight: muted ? 400 : 700,
+        }}
+      >
+        {left}
+      </span>
       {right ? (
         <>
           <span
@@ -84,7 +105,15 @@ function Line({ left, right, strong }: { left: string; right?: string; strong?: 
               marginBottom: 3,
             }}
           />
-          <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{right}</span>
+          <span
+            style={{
+              flexShrink: 0,
+              fontVariantNumeric: "tabular-nums",
+              fontWeight: strong ? 700 : 400,
+            }}
+          >
+            {right}
+          </span>
         </>
       ) : null}
     </div>
@@ -93,7 +122,9 @@ function Line({ left, right, strong }: { left: string; right?: string; strong?: 
 
 function Block({ children }: { children: ReactNode }) {
   return (
-    <div style={{ display: "block", marginBottom: 4 }}>{children}</div>
+    <div style={{ display: "block", marginBottom: 4, fontWeight: 400 }}>
+      {children}
+    </div>
   );
 }
 
@@ -105,6 +136,9 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
   const items = order.items ?? [];
   const payment = orderPaymentLabel(order);
   const neighborhood = receiptNeighborhood(order, store);
+  const customerName =
+    order.contactName?.trim() || order.customerName?.trim() || "Cliente";
+  const phone = formatPhoneDisplay(order.customerPhone);
 
   return (
     <article
@@ -114,36 +148,49 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         maxWidth: "100%",
         background: "#fff",
         color: "#111",
-        fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace',
-        fontSize: 16,
-        fontWeight: 700,
+        fontFamily:
+          '"Segoe UI", "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+        fontSize: 12,
+        fontWeight: 400,
         padding: "60px 8px 60px",
         boxSizing: "border-box",
+        lineHeight: 1.35,
       }}
     >
       <header style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: 0.3 }}>{name}</div>
-        {legalName ? <div style={{ marginTop: 4 }}>{legalName}</div> : null}
-        {cnpj ? <div style={{ marginTop: 2 }}>CNPJ {cnpj}</div> : null}
+        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
+          {name}
+        </div>
+        {legalName ? (
+          <div style={{ marginTop: 2, fontWeight: 400, fontSize: 11 }}>
+            {legalName}
+          </div>
+        ) : null}
+        {cnpj ? (
+          <div style={{ marginTop: 2, fontWeight: 400, fontSize: 11 }}>
+            CNPJ {cnpj}
+          </div>
+        ) : null}
       </header>
 
       <SectionTitle label="Pedido" />
       <section>
-        <Block>
-          <div style={{ fontSize: 18, fontWeight: 800 }}>Pedido #{order.code}</div>
-        </Block>
-        <Block>{formatReceiptDate(order.createdAt)}</Block>
+        <Field label="Pedido">#{order.code}</Field>
+        <Field label="Data">{formatReceiptDate(order.createdAt)}</Field>
       </section>
 
       <SectionTitle label="Cliente" />
       <section>
-        <Block>{receiptCustomerLine(order)}</Block>
-        <Block>Tipo: {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}</Block>
-        {neighborhood ? <Block>Bairro: {neighborhood}</Block> : null}
+        <Field label="Nome">{customerName}</Field>
+        {phone ? <Field label="Telefone">{phone}</Field> : null}
+        <Field label="Tipo">
+          {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
+        </Field>
+        {neighborhood ? <Field label="Bairro">{neighborhood}</Field> : null}
         {order.fulfillment === "delivery" && order.addressText ? (
-          <Block>
-            <div style={{ whiteSpace: "pre-wrap" }}>{order.addressText}</div>
-          </Block>
+          <Field label="Endereço">
+            <span style={{ whiteSpace: "pre-wrap" }}>{order.addressText}</span>
+          </Field>
         ) : null}
       </section>
 
@@ -160,15 +207,50 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
                 key={item.id ?? `${item.name}-${index}`}
                 style={{ marginBottom: 10 }}
               >
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                  {item.quantity}x {item.name}
+                </div>
                 <Line
-                  left={`${item.quantity}x ${item.name} (un ${unit})`}
+                  left={`(un ${unit})`}
                   right={formatBRL(lineTotal)}
+                  muted
                 />
                 {item.notes ? (
-                  <div style={{ paddingLeft: 8, marginTop: 2 }}>obs.: {item.notes}</div>
+                  <div
+                    style={{
+                      paddingLeft: 8,
+                      marginTop: 2,
+                      fontWeight: 400,
+                      fontSize: 11,
+                    }}
+                  >
+                    obs.: {item.notes}
+                  </div>
                 ) : null}
-                {crust ? <div style={{ paddingLeft: 8, marginTop: 2 }}>{crust}</div> : null}
-                {addons ? <div style={{ paddingLeft: 8, marginTop: 2 }}>{addons}</div> : null}
+                {crust ? (
+                  <div
+                    style={{
+                      paddingLeft: 8,
+                      marginTop: 2,
+                      fontWeight: 400,
+                      fontSize: 11,
+                    }}
+                  >
+                    {crust}
+                  </div>
+                ) : null}
+                {addons ? (
+                  <div
+                    style={{
+                      paddingLeft: 8,
+                      marginTop: 2,
+                      fontWeight: 400,
+                      fontSize: 11,
+                    }}
+                  >
+                    {addons}
+                  </div>
+                ) : null}
               </div>
             );
           })
@@ -179,7 +261,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
 
       <SectionTitle label="Pagamento" />
       <section>
-        {payment ? <Block>Forma: {payment}</Block> : null}
+        {payment ? <Field label="Forma">{payment}</Field> : null}
         <Line left="Subtotal" right={formatBRL(order.subtotalCents)} />
         {order.fulfillment === "delivery" ? (
           <Line
@@ -189,7 +271,7 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         ) : null}
         <Line left="TOTAL" right={formatBRL(order.totalCents)} strong />
         {order.paymentMethod === "cash" && order.changeForCents != null ? (
-          <div style={{ marginTop: 6 }}>
+          <div style={{ marginTop: 6, fontWeight: 400 }}>
             {cashChangeLabel(order.changeForCents, order.totalCents)}
           </div>
         ) : null}
@@ -199,7 +281,9 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
         <>
           <SectionTitle label="Observações" />
           <footer>
-            <div style={{ whiteSpace: "pre-wrap" }}>{order.notes.trim()}</div>
+            <div style={{ whiteSpace: "pre-wrap", fontWeight: 400 }}>
+              {order.notes.trim()}
+            </div>
           </footer>
         </>
       ) : null}
@@ -210,6 +294,8 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
             marginTop: 12,
             textAlign: "center",
             whiteSpace: "pre-wrap",
+            fontWeight: 400,
+            fontSize: 11,
           }}
         >
           {footer}
@@ -222,8 +308,8 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
           paddingTop: 8,
           borderTop: "1px dashed #111",
           textAlign: "center",
-          fontSize: 13,
-          fontWeight: 700,
+          fontSize: 11,
+          fontWeight: 400,
         }}
       >
         {FISCAL_DISCLAIMER}
