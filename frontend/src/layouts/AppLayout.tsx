@@ -88,6 +88,17 @@ export function AppLayout() {
   const isConversasMobile = isMobile && isConversasPage;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
+  const [mobileWaChatOpen, setMobileWaChatOpen] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () =>
+      setMobileWaChatOpen(root.classList.contains("mobile-wa-chat-open"));
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
   const storeQuery = useQuery({
     queryKey: queryKeys.store,
     queryFn: api.store
@@ -227,7 +238,10 @@ export function AppLayout() {
         )}
         <Layout className='h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-food-bg'>
           <Layout.Header
-            className='flex !h-11 shrink-0 items-center justify-between gap-1.5 !leading-none backdrop-blur-md'
+            className={cn(
+              "flex !h-11 shrink-0 items-center justify-between gap-1.5 !leading-none backdrop-blur-md",
+              mobileWaChatOpen && "max-lg:!hidden",
+            )}
             style={{ borderBottom: `1px solid ${token.colorBorder}`, paddingInline: 8, height: 44, lineHeight: "44px" }}
           >
             <div className='flex min-w-0 items-center gap-1.5'>

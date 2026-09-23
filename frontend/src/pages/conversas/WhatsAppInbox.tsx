@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Badge, Button, Empty, Input, Popover, Spin, Tag } from "antd";
+import { Alert, Avatar, Badge, Button, Dropdown, Empty, Input, Popover, Spin, Tag } from "antd";
 import {
   ArrowLeftOutlined,
   CheckOutlined,
   CloseCircleOutlined,
+  MoreOutlined,
   RobotOutlined,
   SearchOutlined,
   SendOutlined,
@@ -231,8 +232,10 @@ export function WhatsAppInbox({
     if (isDesktop || !selectedId) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.classList.add("mobile-wa-chat-open");
     return () => {
       document.body.style.overflow = previous;
+      document.documentElement.classList.remove("mobile-wa-chat-open");
     };
   }, [isDesktop, selectedId]);
 
@@ -723,7 +726,7 @@ export function WhatsAppInbox({
           "flex min-h-0 flex-col bg-[#efeae2] dark:bg-[#0b141a]",
           selectedId || isDesktop ? "flex" : "hidden",
           !selectedId && "hidden lg:flex",
-          !isDesktop && selectedId && "fixed inset-x-0 top-0 z-50 h-[100dvh] max-h-[100dvh] max-lg:flex"
+          !isDesktop && selectedId && "fixed inset-x-0 top-0 z-[100] h-[100dvh] max-h-[100dvh] max-lg:flex"
         )}
       >
         {!selected ? (
@@ -734,8 +737,8 @@ export function WhatsAppInbox({
           </div>
         ) : (
           <>
-            <header className='sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b border-food-border bg-food-card py-2.5 max-lg:gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:px-3 lg:py-2.5'>
-              <div className='flex min-w-0 items-center gap-2 px-3 lg:flex-1 lg:px-0'>
+            <header className='sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-food-border bg-food-card px-3 py-2.5 max-lg:justify-between lg:gap-3'>
+              <div className='flex min-w-0 flex-1 items-center gap-2'>
                 <Button
                   type='text'
                   className='shrink-0 lg:!hidden'
@@ -762,44 +765,74 @@ export function WhatsAppInbox({
                 </div>
               </div>
               {!readOnly ? (
-                <div className='flex shrink-0 flex-wrap items-center gap-1.5 px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0 sm:gap-2'>
-                  {selected.handoffMode === "human" ? (
+                <>
+                  <div className='hidden shrink-0 items-center gap-2 lg:flex'>
+                    {selected.handoffMode === "human" ? (
+                      <Button
+                        size='small'
+                        loading={busyId === selected.id}
+                        onClick={() => onRelease?.(selected)}
+                      >
+                        Devolver ao bot
+                      </Button>
+                    ) : (
+                      <Button
+                        type='primary'
+                        size='small'
+                        loading={busyId === selected.id}
+                        onClick={() => onTakeover?.(selected)}
+                      >
+                        Assumir
+                      </Button>
+                    )}
                     <Button
                       size='small'
+                      danger
+                      icon={<CloseCircleOutlined />}
                       loading={busyId === selected.id}
-                      onClick={() => onRelease?.(selected)}
-                      className='max-lg:!px-2 max-lg:!text-xs'
+                      onClick={() => onClose?.(selected)}
                     >
-                      <span className='hidden sm:inline'>Devolver ao bot</span>
-                      <span className='sm:hidden'>Devolver</span>
+                      Encerrar atendimento
                     </Button>
-                  ) : (
-                    <Button
-                      type='primary'
-                      size='small'
-                      loading={busyId === selected.id}
-                      onClick={() => onTakeover?.(selected)}
-                      className='max-lg:!px-2 max-lg:!text-xs'
-                    >
-                      Assumir
-                    </Button>
-                  )}
-                  <Button
-                    size='small'
-                    danger
-                    icon={<CloseCircleOutlined />}
-                    loading={busyId === selected.id}
-                    onClick={() => onClose?.(selected)}
-                    className='max-lg:!px-2 max-lg:!text-xs'
+                  </div>
+                  <Dropdown
+                    trigger={["click"]}
+                    placement='bottomRight'
+                    menu={{
+                      items: [
+                        selected.handoffMode === "human"
+                          ? {
+                              key: "release",
+                              label: "Devolver ao bot",
+                              disabled: busyId === selected.id,
+                              onClick: () => onRelease?.(selected),
+                            }
+                          : {
+                              key: "takeover",
+                              label: "Assumir",
+                              disabled: busyId === selected.id,
+                              onClick: () => onTakeover?.(selected),
+                            },
+                        {
+                          key: "close",
+                          label: "Encerrar",
+                          danger: true,
+                          disabled: busyId === selected.id,
+                          onClick: () => onClose?.(selected),
+                        },
+                      ],
+                    }}
                   >
-                    <span className='hidden sm:inline'>Encerrar atendimento</span>
-                    <span className='sm:hidden'>Encerrar</span>
-                  </Button>
-                </div>
+                    <Button
+                      type='text'
+                      className='shrink-0 lg:!hidden'
+                      icon={<MoreOutlined />}
+                      aria-label='Ações da conversa'
+                    />
+                  </Dropdown>
+                </>
               ) : (
-                <div className='flex shrink-0 items-center px-3 max-lg:w-full max-lg:border-t max-lg:border-food-border max-lg:pt-2 lg:px-0'>
-                  <Tag className='!m-0'>Somente leitura</Tag>
-                </div>
+                <Tag className='!m-0 shrink-0'>Somente leitura</Tag>
               )}
             </header>
 
