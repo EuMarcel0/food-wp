@@ -32,17 +32,20 @@ function canAutoPrintHere() {
 
 /**
  * Imprime um pedido aceito via claim no servidor (evita double-print multi-PC).
- * Também usada pelo drain da fila.
+ * Se o print-agent já estiver pollando a fila (`queuePolling`), o painel NÃO
+ * imprime — só o agente imprime (evita 2 cupons no mesmo pedido).
  */
 export async function printAfterAutoAccept(orderId: string, orderCode?: string) {
   if (!orderId || !canAutoPrintHere()) return;
 
+  let health;
   try {
-    await fetchPrintAgentHealth();
+    health = await fetchPrintAgentHealth();
   } catch {
     // Agente offline: a fila no print-agent (se configurada) ou outro tick retenta.
     return;
   }
+  if (health.queuePolling) return;
 
   const claimedBy = getPrintStationId();
   let claimed = false;
@@ -73,18 +76,25 @@ export async function printAfterAutoAccept(orderId: string, orderCode?: string) 
   }
 }
 
-/** Consome a fila server-side (backlog + pedidos novos). */
+/**
+ * Mantém o agente sincronizado com a API.
+ * Só imprime pelo painel se o agente NÃO estiver pollando a fila.
+ */
 export async function drainAutoPrintQueue() {
   if (draining || !canAutoPrintHere()) return;
   draining = true;
   try {
+    let health;
     try {
-      await fetchPrintAgentHealth();
+      health = await fetchPrintAgentHealth();
     } catch {
       return;
     }
     // Garante que o agente saiba a URL da API (poll próprio, sem painel).
     await pushApiBaseToAgent().catch(() => undefined);
+
+    // Agente já consome a fila — painel só configura, não imprime.
+    if (health.queuePolling) return;
 
     const { items } = await api.orderPrintQueue(true);
     for (const item of items) {

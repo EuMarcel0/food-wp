@@ -3632,42 +3632,17 @@ export async function listAutoPrintQueue(limit = 20) {
     }));
 }
 
-/** Reserva exclusiva do cupom (multi-PC / agente + painel). */
+/** Reserva exclusiva do cupom (multi-PC / agente + painel). Claim atômico. */
 export async function claimAutoPrint(id: string, claimedBy: string) {
   const by = claimedBy.trim().slice(0, 120) || "station";
   const supabase = getSupabase();
   if (!supabase) return memoryStore.claimAutoPrint(id, by);
 
-  const { data: current, error: readError } = await supabase
-    .from("orders")
-    .select(
-      "id, code, auto_print_requested_at, auto_print_claimed_at, auto_print_claimed_by, auto_printed_at",
-    )
-    .eq("id", id)
-    .maybeSingle();
-
-  if (readError) {
-    if (readError.message?.includes("auto_print_")) {
-      throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
-    }
-    throw new Error(readError.message);
-  }
-  if (!current?.auto_print_requested_at || current.auto_printed_at) {
-    return null;
-  }
-  if (
-    current.auto_print_claimed_by &&
-    current.auto_print_claimed_by !== by &&
-    !isAutoPrintClaimStale(
-      current.auto_print_claimed_at
-        ? String(current.auto_print_claimed_at)
-        : null,
-    )
-  ) {
-    return null;
-  }
-
   const now = new Date().toISOString();
+  const staleIso = new Date(Date.now() - AUTO_PRINT_CLAIM_TTL_MS).toISOString();
+  // Valores do filtro .or não podem ter vírgula; aspas protegem ':' do station id.
+  const safeBy = by.replace(/[",]/g, "");
+
   const { data, error } = await supabase
     .from("orders")
     .update({
@@ -3678,6 +3653,9 @@ export async function claimAutoPrint(id: string, claimedBy: string) {
     .eq("id", id)
     .is("auto_printed_at", null)
     .not("auto_print_requested_at", "is", null)
+    .or(
+      `auto_print_claimed_at.is.null,auto_print_claimed_by.eq."${safeBy}",auto_print_claimed_at.lt.${staleIso}`,
+    )
     .select("*, customers(wa_phone, name), order_items(*)")
     .maybeSingle();
 

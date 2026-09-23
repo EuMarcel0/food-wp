@@ -15,6 +15,21 @@ function encodeText(text) {
   return Buffer.from(normalized, "ascii");
 }
 
+/** CNPJ só dígitos → 00.000.000/0000-00 (igual ao painel). */
+function formatCnpj(value) {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 14);
+  if (!digits) return "";
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  }
+  if (digits.length <= 12) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  }
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
 function push(...parts) {
   return Buffer.concat(parts.map((part) => (Buffer.isBuffer(part) ? part : Buffer.from(part))));
 }
@@ -182,8 +197,14 @@ export function buildReceiptEscPos(input) {
   chunks.push(Buffer.from([ESC, 0x61, 1])); // center
   emit(store.name || "Estabelecimento");
   if (store.legalName) emit(String(store.legalName));
-  if (store.cnpj) emit(`CNPJ ${store.cnpj}`);
+  // CNPJ em tamanho normal — largura dupla truncava o formatado (ex.: .../0001.).
+  chunks.push(Buffer.from([GS, 0x21, 0x00]));
+  chunks.push(Buffer.from([ESC, 0x45, 0]));
+  const cnpj = formatCnpj(store.cnpj);
+  if (cnpj) emit(`CNPJ ${cnpj}`);
 
+  chunks.push(Buffer.from([ESC, 0x45, 1]));
+  chunks.push(Buffer.from([GS, 0x21, 0x11]));
   chunks.push(Buffer.from([ESC, 0x61, 0])); // left
   emit("");
   section("Pedido");
