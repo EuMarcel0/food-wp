@@ -726,6 +726,7 @@ function isOrderInProgress(state: ConversationState) {
 /**
  * Após devolver o atendimento ao bot: avisa o cliente e reenvia a etapa
  * em que o fluxo parou (com botões/lista quando houver).
+ * Fora do horário de funcionamento: só devolve ao bot — sem mensagens.
  */
 export async function resumeAfterHumanHandoff(input: {
   phone: string;
@@ -734,6 +735,10 @@ export async function resumeAfterHumanHandoff(input: {
   context: ConversationContext;
 }) {
   const store = await getStore();
+  if (!isStoreOpen(store.businessHours, store.timezone)) {
+    return;
+  }
+
   const latest = await findLatestOrder(input.customerId);
   const afterDelivered =
     input.state === "welcome" && !(input.context.cart?.length ?? 0) && latest?.status === "delivered";
