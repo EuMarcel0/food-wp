@@ -130,6 +130,8 @@ export type Order = {
   totalCents: number;
   prepMinutes?: number | null;
   createdAt: string;
+  /** Preenchido quando o cupom automático foi impresso na cozinha. */
+  autoPrintedAt?: string | null;
   items?: OrderItem[];
 };
 

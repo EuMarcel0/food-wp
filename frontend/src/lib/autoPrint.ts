@@ -9,10 +9,12 @@ import {
   pushApiBaseToAgent,
 } from "./printAgent";
 import { toast } from "./toast";
+import { playKitchenPrintSound } from "./notifySound";
 
 const AUTO_ACTOR = "Aceite automático";
 
 let draining = false;
+const watchingPrint = new Set<string>();
 
 export function isAutoAcceptNotification(item: {
   type: string;
@@ -30,6 +32,35 @@ function canAutoPrintHere() {
   return isAutoPrintStation() && Boolean(getPrintAgentToken());
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/**
+ * Quando o print-agent imprime sozinho, o painel ainda toca o alerta
+ * (serviço Windows às vezes não emite beep na sessão do usuário).
+ */
+async function watchPrintedThenAlert(orderId: string) {
+  if (!orderId || watchingPrint.has(orderId)) return;
+  watchingPrint.add(orderId);
+  try {
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      await sleep(400);
+      try {
+        const order = await api.order(orderId, true);
+        if (order.autoPrintedAt) {
+          playKitchenPrintSound();
+          return;
+        }
+      } catch {
+        // ignore — tenta de novo
+      }
+    }
+  } finally {
+    watchingPrint.delete(orderId);
+  }
+}
+
 /**
  * Imprime um pedido aceito via claim no servidor (evita double-print multi-PC).
  * Se o print-agent já estiver pollando a fila (`queuePolling`), o painel NÃO
@@ -45,7 +76,10 @@ export async function printAfterAutoAccept(orderId: string, orderCode?: string) 
     // Agente offline: a fila no print-agent (se configurada) ou outro tick retenta.
     return;
   }
-  if (health.queuePolling) return;
+  if (health.queuePolling) {
+    void watchPrintedThenAlert(orderId);
+    return;
+  }
 
   const claimedBy = getPrintStationId();
   let claimed = false;
@@ -61,6 +95,7 @@ export async function printAfterAutoAccept(orderId: string, orderCode?: string) 
       },
     });
     await api.completeOrderPrint(orderId, claimedBy, true);
+    playKitchenPrintSound();
     toast.success(`Pedido #${order.code} enviado à impressora.`);
   } catch (error) {
     if (claimed) {

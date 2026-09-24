@@ -1,5 +1,5 @@
 let context: AudioContext | null = null;
-let pending: "order" | "message" | null = null;
+let pending: "order" | "message" | "kitchen" | null = null;
 let listenersBound = false;
 
 function getContext() {
@@ -69,15 +69,58 @@ function playMessageTone(audio: AudioContext) {
   tone.stop(now + 0.28);
 }
 
+/** Alerta da cozinha: alto, curto e repetido (pedido impresso na estação). */
+function playKitchenPrintTone(audio: AudioContext) {
+  const now = audio.currentTime;
+  const pulses: Array<{ at: number; freq: number; dur: number }> = [
+    { at: 0, freq: 980, dur: 0.18 },
+    { at: 0.22, freq: 1310, dur: 0.2 },
+    { at: 0.48, freq: 1560, dur: 0.28 },
+    { at: 0.9, freq: 1310, dur: 0.18 },
+    { at: 1.12, freq: 1760, dur: 0.42 },
+  ];
+
+  for (const pulse of pulses) {
+    const start = now + pulse.at;
+    const end = start + pulse.dur;
+    const gain = audio.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.55, start + 0.012);
+    gain.gain.setValueAtTime(0.5, end - 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    gain.connect(audio.destination);
+
+    const tone = audio.createOscillator();
+    tone.type = "square";
+    tone.frequency.setValueAtTime(pulse.freq, start);
+    tone.connect(gain);
+    tone.start(start);
+    tone.stop(end + 0.01);
+
+    const bright = audio.createOscillator();
+    const brightGain = audio.createGain();
+    brightGain.gain.setValueAtTime(0.0001, start);
+    brightGain.gain.exponentialRampToValueAtTime(0.18, start + 0.01);
+    brightGain.gain.exponentialRampToValueAtTime(0.0001, end);
+    bright.type = "triangle";
+    bright.frequency.setValueAtTime(pulse.freq * 2, start);
+    bright.connect(brightGain);
+    brightGain.connect(audio.destination);
+    bright.start(start);
+    bright.stop(end + 0.01);
+  }
+}
+
 function flushPending() {
   if (!pending || !context || !canPlay(context)) return;
   const kind = pending;
   pending = null;
   if (kind === "order") playOrderTone(context);
-  else playMessageTone(context);
+  else if (kind === "message") playMessageTone(context);
+  else playKitchenPrintTone(context);
 }
 
-async function play(kind: "order" | "message") {
+async function play(kind: "order" | "message" | "kitchen") {
   const audio = await resumeContext();
   if (!audio) return;
   if (!canPlay(audio)) {
@@ -86,7 +129,8 @@ async function play(kind: "order" | "message") {
   }
   pending = null;
   if (kind === "order") playOrderTone(audio);
-  else playMessageTone(audio);
+  else if (kind === "message") playMessageTone(audio);
+  else playKitchenPrintTone(audio);
 }
 
 export async function unlockNotifySound() {
@@ -100,6 +144,11 @@ export function playNewOrderSound() {
 
 export function playNewMessageSound() {
   void play("message");
+}
+
+/** Som alto na estação da impressora após cupom impresso. */
+export function playKitchenPrintSound() {
+  void play("kitchen");
 }
 
 export function bindNotifySoundUnlock() {

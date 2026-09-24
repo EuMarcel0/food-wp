@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { loadConfig, saveConfig } from "./config.js";
+import { playKitchenPrintAlert } from "./kitchenAlert.js";
 import { rawPrintWindows } from "./rawPrint.js";
 import { buildReceiptEscPos } from "./receipt.js";
 
@@ -136,6 +137,7 @@ async function drainPrintQueue(enqueuePrint) {
           method: "POST",
           body: JSON.stringify({ claimedBy }),
         });
+        playKitchenPrintAlert();
         console.log(`[print-queue] Pedido #${order.code} impresso`);
       } catch (error) {
         console.error(
