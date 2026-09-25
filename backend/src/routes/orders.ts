@@ -7,7 +7,9 @@ import {
   getOrderStats,
   getSalesByPaymentReport,
   listAutoPrintQueue,
+  listOrderLogs,
   listOrdersPage,
+  updateOrderItems,
   updateOrderPayment,
   updateOrderStatus,
 } from "../data/repository.js";
@@ -300,6 +302,61 @@ ordersRouter.patch("/:id/payment", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Não foi possível atualizar o pagamento.",
+    });
+    return;
+  }
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado." });
+    return;
+  }
+
+  res.json(order);
+});
+
+ordersRouter.get("/:id/logs", async (req, res) => {
+  try {
+    const order = await getOrder(String(req.params.id));
+    if (!order) {
+      res.status(404).json({ error: "Pedido não encontrado." });
+      return;
+    }
+    const items = await listOrderLogs(order.id);
+    res.json({ items });
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Falha ao carregar logs do pedido.",
+    });
+  }
+});
+
+ordersRouter.patch("/:id/items", async (req, res) => {
+  const actorName = String(req.body?.actorName ?? "").trim() || "Equipe";
+  const rawItems = Array.isArray(req.body?.items) ? req.body.items : null;
+  if (!rawItems) {
+    res.status(400).json({ error: "Envie a lista de itens." });
+    return;
+  }
+
+  const items = rawItems.map((item: Record<string, unknown>) => ({
+    id: item.id != null ? String(item.id) : undefined,
+    productId: item.productId != null ? String(item.productId) : null,
+    name: String(item.name ?? ""),
+    quantity: Number(item.quantity),
+    unitPriceCents: Number(item.unitPriceCents),
+    extras: Array.isArray(item.extras) ? item.extras : [],
+    notes: item.notes != null ? String(item.notes) : null,
+  }));
+
+  let order;
+  try {
+    order = await updateOrderItems(String(req.params.id), { items, actorName });
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar os itens.",
     });
     return;
   }

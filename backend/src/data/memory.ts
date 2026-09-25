@@ -26,6 +26,9 @@ import {
   type Fulfillment,
   type NotificationType,
   type Order,
+  type OrderItem,
+  type OrderLog,
+  type OrderLogAction,
   type OrderStatus,
   type PaymentMethod,
   type PaymentMethodKind,
@@ -271,6 +274,7 @@ const customers = new Map<string, Customer>();
 const conversations = new Map<string, Conversation>();
 const conversationMessages = new Map<string, ConversationMessage[]>();
 const orders = new Map<string, Order>();
+const orderLogs: OrderLog[] = [];
 const notifications: AppNotification[] = [];
 const notificationReads = new Set<string>();
 
@@ -1639,6 +1643,28 @@ export const memoryStore = {
       changeSummary: null,
       actorName: input.customer.name?.trim() || "Cliente WhatsApp",
     });
+    this.createOrderLog({
+      storeId: order.storeId,
+      orderId: order.id,
+      action: "order_created",
+      actorName: input.customer.name?.trim() || "Cliente WhatsApp",
+      summary: "Pedido criado",
+      beforeData: null,
+      afterData: {
+        items: (order.items ?? []).map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          notes: item.notes ?? null,
+        })),
+        subtotalCents: order.subtotalCents,
+        deliveryFeeCents: order.deliveryFeeCents,
+        totalCents: order.totalCents,
+        paymentMethod: order.paymentMethod,
+        paymentMethodLabel: order.paymentMethodLabel,
+        status: order.status,
+      },
+    });
     return order;
   },
 
@@ -1865,14 +1891,26 @@ export const memoryStore = {
       order.autoPrintClaimedBy = null;
       order.autoPrintedAt = null;
     }
-    this.createNotification({
-      type: "order_updated",
-      orderId: order.id,
-      orderCode: order.code,
-      title: `Pedido #${order.code} alterado`,
-      changeSummary: `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`,
-      actorName,
-    });
+    if (previous !== status) {
+      const summary = `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`;
+      this.createNotification({
+        type: "order_updated",
+        orderId: order.id,
+        orderCode: order.code,
+        title: `Pedido #${order.code} alterado`,
+        changeSummary: summary,
+        actorName,
+      });
+      this.createOrderLog({
+        storeId: order.storeId,
+        orderId: order.id,
+        action: "status_updated",
+        actorName,
+        summary,
+        beforeData: { status: previous },
+        afterData: { status },
+      });
+    }
     return order;
   },
 
@@ -1887,6 +1925,9 @@ export const memoryStore = {
   ) {
     const order = orders.get(id);
     if (!order) return null;
+    if (order.status === "delivered") {
+      throw new Error("Pedido entregue não pode ter a forma de pagamento alterada.");
+    }
     const PAYMENT_FALLBACK: Record<PaymentMethod, string> = {
       pix: "Pix",
       cash: "Dinheiro",
@@ -1899,6 +1940,9 @@ export const memoryStore = {
       order.paymentMethodLabel?.trim() ||
       (order.paymentMethod ? PAYMENT_FALLBACK[order.paymentMethod] : null) ||
       "—";
+    const prevMethod = order.paymentMethod;
+    const prevLabel = order.paymentMethodLabel;
+    const prevChange = order.changeForCents;
     const label =
       input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
     order.paymentMethod = input.paymentMethod;
@@ -1915,15 +1959,152 @@ export const memoryStore = {
       order.changeForCents = null;
     }
     const nextDisplay = label || PAYMENT_FALLBACK[input.paymentMethod] || input.paymentMethod;
+    if (prevDisplay !== nextDisplay) {
+      const actorName = input.actorName?.trim() || "Equipe";
+      const summary = `Pagamento: ${prevDisplay} → ${nextDisplay}`;
+      this.createNotification({
+        type: "order_updated",
+        orderId: order.id,
+        orderCode: order.code,
+        title: `Pedido #${order.code} alterado`,
+        changeSummary: summary,
+        actorName,
+      });
+      this.createOrderLog({
+        storeId: order.storeId,
+        orderId: order.id,
+        action: "payment_updated",
+        actorName,
+        summary,
+        beforeData: {
+          paymentMethod: prevMethod,
+          paymentMethodLabel: prevLabel,
+          changeForCents: prevChange,
+        },
+        afterData: {
+          paymentMethod: order.paymentMethod,
+          paymentMethodLabel: order.paymentMethodLabel,
+          changeForCents: order.changeForCents,
+        },
+      });
+    }
+    return order;
+  },
+
+  updateOrderItems(
+    id: string,
+    input: {
+      items: {
+        id?: string;
+        productId?: string | null;
+        name: string;
+        quantity: number;
+        unitPriceCents: number;
+        extras?: OrderItem["extras"];
+        notes?: string | null;
+      }[];
+      actorName?: string;
+    },
+  ) {
+    const order = orders.get(id);
+    if (!order) return null;
+    if (order.status === "delivered") {
+      throw new Error("Pedido entregue não pode ter os itens alterados.");
+    }
+    if (!input.items.length) {
+      throw new Error("O pedido precisa ter pelo menos 1 item.");
+    }
+
+    const beforeItems = (order.items ?? []).map((item) => ({ ...item }));
+    const beforeSubtotal = order.subtotalCents;
+    const beforeTotal = order.totalCents;
+
+    const normalized: OrderItem[] = input.items.map((item, index) => {
+      const quantity = Math.round(Number(item.quantity));
+      const unitPriceCents = Math.round(Number(item.unitPriceCents));
+      const name = String(item.name ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+      if (!name) throw new Error("Informe o nome de cada item.");
+      if (!Number.isFinite(quantity) || quantity < 1) {
+        throw new Error("Quantidade inválida.");
+      }
+      if (!Number.isFinite(unitPriceCents) || unitPriceCents < 0) {
+        throw new Error("Preço unitário inválido.");
+      }
+      return {
+        id: item.id || `item-${Date.now()}-${index}`,
+        name,
+        quantity,
+        unitPriceCents,
+        extras: item.extras ?? [],
+        notes: item.notes?.replace(/\s+/g, " ").trim().slice(0, 200) || null,
+      };
+    });
+
+    const subtotalCents = normalized.reduce(
+      (sum, item) => sum + item.quantity * item.unitPriceCents,
+      0,
+    );
+    order.items = normalized;
+    order.subtotalCents = subtotalCents;
+    order.totalCents = subtotalCents + order.deliveryFeeCents;
+
+    const actorName = input.actorName?.trim() || "Equipe";
+    const summary = `Itens atualizados (${beforeItems.length} → ${normalized.length})`;
     this.createNotification({
       type: "order_updated",
       orderId: order.id,
       orderCode: order.code,
       title: `Pedido #${order.code} alterado`,
-      changeSummary: `Pagamento: ${prevDisplay} → ${nextDisplay}`,
-      actorName: input.actorName?.trim() || "Equipe",
+      changeSummary: summary,
+      actorName,
+    });
+    this.createOrderLog({
+      storeId: order.storeId,
+      orderId: order.id,
+      action: "items_updated",
+      actorName,
+      summary,
+      beforeData: {
+        items: beforeItems,
+        subtotalCents: beforeSubtotal,
+        totalCents: beforeTotal,
+        deliveryFeeCents: order.deliveryFeeCents,
+      },
+      afterData: {
+        items: normalized,
+        subtotalCents: order.subtotalCents,
+        totalCents: order.totalCents,
+        deliveryFeeCents: order.deliveryFeeCents,
+      },
     });
     return order;
+  },
+
+  createOrderLog(input: {
+    storeId: string;
+    orderId: string;
+    action: OrderLogAction;
+    actorName: string;
+    summary: string;
+    beforeData?: Record<string, unknown> | null;
+    afterData?: Record<string, unknown> | null;
+  }): OrderLog {
+    const log: OrderLog = {
+      id: `olog-${Date.now()}-${orderLogs.length}`,
+      orderId: input.orderId,
+      action: input.action,
+      actorName: input.actorName.trim() || "Equipe",
+      summary: input.summary.slice(0, 500),
+      beforeData: input.beforeData ?? null,
+      afterData: input.afterData ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    orderLogs.unshift(log);
+    return log;
+  },
+
+  listOrderLogs(orderId: string) {
+    return orderLogs.filter((log) => log.orderId === orderId);
   },
 
   listAutoPrintQueue(limit = 20) {

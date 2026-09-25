@@ -1,5 +1,5 @@
 import { Button, Tag } from "antd";
-import { FileTextOutlined } from "@ant-design/icons";
+import { FileTextOutlined, HistoryOutlined } from "@ant-design/icons";
 import { EntityCard } from "../../components/EntityCard";
 import { RowActions } from "../../components/RowActions";
 import {
@@ -23,6 +23,8 @@ export function OrderCard({
   paymentMethodsLoading,
   onChangeStatus,
   onChangePayment,
+  onEditItems,
+  onOpenLogs,
   onPreviewReceipt,
 }: {
   order: Order;
@@ -31,11 +33,14 @@ export function OrderCard({
   paymentMethodsLoading?: boolean;
   onChangeStatus: (order: Order, status: OrderStatus) => void;
   onChangePayment: (order: Order, method: StorePaymentMethod) => void;
+  onEditItems: () => void;
+  onOpenLogs: () => void;
   onPreviewReceipt: (order: Order) => void;
 }) {
   const next = nextStatus(order.status, order.fulfillment);
   const canCancel =
     order.status !== "cancelled" && order.status !== "delivered";
+  const canEditOrder = order.status !== "delivered";
 
   return (
     <EntityCard
@@ -50,9 +55,23 @@ export function OrderCard({
             icon={<FileTextOutlined />}
             onClick={() => onPreviewReceipt(order)}
           />
+          <Button
+            type="text"
+            aria-label="Logs"
+            icon={<HistoryOutlined />}
+            onClick={onOpenLogs}
+          />
           <RowActions
             disabled={order.status === "delivered"}
             items={[
+              canEditOrder
+                ? {
+                    key: "edit",
+                    label: "Editar",
+                    disabled: updating,
+                    onClick: onEditItems,
+                  }
+                : null,
               next
                 ? {
                     key: "next",
@@ -94,7 +113,7 @@ export function OrderCard({
           order={order}
           methods={paymentMethods}
           loading={paymentMethodsLoading}
-          disabled={updating}
+          disabled={updating || order.status === "delivered"}
           onChange={(method) => onChangePayment(order, method)}
         />
       </div>

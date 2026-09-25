@@ -434,3 +434,20 @@ export type NotificationsPage = {
   total: number;
   unread: number;
 };
+
+export type OrderLogAction =
+  | "order_created"
+  | "items_updated"
+  | "payment_updated"
+  | "status_updated";
+
+export type OrderLog = {
+  id: string;
+  orderId: string;
+  action: OrderLogAction;
+  actorName: string;
+  summary: string;
+  beforeData: Record<string, unknown> | null;
+  afterData: Record<string, unknown> | null;
+  createdAt: string;
+};

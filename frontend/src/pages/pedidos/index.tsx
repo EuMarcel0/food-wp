@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button, DatePicker, Input, Select, Table, Tag, Tooltip } from "antd";
-import { FileTextOutlined } from "@ant-design/icons";
+import { FileTextOutlined, HistoryOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { ListFilters } from "../../components/ListFilters";
@@ -14,9 +14,12 @@ import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { OrderCard } from "./OrderCard";
+import { OrderEditItemsModal } from "./OrderEditItemsModal";
 import { OrderItemsLeaders } from "./OrderItemsLeaders";
+import { OrderLogsModal } from "./OrderLogsModal";
 import { PrepTimeModal } from "./PrepTimeModal";
 import { ReceiptPreviewModal } from "./ReceiptPreviewModal";
+import { OrderPaymentSelect } from "./OrderPaymentSelect";
 import { api } from "../../lib/api";
 import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
@@ -38,7 +41,6 @@ import type { Order, OrderStatus, StorePaymentMethod } from "../../types";
 import { FillTable } from "../../components/FillTable";
 import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
-import { OrderPaymentSelect } from "./OrderPaymentSelect";
 
 const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
@@ -139,6 +141,8 @@ export function OrdersPage() {
   }, [queryClient]);
 
   const [prepOrder, setPrepOrder] = useState<Order | null>(null);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [logsOrder, setLogsOrder] = useState<Order | null>(null);
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -188,6 +192,32 @@ export function OrdersPage() {
     },
   });
 
+  const itemsMutation = useMutation({
+    mutationFn: ({
+      order,
+      items,
+    }: {
+      order: Order;
+      items: {
+        id?: string;
+        productId?: string | null;
+        name: string;
+        quantity: number;
+        unitPriceCents: number;
+        notes?: string | null;
+      }[];
+    }) =>
+      api.updateOrderItems(order.id, {
+        items,
+        actorName: displayName(user),
+      }),
+    onSuccess: async (updated) => {
+      toast.success(`Pedido #${updated.code}: itens atualizados`);
+      setEditOrder(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+    },
+  });
+
   function changeStatus(order: Order, next: OrderStatus) {
     if (next === "preparing") {
       setPrepOrder(order);
@@ -202,6 +232,9 @@ export function OrdersPage() {
       : null) ||
     (paymentMutation.isPending && paymentMutation.variables
       ? paymentMutation.variables.order.id
+      : null) ||
+    (itemsMutation.isPending && itemsMutation.variables
+      ? itemsMutation.variables.order.id
       : null);
 
   const pagination = serverPagination(page, limit, total, (nextPage, nextSize) => {
@@ -333,7 +366,9 @@ export function OrdersPage() {
                 order={order}
                 methods={paymentMethods}
                 loading={paymentMethodsQuery.isLoading}
-                disabled={updatingId === order.id}
+                disabled={
+                  updatingId === order.id || order.status === "delivered"
+                }
                 onChange={(method) => paymentMutation.mutate({ order, method })}
               />
             ),
@@ -364,16 +399,42 @@ export function OrdersPage() {
             render: (value: string) => formatDate(value),
           },
           {
+            title: "Logs",
+            width: 72,
+            align: "center",
+            render: (_, order) => (
+              <Tooltip title="Histórico de alterações">
+                <Button
+                  type="text"
+                  aria-label={`Logs do pedido ${order.code}`}
+                  icon={<HistoryOutlined />}
+                  onClick={() => setLogsOrder(order)}
+                />
+              </Tooltip>
+            ),
+          },
+          {
             title: "Ações",
             width: 76,
             align: "center",
             fixed: "right",
             render: (_, order) => {
               const next = nextStatus(order.status, order.fulfillment);
+              const canEditOrder = order.status !== "delivered";
+              const canCancel =
+                order.status !== "cancelled" && order.status !== "delivered";
               return (
                 <RowActions
                   disabled={order.status === "delivered"}
                   items={[
+                    canEditOrder
+                      ? {
+                          key: "edit",
+                          label: "Editar",
+                          disabled: updatingId === order.id,
+                          onClick: () => setEditOrder(order),
+                        }
+                      : null,
                     next
                       ? {
                           key: "next",
@@ -382,7 +443,7 @@ export function OrdersPage() {
                           onClick: () => changeStatus(order, next),
                         }
                       : null,
-                    order.status !== "cancelled" && order.status !== "delivered"
+                    canCancel
                       ? {
                           key: "cancel",
                           label: "Cancelar",
@@ -424,6 +485,8 @@ export function OrdersPage() {
               onChangePayment={(target, method) =>
                 paymentMutation.mutate({ order: target, method })
               }
+              onEditItems={() => setEditOrder(order)}
+              onOpenLogs={() => setLogsOrder(order)}
               onPreviewReceipt={setReceiptOrder}
             />
           ))}
@@ -434,6 +497,33 @@ export function OrdersPage() {
         store={storeQuery.data}
         open={Boolean(receiptOrder)}
         onClose={() => setReceiptOrder(null)}
+      />
+      <OrderEditItemsModal
+        order={editOrder}
+        open={Boolean(editOrder)}
+        submitting={itemsMutation.isPending}
+        onCancel={() => {
+          if (!itemsMutation.isPending) setEditOrder(null);
+        }}
+        onSave={(items) => {
+          if (!editOrder) return;
+          itemsMutation.mutate({
+            order: editOrder,
+            items: items.map((item) => ({
+              id: item.id,
+              productId: item.productId,
+              name: item.name,
+              quantity: item.quantity,
+              unitPriceCents: item.unitPriceCents,
+              notes: item.notes,
+            })),
+          });
+        }}
+      />
+      <OrderLogsModal
+        order={logsOrder}
+        open={Boolean(logsOrder)}
+        onClose={() => setLogsOrder(null)}
       />
       <PrepTimeModal
         order={prepOrder}

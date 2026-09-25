@@ -12,6 +12,7 @@ import type {
   LiveConversation,
   NotificationsPage,
   Order,
+  OrderLog,
   OrderStats,
   OrderStatus,
   Product,
@@ -486,6 +487,26 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  updateOrderItems: (
+    id: string,
+    payload: {
+      items: {
+        id?: string;
+        productId?: string | null;
+        name: string;
+        quantity: number;
+        unitPriceCents: number;
+        notes?: string | null;
+      }[];
+      actorName?: string;
+    },
+  ) =>
+    request<Order>(`/api/orders/${id}/items`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  orderLogs: (id: string) =>
+    request<{ items: OrderLog[] }>(`/api/orders/${id}/logs`),
   notifications: (
     reader: string,
     silent = true,

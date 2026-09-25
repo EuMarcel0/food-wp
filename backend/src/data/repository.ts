@@ -29,6 +29,8 @@ import {
   type NotificationType,
   type Order,
   type OrderItem,
+  type OrderLog,
+  type OrderLogAction,
   type OrderStatus,
   type PaymentMethod,
   type PaymentMethodKind,
@@ -3506,6 +3508,31 @@ export async function createOrder(input: {
     changeSummary: null,
     actorName: contactName || input.customer.name?.trim() || "Cliente WhatsApp",
   });
+  await createOrderLog({
+    storeId: order.storeId,
+    orderId: order.id,
+    action: "order_created",
+    actorName: contactName || input.customer.name?.trim() || "Cliente WhatsApp",
+    summary: "Pedido criado",
+    beforeData: null,
+    afterData: {
+      items: orderItemsSnapshot(
+        input.items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          extras: item.extras,
+          notes: item.notes ?? null,
+        })),
+      ),
+      subtotalCents: order.subtotalCents,
+      deliveryFeeCents: order.deliveryFeeCents,
+      totalCents: order.totalCents,
+      paymentMethod: order.paymentMethod,
+      paymentMethodLabel: order.paymentMethodLabel,
+      status: order.status,
+    },
+  });
   return order;
 }
 
@@ -3880,14 +3907,24 @@ export async function updateOrderStatus(
   }
   const order = mapOrder(data as Record<string, unknown>);
   if (previous !== status) {
+    const summary = `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`;
     await createNotification({
       storeId: String(current.store_id),
       type: "order_updated",
       orderId: order.id,
       orderCode: order.code,
       title: `Pedido #${order.code} alterado`,
-      changeSummary: `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`,
+      changeSummary: summary,
       actorName,
+    });
+    await createOrderLog({
+      storeId: String(current.store_id),
+      orderId: order.id,
+      action: "status_updated",
+      actorName,
+      summary,
+      beforeData: { status: previous },
+      afterData: { status },
     });
   }
   return order;
@@ -3918,10 +3955,13 @@ export async function updateOrderPayment(
 
   const { data: current } = await supabase
     .from("orders")
-    .select("id, code, store_id, payment_method, payment_method_label")
+    .select("id, code, store_id, status, payment_method, payment_method_label")
     .eq("id", id)
     .maybeSingle();
   if (!current) return null;
+  if (String(current.status) === "delivered") {
+    throw new Error("Pedido entregue não pode ter a forma de pagamento alterada.");
+  }
 
   const label =
     input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
@@ -3978,16 +4018,294 @@ export async function updateOrderPayment(
   const nextDisplay =
     label || PAYMENT_METHOD_FALLBACK[input.paymentMethod] || input.paymentMethod;
   if (prevDisplay !== nextDisplay) {
+    const actorName = input.actorName?.trim() || "Equipe";
+    const summary = `Pagamento: ${prevDisplay} → ${nextDisplay}`;
     await createNotification({
       storeId: String(current.store_id),
       type: "order_updated",
       orderId: order.id,
       orderCode: order.code,
       title: `Pedido #${order.code} alterado`,
-      changeSummary: `Pagamento: ${prevDisplay} → ${nextDisplay}`,
-      actorName: input.actorName?.trim() || "Equipe",
+      changeSummary: summary,
+      actorName,
+    });
+    await createOrderLog({
+      storeId: String(current.store_id),
+      orderId: order.id,
+      action: "payment_updated",
+      actorName,
+      summary,
+      beforeData: {
+        paymentMethod: prevMethod,
+        paymentMethodLabel: prevLabel,
+      },
+      afterData: {
+        paymentMethod: order.paymentMethod,
+        paymentMethodLabel: order.paymentMethodLabel,
+        changeForCents: order.changeForCents,
+      },
     });
   }
+  return order;
+}
+
+function missingOrderLogsTable(message?: string) {
+  return Boolean(message?.includes("order_logs"));
+}
+
+function orderItemsSnapshot(items: OrderItem[] | undefined) {
+  return (items ?? []).map((item) => ({
+    id: item.id ?? null,
+    name: item.name,
+    quantity: item.quantity,
+    unitPriceCents: item.unitPriceCents,
+    notes: item.notes ?? null,
+    lineTotalCents: item.quantity * item.unitPriceCents,
+    extras: item.extras ?? [],
+  }));
+}
+
+function orderMoneySnapshot(order: Order) {
+  return {
+    items: orderItemsSnapshot(order.items),
+    subtotalCents: order.subtotalCents,
+    deliveryFeeCents: order.deliveryFeeCents,
+    totalCents: order.totalCents,
+    paymentMethod: order.paymentMethod,
+    paymentMethodLabel: order.paymentMethodLabel,
+    status: order.status,
+  };
+}
+
+function summarizeItemsChange(
+  before: ReturnType<typeof orderItemsSnapshot>,
+  after: ReturnType<typeof orderItemsSnapshot>,
+) {
+  const parts: string[] = [];
+  const beforeByName = new Map(before.map((item) => [item.name, item]));
+  const afterByName = new Map(after.map((item) => [item.name, item]));
+
+  for (const item of after) {
+    const prev = beforeByName.get(item.name);
+    if (!prev) {
+      parts.push(`+ ${item.quantity}x ${item.name}`);
+    } else if (prev.quantity !== item.quantity || prev.unitPriceCents !== item.unitPriceCents) {
+      parts.push(
+        `${item.name}: ${prev.quantity}x → ${item.quantity}x`,
+      );
+    }
+  }
+  for (const item of before) {
+    if (!afterByName.has(item.name)) {
+      parts.push(`− ${item.quantity}x ${item.name}`);
+    }
+  }
+
+  if (!parts.length) {
+    return `Itens atualizados (${before.length} → ${after.length}) · total recalculado`;
+  }
+  return parts.slice(0, 8).join("; ");
+}
+
+export async function createOrderLog(input: {
+  storeId: string;
+  orderId: string;
+  action: OrderLogAction;
+  actorName: string;
+  summary: string;
+  beforeData?: Record<string, unknown> | null;
+  afterData?: Record<string, unknown> | null;
+}): Promise<OrderLog | null> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.createOrderLog(input);
+  }
+
+  const { data, error } = await supabase
+    .from("order_logs")
+    .insert({
+      store_id: input.storeId,
+      order_id: input.orderId,
+      action: input.action,
+      actor_name: input.actorName.trim() || "Equipe",
+      summary: input.summary.slice(0, 500),
+      before_data: input.beforeData ?? null,
+      after_data: input.afterData ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    if (missingOrderLogsTable(error?.message)) {
+      console.warn("order_logs ausente — rode a migration 050_order_logs.sql");
+      return null;
+    }
+    console.error("Falha ao gravar order_log", error?.message);
+    return null;
+  }
+
+  return {
+    id: String(data.id),
+    orderId: String(data.order_id),
+    action: data.action as OrderLogAction,
+    actorName: String(data.actor_name),
+    summary: String(data.summary),
+    beforeData: (data.before_data as Record<string, unknown> | null) ?? null,
+    afterData: (data.after_data as Record<string, unknown> | null) ?? null,
+    createdAt: String(data.created_at),
+  };
+}
+
+export async function listOrderLogs(orderId: string): Promise<OrderLog[]> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.listOrderLogs(orderId);
+
+  const { data, error } = await supabase
+    .from("order_logs")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    if (missingOrderLogsTable(error.message)) {
+      throw new Error("Rode a migration 050_order_logs.sql no banco.");
+    }
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    orderId: String(row.order_id),
+    action: row.action as OrderLogAction,
+    actorName: String(row.actor_name),
+    summary: String(row.summary),
+    beforeData: (row.before_data as Record<string, unknown> | null) ?? null,
+    afterData: (row.after_data as Record<string, unknown> | null) ?? null,
+    createdAt: String(row.created_at),
+  }));
+}
+
+export async function updateOrderItems(
+  id: string,
+  input: {
+    items: {
+      id?: string;
+      productId?: string | null;
+      name: string;
+      quantity: number;
+      unitPriceCents: number;
+      extras?: OrderItem["extras"];
+      notes?: string | null;
+    }[];
+    actorName?: string;
+  },
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.updateOrderItems(id, input);
+  }
+
+  if (!input.items.length) {
+    throw new Error("O pedido precisa ter pelo menos 1 item.");
+  }
+
+  const normalized = input.items.map((item) => {
+    const quantity = Math.round(Number(item.quantity));
+    const unitPriceCents = Math.round(Number(item.unitPriceCents));
+    const name = String(item.name ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (!name) throw new Error("Informe o nome de cada item.");
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      throw new Error("Quantidade inválida.");
+    }
+    if (!Number.isFinite(unitPriceCents) || unitPriceCents < 0) {
+      throw new Error("Preço unitário inválido.");
+    }
+    return {
+      productId: item.productId ?? null,
+      name,
+      quantity,
+      unitPriceCents,
+      extras: item.extras ?? [],
+      notes: item.notes?.replace(/\s+/g, " ").trim().slice(0, 200) || null,
+    };
+  });
+
+  const { data: currentRow, error: currentError } = await supabase
+    .from("orders")
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (currentError || !currentRow) return null;
+  if (String(currentRow.status) === "delivered") {
+    throw new Error("Pedido entregue não pode ter os itens alterados.");
+  }
+
+  const before = mapOrder(currentRow as Record<string, unknown>);
+  const beforeSnap = orderMoneySnapshot(before);
+  const subtotalCents = normalized.reduce(
+    (sum, item) => sum + item.quantity * item.unitPriceCents,
+    0,
+  );
+  const totalCents = subtotalCents + before.deliveryFeeCents;
+
+  const { error: deleteError } = await supabase
+    .from("order_items")
+    .delete()
+    .eq("order_id", id);
+  if (deleteError) throw new Error(deleteError.message);
+
+  const { error: insertError } = await supabase.from("order_items").insert(
+    normalized.map((item) => ({
+      order_id: id,
+      product_id: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      unit_price_cents: item.unitPriceCents,
+      extras: item.extras ?? [],
+      notes: item.notes,
+    })),
+  );
+  if (insertError) throw new Error(insertError.message);
+
+  const { data: updated, error: updateError } = await supabase
+    .from("orders")
+    .update({
+      subtotal_cents: subtotalCents,
+      total_cents: totalCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .single();
+
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || "Falha ao atualizar totais do pedido.");
+  }
+
+  const order = mapOrder(updated as Record<string, unknown>);
+  const afterSnap = orderMoneySnapshot(order);
+  const actorName = input.actorName?.trim() || "Equipe";
+  const summary = summarizeItemsChange(beforeSnap.items, afterSnap.items);
+
+  await createNotification({
+    storeId: order.storeId,
+    type: "order_updated",
+    orderId: order.id,
+    orderCode: order.code,
+    title: `Pedido #${order.code} alterado`,
+    changeSummary: summary,
+    actorName,
+  });
+  await createOrderLog({
+    storeId: order.storeId,
+    orderId: order.id,
+    action: "items_updated",
+    actorName,
+    summary,
+    beforeData: beforeSnap,
+    afterData: afterSnap,
+  });
+
   return order;
 }
 
