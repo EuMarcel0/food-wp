@@ -109,14 +109,25 @@ export function OrderEditItemsModal({
       width={720}
       destroyOnHidden
       centered
+      className="order-edit-items-modal"
+      styles={{
+        body: {
+          maxHeight: "calc(100dvh - 160px)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          paddingTop: 12,
+          paddingBottom: 8,
+        },
+      }}
     >
-      <p className="mb-3 text-sm text-food-muted">
+      <p className="mb-3 shrink-0 text-sm text-food-muted">
         Adicione ou remova itens. O total do pedido é recalculado (taxa de entrega
         mantida).
       </p>
 
-      <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-food-border bg-food-surface p-3">
-        <div className="min-w-[14rem] flex-1">
+      <div className="mb-3 flex shrink-0 flex-wrap items-end gap-2 rounded-lg border border-food-border bg-food-surface p-3">
+        <div className="min-w-0 flex-1 basis-[12rem]">
           <div className="mb-1 text-xs font-medium text-food-muted">Produto</div>
           <Select
             className="w-full"
@@ -130,6 +141,7 @@ export function OrderEditItemsModal({
               label: `${product.name} · ${formatBRL(productUnitCents(product))}`,
             }))}
             onChange={setProductId}
+            getPopupContainer={(node) => node.parentElement ?? document.body}
           />
         </div>
         <div>
@@ -141,87 +153,89 @@ export function OrderEditItemsModal({
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {draft.map((item) => (
-          <div
-            key={item.key}
-            className="grid grid-cols-1 gap-2 rounded-lg border border-food-border p-3 sm:grid-cols-[1fr_88px_120px_40px]"
-          >
-            <div>
-              <div className="mb-1 text-xs font-medium text-food-muted">Item</div>
-              <Input
-                value={item.name}
-                onChange={(event) =>
-                  setDraft((prev) =>
-                    prev.map((row) =>
-                      row.key === item.key ? { ...row, name: event.target.value } : row,
-                    ),
-                  )
-                }
-              />
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">
+        <div className="flex flex-col gap-3 pb-1">
+          {draft.map((item) => (
+            <div
+              key={item.key}
+              className="grid grid-cols-1 gap-2 rounded-lg border border-food-border p-3 sm:grid-cols-[1fr_88px_120px_40px]"
+            >
+              <div>
+                <div className="mb-1 text-xs font-medium text-food-muted">Item</div>
+                <Input
+                  value={item.name}
+                  onChange={(event) =>
+                    setDraft((prev) =>
+                      prev.map((row) =>
+                        row.key === item.key ? { ...row, name: event.target.value } : row,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-xs font-medium text-food-muted">Qtd</div>
+                <InputNumber
+                  className="w-full"
+                  min={1}
+                  max={99}
+                  value={item.quantity}
+                  onChange={(value) =>
+                    setDraft((prev) =>
+                      prev.map((row) =>
+                        row.key === item.key
+                          ? { ...row, quantity: Math.max(1, Number(value) || 1) }
+                          : row,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-xs font-medium text-food-muted">Unitário (R$)</div>
+                <InputNumber
+                  className="w-full"
+                  min={0}
+                  step={0.5}
+                  value={item.unitPriceCents / 100}
+                  onChange={(value) =>
+                    setDraft((prev) =>
+                      prev.map((row) =>
+                        row.key === item.key
+                          ? {
+                              ...row,
+                              unitPriceCents: Math.max(
+                                0,
+                                Math.round((Number(value) || 0) * 100),
+                              ),
+                            }
+                          : row,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <div className="flex items-end justify-end">
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label={`Remover ${item.name}`}
+                  disabled={draft.length <= 1}
+                  onClick={() => setDraft((prev) => prev.filter((row) => row.key !== item.key))}
+                />
+              </div>
+              <div className="sm:col-span-4">
+                <Space size="small" className="text-xs text-food-muted">
+                  <span>Linha: {formatBRL(item.quantity * item.unitPriceCents)}</span>
+                </Space>
+              </div>
             </div>
-            <div>
-              <div className="mb-1 text-xs font-medium text-food-muted">Qtd</div>
-              <InputNumber
-                className="w-full"
-                min={1}
-                max={99}
-                value={item.quantity}
-                onChange={(value) =>
-                  setDraft((prev) =>
-                    prev.map((row) =>
-                      row.key === item.key
-                        ? { ...row, quantity: Math.max(1, Number(value) || 1) }
-                        : row,
-                    ),
-                  )
-                }
-              />
-            </div>
-            <div>
-              <div className="mb-1 text-xs font-medium text-food-muted">Unitário (R$)</div>
-              <InputNumber
-                className="w-full"
-                min={0}
-                step={0.5}
-                value={item.unitPriceCents / 100}
-                onChange={(value) =>
-                  setDraft((prev) =>
-                    prev.map((row) =>
-                      row.key === item.key
-                        ? {
-                            ...row,
-                            unitPriceCents: Math.max(
-                              0,
-                              Math.round((Number(value) || 0) * 100),
-                            ),
-                          }
-                        : row,
-                    ),
-                  )
-                }
-              />
-            </div>
-            <div className="flex items-end justify-end">
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label={`Remover ${item.name}`}
-                disabled={draft.length <= 1}
-                onClick={() => setDraft((prev) => prev.filter((row) => row.key !== item.key))}
-              />
-            </div>
-            <div className="sm:col-span-4">
-              <Space size="small" className="text-xs text-food-muted">
-                <span>Linha: {formatBRL(item.quantity * item.unitPriceCents)}</span>
-              </Space>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-col gap-1 border-t border-food-border pt-3 text-sm">
+      <div className="mt-3 flex shrink-0 flex-col gap-1 border-t border-food-border pt-3 text-sm">
         <div className="flex justify-between">
           <span>Subtotal</span>
           <strong>{formatBRL(subtotalCents)}</strong>
