@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Input, InputNumber, Modal, Select, Space } from "antd";
+import { Button, Input, InputNumber, Modal, Select } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { useDialog } from "../../dialog";
 import { api } from "../../lib/api";
 import { formatBRL } from "../../lib/format";
 import { queryKeys } from "../../lib/queryKeys";
@@ -53,6 +54,7 @@ export function OrderEditItemsModal({
   onCancel: () => void;
   onSave: (items: DraftItem[]) => void;
 }) {
+  const dialog = useDialog();
   const [draft, setDraft] = useState<DraftItem[]>([]);
   const [productId, setProductId] = useState<string | undefined>();
   const [addQty, setAddQty] = useState(1);
@@ -94,6 +96,22 @@ export function OrderEditItemsModal({
     ]);
     setProductId(undefined);
     setAddQty(1);
+  }
+
+  function askRemoveItem(item: DraftItem) {
+    if (draft.length <= 1) return;
+    void dialog.delete({
+      title: "Remover item",
+      description: (
+        <>
+          Remover <strong>{item.name}</strong> deste pedido?
+        </>
+      ),
+      okText: "Remover",
+      onConfirm: () => {
+        setDraft((prev) => prev.filter((row) => row.key !== item.key));
+      },
+    });
   }
 
   return (
@@ -158,7 +176,7 @@ export function OrderEditItemsModal({
           {draft.map((item) => (
             <div
               key={item.key}
-              className="grid grid-cols-1 gap-2 rounded-lg border border-food-border p-3 sm:grid-cols-[1fr_88px_120px_40px]"
+              className="flex flex-col gap-2 rounded-lg border border-food-border p-3"
             >
               <div>
                 <div className="mb-1 text-xs font-medium text-food-muted">Item</div>
@@ -173,62 +191,65 @@ export function OrderEditItemsModal({
                   }
                 />
               </div>
-              <div>
-                <div className="mb-1 text-xs font-medium text-food-muted">Qtd</div>
-                <InputNumber
-                  className="w-full"
-                  min={1}
-                  max={99}
-                  value={item.quantity}
-                  onChange={(value) =>
-                    setDraft((prev) =>
-                      prev.map((row) =>
-                        row.key === item.key
-                          ? { ...row, quantity: Math.max(1, Number(value) || 1) }
-                          : row,
-                      ),
-                    )
-                  }
-                />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="mb-1 text-xs font-medium text-food-muted">Qtd</div>
+                  <InputNumber
+                    className="w-full"
+                    min={1}
+                    max={99}
+                    value={item.quantity}
+                    onChange={(value) =>
+                      setDraft((prev) =>
+                        prev.map((row) =>
+                          row.key === item.key
+                            ? { ...row, quantity: Math.max(1, Number(value) || 1) }
+                            : row,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-medium text-food-muted">Unitário (R$)</div>
+                  <InputNumber
+                    className="w-full"
+                    min={0}
+                    step={0.5}
+                    value={item.unitPriceCents / 100}
+                    onChange={(value) =>
+                      setDraft((prev) =>
+                        prev.map((row) =>
+                          row.key === item.key
+                            ? {
+                                ...row,
+                                unitPriceCents: Math.max(
+                                  0,
+                                  Math.round((Number(value) || 0) * 100),
+                                ),
+                              }
+                            : row,
+                        ),
+                      )
+                    }
+                  />
+                </div>
               </div>
-              <div>
-                <div className="mb-1 text-xs font-medium text-food-muted">Unitário (R$)</div>
-                <InputNumber
-                  className="w-full"
-                  min={0}
-                  step={0.5}
-                  value={item.unitPriceCents / 100}
-                  onChange={(value) =>
-                    setDraft((prev) =>
-                      prev.map((row) =>
-                        row.key === item.key
-                          ? {
-                              ...row,
-                              unitPriceCents: Math.max(
-                                0,
-                                Math.round((Number(value) || 0) * 100),
-                              ),
-                            }
-                          : row,
-                      ),
-                    )
-                  }
-                />
-              </div>
-              <div className="flex items-end justify-end">
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-food-muted">
+                  Linha: {formatBRL(item.quantity * item.unitPriceCents)}
+                </span>
                 <Button
                   type="text"
                   danger
+                  size="small"
                   icon={<DeleteOutlined />}
                   aria-label={`Remover ${item.name}`}
                   disabled={draft.length <= 1}
-                  onClick={() => setDraft((prev) => prev.filter((row) => row.key !== item.key))}
+                  onClick={() => askRemoveItem(item)}
                 />
-              </div>
-              <div className="sm:col-span-4">
-                <Space size="small" className="text-xs text-food-muted">
-                  <span>Linha: {formatBRL(item.quantity * item.unitPriceCents)}</span>
-                </Space>
               </div>
             </div>
           ))}
