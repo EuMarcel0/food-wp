@@ -3562,7 +3562,14 @@ export async function listOrdersPage(
     .from("orders")
     .select("*, customers(wa_phone, name), order_items(*)", { count: "exact" })
     .order("created_at", { ascending: false });
-  if (filter.status) query = query.eq("status", filter.status);
+  if (filter.lifecycle === "cancelled") {
+    query = query.eq("status", "cancelled");
+  } else if (filter.status && filter.status !== "cancelled") {
+    query = query.eq("status", filter.status);
+  } else {
+    // Padrão (ativos): exclui cancelados.
+    query = query.neq("status", "cancelled");
+  }
   if (filter.fulfillment) query = query.eq("fulfillment", filter.fulfillment);
   if (filter.createdFrom) {
     query = query.gte("created_at", filter.createdFrom);
@@ -3834,10 +3841,17 @@ export async function updateOrderStatus(
   status: OrderStatus,
   actorName = "Equipe",
   prepMinutes?: number | null,
+  cancelReason?: string | null,
 ) {
   const supabase = getSupabase();
   if (!supabase) {
-    return memoryStore.updateOrderStatus(id, status, actorName, prepMinutes);
+    return memoryStore.updateOrderStatus(
+      id,
+      status,
+      actorName,
+      prepMinutes,
+      cancelReason,
+    );
   }
 
   const { data: current } = await supabase
@@ -3848,6 +3862,14 @@ export async function updateOrderStatus(
   if (!current) return null;
   if (!isAllowedOrderStatus(current.fulfillment as Fulfillment, status)) {
     throw new Error("Pedido de retirada não sai para entrega.");
+  }
+
+  let normalizedCancelReason: string | null = null;
+  if (status === "cancelled") {
+    const reason = String(cancelReason ?? "").replace(/\s+/g, " ").trim();
+    if (reason.length >= 3) {
+      normalizedCancelReason = reason.slice(0, 240);
+    }
   }
 
   if (status === "preparing") {
@@ -3907,7 +3929,9 @@ export async function updateOrderStatus(
   }
   const order = mapOrder(data as Record<string, unknown>);
   if (previous !== status) {
-    const summary = `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`;
+    const summary = normalizedCancelReason
+      ? `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]} — ${normalizedCancelReason}`
+      : `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`;
     await createNotification({
       storeId: String(current.store_id),
       type: "order_updated",
@@ -3924,7 +3948,12 @@ export async function updateOrderStatus(
       actorName,
       summary,
       beforeData: { status: previous },
-      afterData: { status },
+      afterData: {
+        status,
+        ...(normalizedCancelReason
+          ? { cancelReason: normalizedCancelReason }
+          : {}),
+      },
     });
   }
   return order;

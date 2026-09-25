@@ -336,6 +336,7 @@ export const api = {
       q?: string;
       status?: string;
       fulfillment?: string;
+      lifecycle?: "active" | "cancelled";
       from?: string;
       to?: string;
     }
@@ -347,6 +348,7 @@ export const api = {
         q: filters?.q,
         status: filters?.status,
         fulfillment: filters?.fulfillment,
+        lifecycle: filters?.lifecycle,
         from: filters?.from,
         to: filters?.to
       }),
@@ -469,10 +471,16 @@ export const api = {
       "/api/conversations/close-all",
       { method: "POST" },
     ),
-  updateOrderStatus: (id: string, status: OrderStatus, actorName?: string, prepMinutes?: number) =>
+  updateOrderStatus: (
+    id: string,
+    status: OrderStatus,
+    actorName?: string,
+    prepMinutes?: number,
+    cancelReason?: string,
+  ) =>
     request<Order>(`/api/orders/${id}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status, actorName, prepMinutes })
+      body: JSON.stringify({ status, actorName, prepMinutes, cancelReason })
     }),
   updateOrderPayment: (
     id: string,

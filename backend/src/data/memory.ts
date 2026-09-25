@@ -1681,7 +1681,13 @@ export const memoryStore = {
       : Number.NaN;
     const toMs = filter.createdTo ? Date.parse(filter.createdTo) : Number.NaN;
     const items = this.listOrders().filter((order) => {
-      if (filter.status && order.status !== filter.status) return false;
+      if (filter.lifecycle === "cancelled") {
+        if (order.status !== "cancelled") return false;
+      } else if (filter.status && filter.status !== "cancelled") {
+        if (order.status !== filter.status) return false;
+      } else if (order.status === "cancelled") {
+        return false;
+      }
       if (filter.fulfillment && order.fulfillment !== filter.fulfillment) {
         return false;
       }
@@ -1860,11 +1866,19 @@ export const memoryStore = {
     status: OrderStatus,
     actorName = "Equipe",
     prepMinutes?: number | null,
+    cancelReason?: string | null,
   ) {
     const order = orders.get(id);
     if (!order) return null;
     if (!isAllowedOrderStatus(order.fulfillment, status)) {
       throw new Error("Pedido de retirada não sai para entrega.");
+    }
+    let normalizedCancelReason: string | null = null;
+    if (status === "cancelled") {
+      const reason = String(cancelReason ?? "").replace(/\s+/g, " ").trim();
+      if (reason.length >= 3) {
+        normalizedCancelReason = reason.slice(0, 240);
+      }
     }
     if (status === "preparing") {
       const minutes = Math.round(Number(prepMinutes));
@@ -1892,7 +1906,9 @@ export const memoryStore = {
       order.autoPrintedAt = null;
     }
     if (previous !== status) {
-      const summary = `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`;
+      const summary = normalizedCancelReason
+        ? `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]} — ${normalizedCancelReason}`
+        : `Status: ${STATUS_LABEL[previous]} → ${STATUS_LABEL[status]}`;
       this.createNotification({
         type: "order_updated",
         orderId: order.id,
@@ -1908,7 +1924,12 @@ export const memoryStore = {
         actorName,
         summary,
         beforeData: { status: previous },
-        afterData: { status },
+        afterData: {
+          status,
+          ...(normalizedCancelReason
+            ? { cancelReason: normalizedCancelReason }
+            : {}),
+        },
       });
     }
     return order;

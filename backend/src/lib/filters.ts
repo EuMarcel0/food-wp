@@ -13,6 +13,8 @@ export type OrderFilter = {
   q?: string;
   status?: string;
   fulfillment?: string;
+  /** active = exclui cancelados (padrão); cancelled = só cancelados */
+  lifecycle?: "active" | "cancelled";
   /** Início inclusivo (ISO), filtrando por created_at */
   createdFrom?: string;
   /** Fim inclusivo (ISO), filtrando por created_at */

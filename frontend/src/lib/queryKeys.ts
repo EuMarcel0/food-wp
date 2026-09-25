@@ -64,6 +64,7 @@ export const queryKeys = {
         q?: string;
         status?: string;
         fulfillment?: string;
+        lifecycle?: "active" | "cancelled";
         from?: string;
         to?: string;
       },

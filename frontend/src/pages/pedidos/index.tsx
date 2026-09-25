@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -13,6 +13,7 @@ import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
+import { CancelOrderModal } from "./CancelOrderModal";
 import { OrderCard } from "./OrderCard";
 import { OrderEditItemsModal } from "./OrderEditItemsModal";
 import { OrderItemsLeaders } from "./OrderItemsLeaders";
@@ -44,7 +45,14 @@ import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridF
 
 const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
-).map(([value, label]) => ({ value, label }));
+)
+  .filter(([value]) => value !== "cancelled")
+  .map(([value, label]) => ({ value, label }));
+
+const LIFECYCLE_OPTIONS = [
+  { value: "active" as const, label: "Ativos" },
+  { value: "cancelled" as const, label: "Cancelados" },
+];
 
 function todayRange(): [Dayjs, Dayjs] {
   const today = dayjs().startOf("day");
@@ -59,6 +67,7 @@ export function OrdersPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [qInput, setQInput] = useState("");
+  const [lifecycle, setLifecycle] = useState<"active" | "cancelled">("active");
   const [status, setStatus] = useState<OrderStatus | undefined>();
   const [fulfillment, setFulfillment] = useState<
     Order["fulfillment"] | undefined
@@ -72,16 +81,20 @@ export function OrdersPage() {
   const to = dateRange?.[1]?.format("YYYY-MM-DD");
   const filters = {
     q: q || undefined,
-    status,
+    status: lifecycle === "active" ? status : undefined,
     fulfillment,
+    lifecycle,
     from: from || undefined,
     to: to || undefined,
   };
-  const activeCount = [q, status, fulfillment, from, to].filter(Boolean).length;
+  const activeCount = useMemo(() => {
+    const extras = [q, status, fulfillment, from, to].filter(Boolean).length;
+    return extras + (lifecycle !== "active" ? 1 : 0);
+  }, [q, status, fulfillment, from, to, lifecycle]);
 
   useEffect(() => {
     setPage(1);
-  }, [q, status, fulfillment, from, to]);
+  }, [q, status, fulfillment, from, to, lifecycle]);
 
   const listQuery = useQuery({
     queryKey: queryKeys.orders.list(page, limit, filters),
@@ -143,26 +156,31 @@ export function OrdersPage() {
   const [prepOrder, setPrepOrder] = useState<Order | null>(null);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [logsOrder, setLogsOrder] = useState<Order | null>(null);
+  const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
 
   const statusMutation = useMutation({
     mutationFn: ({
       order,
       next,
       prepMinutes,
+      cancelReason,
     }: {
       order: Order;
       next: OrderStatus;
       prepMinutes?: number;
+      cancelReason?: string;
     }) =>
       api.updateOrderStatus(
         order.id,
         next,
         displayName(user),
         prepMinutes,
+        cancelReason,
       ),
     onSuccess: async (updated) => {
       toast.success(`Pedido #${updated.code} → ${STATUS_LABEL[updated.status]}`);
       setPrepOrder(null);
+      setCancelOrder(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
         queryClient.invalidateQueries({ queryKey: ["orders", "stats"] }),
@@ -223,6 +241,10 @@ export function OrdersPage() {
       setPrepOrder(order);
       return;
     }
+    if (next === "cancelled") {
+      setCancelOrder(order);
+      return;
+    }
     statusMutation.mutate({ order, next });
   }
 
@@ -256,6 +278,7 @@ export function OrdersPage() {
         activeCount={activeCount}
         onClear={() => {
           setQInput("");
+          setLifecycle("active");
           setStatus(undefined);
           setFulfillment(undefined);
           setDateRange(null);
@@ -270,12 +293,24 @@ export function OrdersPage() {
         />
         <Select
           className={filterSelect}
-          allowClear
-          placeholder="Status"
-          value={status}
-          options={STATUS_OPTIONS}
-          onChange={setStatus}
+          placeholder="Situação"
+          value={lifecycle}
+          options={LIFECYCLE_OPTIONS}
+          onChange={(value: "active" | "cancelled") => {
+            setLifecycle(value);
+            if (value === "cancelled") setStatus(undefined);
+          }}
         />
+        {lifecycle === "active" ? (
+          <Select
+            className={filterSelect}
+            allowClear
+            placeholder="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={setStatus}
+          />
+        ) : null}
         <Select
           className={filterSelect}
           allowClear
@@ -542,6 +577,25 @@ export function OrdersPage() {
             order: prepOrder,
             next: "preparing",
             prepMinutes: minutes,
+          });
+        }}
+      />
+      <CancelOrderModal
+        order={cancelOrder}
+        open={Boolean(cancelOrder)}
+        submitting={
+          statusMutation.isPending &&
+          statusMutation.variables?.next === "cancelled"
+        }
+        onCancel={() => {
+          if (!statusMutation.isPending) setCancelOrder(null);
+        }}
+        onConfirm={(reason) => {
+          if (!cancelOrder) return;
+          statusMutation.mutate({
+            order: cancelOrder,
+            next: "cancelled",
+            cancelReason: reason,
           });
         }}
       />

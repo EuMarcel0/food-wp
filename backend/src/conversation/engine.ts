@@ -2352,7 +2352,13 @@ export async function handleIncomingMessage(input: {
   if (store.allowCustomerCancel && command === "cancelar pedido") {
     const latest = await findLatestOrder(customer.id);
     if (latest && canCustomerCancelStatus(latest.status)) {
-      await updateOrderStatus(latest.id, "cancelled", "Cliente WhatsApp");
+      await updateOrderStatus(
+        latest.id,
+        "cancelled",
+        "Cliente WhatsApp",
+        undefined,
+        "Cancelado pelo cliente no WhatsApp",
+      );
       await persist("welcome", emptyContext());
       await sendButtons(
         input.from,

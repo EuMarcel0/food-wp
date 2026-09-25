@@ -126,11 +126,20 @@ ordersRouter.get("/", async (req, res) => {
     fromDay = toDay;
     toDay = swap;
   }
+  const lifecycleRaw = String(req.query.lifecycle ?? "active")
+    .trim()
+    .toLowerCase();
+  const lifecycle =
+    lifecycleRaw === "cancelled"
+      ? ("cancelled" as const)
+      : ("active" as const);
+
   res.json(
     await listOrdersPage(page, limit, {
       q: parseSearch(req.query.q),
       status: parseOptionalText(req.query.status),
       fulfillment: parseOptionalText(req.query.fulfillment),
+      lifecycle,
       createdFrom: parseDateDay(fromDay, false),
       createdTo: parseDateDay(toDay, true),
     }),
@@ -214,12 +223,26 @@ ordersRouter.patch("/:id/status", async (req, res) => {
     rawPrep === undefined || rawPrep === null || rawPrep === ""
       ? undefined
       : Number(rawPrep);
+  const cancelReason =
+    status === "cancelled"
+      ? String(req.body?.cancelReason ?? "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 240)
+      : undefined;
 
   if (status === "preparing") {
     if (!Number.isFinite(prepMinutes) || Number(prepMinutes) < 1) {
       res.status(400).json({ error: "Informe o tempo de preparo em minutos." });
       return;
     }
+  }
+
+  if (status === "cancelled" && (!cancelReason || cancelReason.length < 3)) {
+    res.status(400).json({
+      error: "Informe o motivo do cancelamento (mín. 3 caracteres).",
+    });
+    return;
   }
 
   let order;
@@ -235,6 +258,7 @@ ordersRouter.patch("/:id/status", async (req, res) => {
       status,
       actorName,
       minutesForStatus,
+      cancelReason,
     );
   } catch (error) {
     res.status(400).json({
