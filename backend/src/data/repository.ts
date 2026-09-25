@@ -356,6 +356,10 @@ function mapOrder(row: Record<string, unknown>): Order {
     addressText: (row.address_text as string | null) ?? null,
     neighborhoodName: (row.neighborhood_name as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
+    cancelReason:
+      row.cancel_reason != null
+        ? String(row.cancel_reason).replace(/\s+/g, " ").trim() || null
+        : null,
     subtotalCents: Number(row.subtotal_cents ?? 0),
     deliveryFeeCents: Number(row.delivery_fee_cents ?? 0),
     totalCents: Number(row.total_cents ?? 0),
@@ -3864,6 +3868,16 @@ export async function updateOrderStatus(
     throw new Error("Pedido de retirada não sai para entrega.");
   }
 
+  const previous = current.status as OrderStatus;
+  if (status === "cancelled") {
+    if (previous === "delivered") {
+      throw new Error("Pedido entregue não pode ser cancelado.");
+    }
+    if (previous === "cancelled") {
+      throw new Error("Pedido já está cancelado.");
+    }
+  }
+
   let normalizedCancelReason: string | null = null;
   if (status === "cancelled") {
     const reason = String(cancelReason ?? "").replace(/\s+/g, " ").trim();
@@ -3893,7 +3907,6 @@ export async function updateOrderStatus(
     prepMinutes = Number.isFinite(minutes) && minutes >= 1 ? minutes : null;
   }
 
-  const previous = current.status as OrderStatus;
   const payload: Record<string, unknown> = {
     status,
     updated_at: new Date().toISOString(),
@@ -3911,6 +3924,9 @@ export async function updateOrderStatus(
     payload.auto_print_claimed_by = null;
     payload.auto_printed_at = null;
   }
+  if (status === "cancelled" && normalizedCancelReason) {
+    payload.cancel_reason = normalizedCancelReason;
+  }
 
   const { data, error } = await supabase
     .from("orders")
@@ -3924,6 +3940,9 @@ export async function updateOrderStatus(
     }
     if (error?.message?.includes("auto_print_")) {
       throw new Error("Rode a migration 047_order_auto_print.sql no Supabase.");
+    }
+    if (error?.message?.includes("cancel_reason")) {
+      throw new Error("Rode a migration 051_order_cancel_reason.sql no Supabase.");
     }
     return null;
   }
@@ -3990,6 +4009,9 @@ export async function updateOrderPayment(
   if (!current) return null;
   if (String(current.status) === "delivered") {
     throw new Error("Pedido entregue não pode ter a forma de pagamento alterada.");
+  }
+  if (String(current.status) === "cancelled") {
+    throw new Error("Pedido cancelado não pode ter a forma de pagamento alterada.");
   }
 
   const label =
@@ -4267,6 +4289,9 @@ export async function updateOrderItems(
   if (currentError || !currentRow) return null;
   if (String(currentRow.status) === "delivered") {
     throw new Error("Pedido entregue não pode ter os itens alterados.");
+  }
+  if (String(currentRow.status) === "cancelled") {
+    throw new Error("Pedido cancelado não pode ter os itens alterados.");
   }
 
   const before = mapOrder(currentRow as Record<string, unknown>);

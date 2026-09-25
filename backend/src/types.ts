@@ -391,6 +391,7 @@ export type Order = {
   addressText: string | null;
   neighborhoodName: string | null;
   notes: string | null;
+  cancelReason: string | null;
   subtotalCents: number;
   deliveryFeeCents: number;
   totalCents: number;

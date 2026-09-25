@@ -345,7 +345,7 @@ export function OrdersPage() {
         dataSource={orders}
         tableLayout="fixed"
         pagination={false}
-        scroll={{ x: 1580, y: bodyHeight }}
+        scroll={{ x: lifecycle === "cancelled" ? 1780 : 1580, y: bodyHeight }}
         columns={[
           { title: "Código", dataIndex: "code", width: 88 },
           {
@@ -354,6 +354,22 @@ export function OrdersPage() {
             ellipsis: true,
             render: (_, order) => order.customerName || order.customerPhone || "—",
           },
+          ...(lifecycle === "cancelled"
+            ? [
+                {
+                  title: "Motivo",
+                  width: 280,
+                  render: (_: unknown, order: Order) =>
+                    order.cancelReason ? (
+                      <span className="whitespace-normal wrap-break-word text-left">
+                        {order.cancelReason}
+                      </span>
+                    ) : (
+                      "—"
+                    ),
+                },
+              ]
+            : []),
           {
             title: "Itens",
             width: 320,
@@ -366,7 +382,7 @@ export function OrdersPage() {
             width: 260,
             render: (_, order) =>
               order.notes ? (
-                <span className="whitespace-normal break-words">{order.notes}</span>
+                <span className="whitespace-normal wrap-break-word">{order.notes}</span>
               ) : (
                 "—"
               ),
@@ -405,7 +421,9 @@ export function OrdersPage() {
                 methods={paymentMethods}
                 loading={paymentMethodsQuery.isLoading}
                 disabled={
-                  updatingId === order.id || order.status === "delivered"
+                  updatingId === order.id ||
+                  order.status === "delivered" ||
+                  order.status === "cancelled"
                 }
                 onChange={(method) => paymentMutation.mutate({ order, method })}
               />
@@ -458,12 +476,13 @@ export function OrdersPage() {
             fixed: "right",
             render: (_, order) => {
               const next = nextStatus(order.status, order.fulfillment);
-              const canEditOrder = order.status !== "delivered";
-              const canCancel =
-                order.status !== "cancelled" && order.status !== "delivered";
+              const isClosed =
+                order.status === "cancelled" || order.status === "delivered";
+              const canEditOrder = !isClosed;
+              const canCancel = !isClosed;
               return (
                 <RowActions
-                  disabled={order.status === "delivered"}
+                  disabled={isClosed}
                   items={[
                     next
                       ? {

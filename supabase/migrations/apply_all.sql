@@ -1055,3 +1055,11 @@ create policy "order_logs_read"
   using (true);
 
 grant select on public.order_logs to anon, authenticated;
+
+-- ========== 051_order_cancel_reason ==========
+alter table public.orders
+  add column if not exists cancel_reason text;
+
+comment on column public.orders.cancel_reason is
+  'Motivo informado ao cancelar o pedido (painel ou WhatsApp).';
+

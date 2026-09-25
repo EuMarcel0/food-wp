@@ -1627,6 +1627,7 @@ export const memoryStore = {
       addressText: input.addressText ?? null,
       neighborhoodName: input.neighborhoodName?.trim() || null,
       notes: input.notes?.trim() || null,
+      cancelReason: null,
       subtotalCents,
       deliveryFeeCents: input.deliveryFeeCents,
       totalCents: subtotalCents + input.deliveryFeeCents,
@@ -1873,6 +1874,14 @@ export const memoryStore = {
     if (!isAllowedOrderStatus(order.fulfillment, status)) {
       throw new Error("Pedido de retirada não sai para entrega.");
     }
+    if (status === "cancelled") {
+      if (order.status === "delivered") {
+        throw new Error("Pedido entregue não pode ser cancelado.");
+      }
+      if (order.status === "cancelled") {
+        throw new Error("Pedido já está cancelado.");
+      }
+    }
     let normalizedCancelReason: string | null = null;
     if (status === "cancelled") {
       const reason = String(cancelReason ?? "").replace(/\s+/g, " ").trim();
@@ -1898,6 +1907,9 @@ export const memoryStore = {
     }
     const previous = order.status;
     order.status = status;
+    if (status === "cancelled" && normalizedCancelReason) {
+      order.cancelReason = normalizedCancelReason;
+    }
     if (previous !== status && status === "accepted") {
       const now = new Date().toISOString();
       order.autoPrintRequestedAt = now;
@@ -1948,6 +1960,9 @@ export const memoryStore = {
     if (!order) return null;
     if (order.status === "delivered") {
       throw new Error("Pedido entregue não pode ter a forma de pagamento alterada.");
+    }
+    if (order.status === "cancelled") {
+      throw new Error("Pedido cancelado não pode ter a forma de pagamento alterada.");
     }
     const PAYMENT_FALLBACK: Record<PaymentMethod, string> = {
       pix: "Pix",
@@ -2031,6 +2046,9 @@ export const memoryStore = {
     if (!order) return null;
     if (order.status === "delivered") {
       throw new Error("Pedido entregue não pode ter os itens alterados.");
+    }
+    if (order.status === "cancelled") {
+      throw new Error("Pedido cancelado não pode ter os itens alterados.");
     }
     if (!input.items.length) {
       throw new Error("O pedido precisa ter pelo menos 1 item.");

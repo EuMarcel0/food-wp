@@ -38,9 +38,10 @@ export function OrderCard({
   onPreviewReceipt: (order: Order) => void;
 }) {
   const next = nextStatus(order.status, order.fulfillment);
-  const canCancel =
-    order.status !== "cancelled" && order.status !== "delivered";
-  const canEditOrder = order.status !== "delivered";
+  const isClosed =
+    order.status === "cancelled" || order.status === "delivered";
+  const canCancel = !isClosed;
+  const canEditOrder = !isClosed;
 
   return (
     <EntityCard
@@ -62,7 +63,7 @@ export function OrderCard({
             onClick={onOpenLogs}
           />
           <RowActions
-            disabled={order.status === "delivered"}
+            disabled={isClosed}
             items={[
               next
                 ? {
@@ -113,7 +114,7 @@ export function OrderCard({
           order={order}
           methods={paymentMethods}
           loading={paymentMethodsLoading}
-          disabled={updating || order.status === "delivered"}
+          disabled={updating || isClosed}
           onChange={(method) => onChangePayment(order, method)}
         />
       </div>
@@ -145,6 +146,11 @@ export function OrderCard({
       {order.notes ? (
         <p className="mt-2 mb-0 text-[13px] text-food-muted">
           Pedido: {order.notes}
+        </p>
+      ) : null}
+      {order.status === "cancelled" && order.cancelReason ? (
+        <p className="mt-2 mb-0 text-[13px] text-food-muted">
+          Motivo: {order.cancelReason}
         </p>
       ) : null}
       {next ? (
