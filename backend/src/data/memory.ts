@@ -1876,6 +1876,56 @@ export const memoryStore = {
     return order;
   },
 
+  updateOrderPayment(
+    id: string,
+    input: {
+      paymentMethod: PaymentMethod;
+      paymentMethodLabel?: string | null;
+      changeForCents?: number | null;
+      actorName?: string;
+    },
+  ) {
+    const order = orders.get(id);
+    if (!order) return null;
+    const PAYMENT_FALLBACK: Record<PaymentMethod, string> = {
+      pix: "Pix",
+      cash: "Dinheiro",
+      card: "Cartão",
+      credit: "Crédito",
+      debit: "Débito",
+      other: "Outro",
+    };
+    const prevDisplay =
+      order.paymentMethodLabel?.trim() ||
+      (order.paymentMethod ? PAYMENT_FALLBACK[order.paymentMethod] : null) ||
+      "—";
+    const label =
+      input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+    order.paymentMethod = input.paymentMethod;
+    order.paymentMethodLabel = label;
+    if (input.paymentMethod === "cash") {
+      if (input.changeForCents !== undefined) {
+        const raw = Number(input.changeForCents);
+        order.changeForCents =
+          input.changeForCents == null || !Number.isFinite(raw)
+            ? null
+            : Math.max(0, Math.round(raw));
+      }
+    } else {
+      order.changeForCents = null;
+    }
+    const nextDisplay = label || PAYMENT_FALLBACK[input.paymentMethod] || input.paymentMethod;
+    this.createNotification({
+      type: "order_updated",
+      orderId: order.id,
+      orderCode: order.code,
+      title: `Pedido #${order.code} alterado`,
+      changeSummary: `Pagamento: ${prevDisplay} → ${nextDisplay}`,
+      actorName: input.actorName?.trim() || "Equipe",
+    });
+    return order;
+  },
+
   listAutoPrintQueue(limit = 20) {
     const staleBefore = Date.now() - 90_000;
     return [...orders.values()]

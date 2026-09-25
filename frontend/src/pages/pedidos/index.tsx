@@ -25,21 +25,20 @@ import { toast } from "../../lib/toast";
 import { supabase } from "../../lib/supabase";
 import {
   nextStatus,
-  PAYMENT_COLOR,
-  orderPaymentLabel,
   STATUS_COLOR,
   STATUS_LABEL,
   statusActionLabel,
   formatBRL,
   formatDate,
-  cashChangeLabel,
+  orderPaymentLabel,
 } from "../../lib/format";
 import { useAuth } from "../../auth/AuthProvider";
 import { displayName } from "../../lib/profile";
-import type { Order, OrderStatus } from "../../types";
+import type { Order, OrderStatus, StorePaymentMethod } from "../../types";
 import { FillTable } from "../../components/FillTable";
 import { useTableGridHeight } from "../../lib/useTableGridHeight";
 import { filterSearch, filterSelect, listCards, listPage, tableClass, tableGridFill } from "../../ui";
+import { OrderPaymentSelect } from "./OrderPaymentSelect";
 
 const STATUS_OPTIONS = (
   Object.entries(STATUS_LABEL) as [OrderStatus, string][]
@@ -91,6 +90,11 @@ export function OrdersPage() {
     queryKey: queryKeys.store,
     queryFn: api.store,
   });
+  const paymentMethodsQuery = useQuery({
+    queryKey: queryKeys.paymentMethods.list(1, 100, { active: true }),
+    queryFn: () => api.listPaymentMethods(1, 100, { active: true }),
+  });
+  const paymentMethods = paymentMethodsQuery.data?.items ?? [];
 
   const result = listQuery.data;
   const orders = result?.items ?? [];
@@ -162,6 +166,28 @@ export function OrdersPage() {
     },
   });
 
+  const paymentMutation = useMutation({
+    mutationFn: ({
+      order,
+      method,
+    }: {
+      order: Order;
+      method: StorePaymentMethod;
+    }) =>
+      api.updateOrderPayment(order.id, {
+        paymentMethod: method.kind,
+        paymentMethodLabel: method.name,
+        changeForCents: method.kind === "cash" ? undefined : null,
+        actorName: displayName(user),
+      }),
+    onSuccess: async (updated) => {
+      toast.success(
+        `Pedido #${updated.code}: pagamento → ${orderPaymentLabel(updated) ?? "atualizado"}`,
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+    },
+  });
+
   function changeStatus(order: Order, next: OrderStatus) {
     if (next === "preparing") {
       setPrepOrder(order);
@@ -171,9 +197,12 @@ export function OrdersPage() {
   }
 
   const updatingId =
-    statusMutation.isPending && statusMutation.variables
+    (statusMutation.isPending && statusMutation.variables
       ? statusMutation.variables.order.id
-      : null;
+      : null) ||
+    (paymentMutation.isPending && paymentMutation.variables
+      ? paymentMutation.variables.order.id
+      : null);
 
   const pagination = serverPagination(page, limit, total, (nextPage, nextSize) => {
     setPage(nextPage);
@@ -299,19 +328,15 @@ export function OrdersPage() {
             dataIndex: "paymentMethod",
             width: 188,
             align: "center",
-            render: (value: Order["paymentMethod"], order) =>
-              value ? (
-                <span className="inline-flex flex-col items-center gap-0.5">
-                  <Tag color={PAYMENT_COLOR[value]}>{orderPaymentLabel(order)}</Tag>
-                  {value === "cash" && order.changeForCents != null ? (
-                    <span className="max-w-[11.5rem] whitespace-normal text-[11px] font-medium leading-tight text-food-muted">
-                      {cashChangeLabel(order.changeForCents, order.totalCents)}
-                    </span>
-                  ) : null}
-                </span>
-              ) : (
-                "—"
-              ),
+            render: (_value: Order["paymentMethod"], order) => (
+              <OrderPaymentSelect
+                order={order}
+                methods={paymentMethods}
+                loading={paymentMethodsQuery.isLoading}
+                disabled={updatingId === order.id}
+                onChange={(method) => paymentMutation.mutate({ order, method })}
+              />
+            ),
           },
           {
             title: "Total",
@@ -393,7 +418,12 @@ export function OrdersPage() {
               key={order.id}
               order={order}
               updating={updatingId === order.id}
+              paymentMethods={paymentMethods}
+              paymentMethodsLoading={paymentMethodsQuery.isLoading}
               onChangeStatus={changeStatus}
+              onChangePayment={(target, method) =>
+                paymentMutation.mutate({ order: target, method })
+              }
               onPreviewReceipt={setReceiptOrder}
             />
           ))}

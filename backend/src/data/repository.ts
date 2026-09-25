@@ -3893,6 +3893,104 @@ export async function updateOrderStatus(
   return order;
 }
 
+const PAYMENT_METHOD_FALLBACK: Record<PaymentMethod, string> = {
+  pix: "Pix",
+  cash: "Dinheiro",
+  card: "Cartão",
+  credit: "Crédito",
+  debit: "Débito",
+  other: "Outro",
+};
+
+export async function updateOrderPayment(
+  id: string,
+  input: {
+    paymentMethod: PaymentMethod;
+    paymentMethodLabel?: string | null;
+    changeForCents?: number | null;
+    actorName?: string;
+  },
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.updateOrderPayment(id, input);
+  }
+
+  const { data: current } = await supabase
+    .from("orders")
+    .select("id, code, store_id, payment_method, payment_method_label")
+    .eq("id", id)
+    .maybeSingle();
+  if (!current) return null;
+
+  const label =
+    input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+  const prevMethod = (current.payment_method as PaymentMethod | null) ?? null;
+  const prevLabel =
+    current.payment_method_label != null
+      ? String(current.payment_method_label).trim() || null
+      : null;
+  const prevDisplay =
+    prevLabel ||
+    (prevMethod ? PAYMENT_METHOD_FALLBACK[prevMethod] : null) ||
+    "—";
+
+  let changeForCents: number | null = null;
+  if (input.paymentMethod === "cash") {
+    if (input.changeForCents === undefined) {
+      const { data: full } = await supabase
+        .from("orders")
+        .select("change_for_cents")
+        .eq("id", id)
+        .maybeSingle();
+      changeForCents =
+        full?.change_for_cents == null ? null : Number(full.change_for_cents);
+    } else if (input.changeForCents == null) {
+      changeForCents = null;
+    } else {
+      const raw = Number(input.changeForCents);
+      changeForCents = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : null;
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    payment_method: input.paymentMethod,
+    payment_method_label: label,
+    change_for_cents: changeForCents,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update(payload)
+    .eq("id", id)
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .single();
+
+  if (error || !data) {
+    if (error?.message?.includes("payment_method_label")) {
+      throw new Error("Rode a migration de payment_method_label no banco.");
+    }
+    return null;
+  }
+
+  const order = mapOrder(data as Record<string, unknown>);
+  const nextDisplay =
+    label || PAYMENT_METHOD_FALLBACK[input.paymentMethod] || input.paymentMethod;
+  if (prevDisplay !== nextDisplay) {
+    await createNotification({
+      storeId: String(current.store_id),
+      type: "order_updated",
+      orderId: order.id,
+      orderCode: order.code,
+      title: `Pedido #${order.code} alterado`,
+      changeSummary: `Pagamento: ${prevDisplay} → ${nextDisplay}`,
+      actorName: input.actorName?.trim() || "Equipe",
+    });
+  }
+  return order;
+}
+
 const AUTO_PRINT_CLAIM_TTL_MS = 90_000;
 
 function isAutoPrintClaimStale(claimedAt: string | null | undefined) {

@@ -473,6 +473,19 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status, actorName, prepMinutes })
     }),
+  updateOrderPayment: (
+    id: string,
+    payload: {
+      paymentMethod: NonNullable<Order["paymentMethod"]>;
+      paymentMethodLabel?: string | null;
+      changeForCents?: number | null;
+      actorName?: string;
+    },
+  ) =>
+    request<Order>(`/api/orders/${id}/payment`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   notifications: (
     reader: string,
     silent = true,

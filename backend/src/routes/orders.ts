@@ -8,6 +8,7 @@ import {
   getSalesByPaymentReport,
   listAutoPrintQueue,
   listOrdersPage,
+  updateOrderPayment,
   updateOrderStatus,
 } from "../data/repository.js";
 import {
@@ -17,7 +18,7 @@ import {
 } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { notifyCustomerOrderStatus } from "../lib/orderNotify.js";
-import type { OrderStatus } from "../types.js";
+import type { OrderStatus, PaymentMethod } from "../types.js";
 
 const STATUSES = new Set<OrderStatus>([
   "received",
@@ -250,6 +251,62 @@ ordersRouter.patch("/:id/status", async (req, res) => {
   await notifyCustomerOrderStatus(order).catch((error) => {
     console.error("Falha ao notificar cliente", error);
   });
+
+  res.json(order);
+});
+
+ordersRouter.patch("/:id/payment", async (req, res) => {
+  const paymentMethod = String(req.body?.paymentMethod ?? "").trim() as PaymentMethod;
+  if (!PAYMENT_METHODS.has(paymentMethod)) {
+    res.status(400).json({ error: "Forma de pagamento inválida." });
+    return;
+  }
+
+  const actorName = String(req.body?.actorName ?? "").trim() || "Equipe";
+  const rawLabel = req.body?.paymentMethodLabel;
+  const paymentMethodLabel =
+    rawLabel === undefined || rawLabel === null
+      ? undefined
+      : String(rawLabel).trim() || null;
+
+  const rawChange = req.body?.changeForCents;
+  const changeForCents =
+    rawChange === undefined
+      ? undefined
+      : rawChange === null || rawChange === ""
+        ? null
+        : Number(rawChange);
+
+  if (
+    changeForCents !== undefined &&
+    changeForCents !== null &&
+    (!Number.isFinite(changeForCents) || changeForCents < 0)
+  ) {
+    res.status(400).json({ error: "Valor de troco inválido." });
+    return;
+  }
+
+  let order;
+  try {
+    order = await updateOrderPayment(req.params.id, {
+      paymentMethod,
+      paymentMethodLabel,
+      changeForCents,
+      actorName,
+    });
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar o pagamento.",
+    });
+    return;
+  }
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado." });
+    return;
+  }
 
   res.json(order);
 });
