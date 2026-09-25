@@ -86,7 +86,7 @@ export function ReceiptPreviewModal({
   }, [open]);
 
   async function handlePrint() {
-    if (!order) return;
+    if (!order || order.status === "cancelled") return;
 
     if (agentOnline && getPrintAgentToken()) {
       setPrinting(true);
@@ -129,7 +129,7 @@ export function ReceiptPreviewModal({
           <Button
             type="primary"
             icon={<PrinterOutlined />}
-            disabled={!order}
+            disabled={!order || order.status === "cancelled"}
             loading={printing}
             onClick={() => void handlePrint()}
           >
