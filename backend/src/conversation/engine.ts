@@ -73,6 +73,20 @@ import {
 } from "../types.js";
 
 const CANCEL_KEYS = ["cancelar", "sair"];
+/** Durante o lote de pizzas: sai da montagem e recomeça (não encerra o atendimento). */
+const BATCH_RESTART_KEYS = [
+  "sair",
+  "cancelar",
+  "desistir",
+  "recomecar",
+  "comecar de novo",
+  "comecar denovo",
+  "comecar novamente",
+  "voltar ao inicio",
+  "comecar outra vez"
+];
+const BATCH_ABORT_ID = "batch:abort";
+const BATCH_ABORT_HINT = "_Errou? Digite *sair* ou toque em *Sair* para começar de novo._";
 /** Temporariamente desligada — após o endereço vai direto ao pagamento. */
 const ORDER_NOTE_STEP_ENABLED = false;
 const ACK_KEYS = [
@@ -207,6 +221,16 @@ function findVariant(incoming: string, normalized: string, groups: ProductOption
   });
 }
 
+/** Soft-max do lote: acima disso pedimos confirmação (evita “8 fatias” → 8 pizzas). */
+const BATCH_QTY_SOFT_MAX = 4;
+const BATCH_QTY_HARD_MAX = 20;
+
+/** “8 fatias”, “oito pedaços” etc. — não é quantidade de pizzas. */
+function looksLikeSliceCount(raw: string): boolean {
+  const text = normalize(raw.replace(/^qty:/i, ""));
+  return /\b(fatias?|peda[cç]os?)\b/.test(text);
+}
+
 function parseQuantity(raw: string): number | null {
   const stripped = raw.replace(/^qty:/i, "").trim();
   if (!stripped) return null;
@@ -221,7 +245,7 @@ function parseQuantity(raw: string): number | null {
   const text = normalize(stripped)
     .replace(/-/g, " ")
     .replace(/\s+e\s+/g, " ")
-    .replace(/\b(quero|queria|vou querer|pode ser|serao|sera|sao|de|unidades?|itens?|pizzas?|pedacos?|vezes)\b/g, " ")
+    .replace(/\b(quero|queria|vou querer|pode ser|serao|sera|sao|de|unidades?|itens?|pizzas?|pedacos?|fatias?|vezes)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return null;
@@ -291,6 +315,55 @@ function clearBatch(context: ConversationContext) {
   context.batchTotal = undefined;
   context.batchSizeName = undefined;
   context.batchMaxFlavors = undefined;
+  context.batchCountPending = undefined;
+  context.batchCartStartLength = undefined;
+}
+
+/** Etapas do fluxo tamanho → quantas → montagem de cada pizza. */
+function isInBatchFlow(state: ConversationState, context: ConversationContext) {
+  return (
+    state === "awaiting_batch_size" ||
+    state === "awaiting_batch_count" ||
+    isBatchActive(context)
+  );
+}
+
+function isBatchRestartCommand(command: string) {
+  return BATCH_RESTART_KEYS.includes(command);
+}
+
+function withBatchAbortHint(text: string, enabled: boolean) {
+  if (!enabled) return text;
+  return `${text}\n\n${BATCH_ABORT_HINT}`;
+}
+
+function appendBatchAbortButton(buttons: { id: string; title: string }[], enabled: boolean) {
+  if (!enabled || buttons.length >= 3) return buttons;
+  if (buttons.some(button => button.id === BATCH_ABORT_ID)) return buttons;
+  return [...buttons, { id: BATCH_ABORT_ID, title: "Sair" }];
+}
+
+function batchAbortListRow() {
+  return {
+    id: BATCH_ABORT_ID,
+    title: "Sair / recomeçar",
+    description: "Cancelar esta montagem"
+  };
+}
+
+/** Índice 1-based da pizza em montagem no lote (1..total). */
+function batchCurrentPizzaNumber(context: ConversationContext) {
+  const total = Math.max(1, context.batchTotal ?? 1);
+  const remaining = Math.max(1, context.batchRemaining ?? 1);
+  return total - remaining + 1;
+}
+
+/** Prefixo ao abrir o menu de sabores no lote (início ou próxima pizza). */
+function batchAssembleStartPrefix(context: ConversationContext) {
+  const total = context.batchTotal ?? 0;
+  if (total <= 1) return undefined;
+  const current = batchCurrentPizzaNumber(context);
+  return `🍕 Vamos montar a *pizza ${current} de ${total}*:`;
 }
 
 function batchMaxFlavors(context: ConversationContext) {
@@ -309,7 +382,8 @@ function batchTotalFlavors(context: ConversationContext) {
 function batchFlavorMenuIntro(context: ConversationContext, prefix?: string) {
   const total = batchTotalFlavors(context);
   const flavorWord = total === 1 ? "sabor" : "sabores";
-  return [prefix, `🍕 Você pode escolher até *${total}* ${flavorWord}`, `Escolha o *1º* sabor de *${total}*:`]
+  const head = prefix !== undefined ? prefix : batchAssembleStartPrefix(context);
+  return [head, `🍕 Você pode escolher até *${total}* ${flavorWord}`, `Escolha o *1º* sabor de *${total}*:`]
     .filter(Boolean)
     .join("\n");
 }
@@ -562,17 +636,20 @@ function crustsForPizza(product: Product, crusts: Crust[]) {
   return crusts.filter(crust => crust.pizzaKind === product.pizzaKind);
 }
 
-async function askCrusts(to: string, product: Product, crusts: Crust[]) {
-  const visible = crustsForPizza(product, crusts).slice(0, 10);
+async function askCrusts(to: string, product: Product, crusts: Crust[], batchAbort = false) {
+  const maxRows = batchAbort ? WA_LIST_MAX_ROWS - 1 : WA_LIST_MAX_ROWS;
+  const visible = crustsForPizza(product, crusts).slice(0, maxRows);
   if (!visible.length) return false;
-  await sendList(to, `*${product.name}*\n🧀 Escolha a borda.`, "Ver bordas", [
+  const rows = visible.map(crust => ({
+    id: `crust:${crust.id}`,
+    title: crust.name.slice(0, 24),
+    ...(crust.addsPrice && crust.price > 0 ? { description: `+ ${formatReais(crust.price)}` } : {})
+  }));
+  if (batchAbort) rows.push(batchAbortListRow());
+  await sendList(to, withBatchAbortHint(`*${product.name}*\n🧀 Escolha a borda.`, batchAbort), "Ver bordas", [
     {
       title: "Bordas",
-      rows: visible.map(crust => ({
-        id: `crust:${crust.id}`,
-        title: crust.name.slice(0, 24),
-        ...(crust.addsPrice && crust.price > 0 ? { description: `+ ${formatReais(crust.price)}` } : {})
-      }))
+      rows
     }
   ]);
   return true;
@@ -809,7 +886,7 @@ async function resumeCurrentStep(
         if (current?.options.length) {
           if (usesCatalogFlavors(openGroup)) {
             await sendHintIfNeeded();
-            await askGroupOptions(to, product, openGroup, drafts);
+            await askGroupOptions(to, product, openGroup, drafts, isBatchActive(context));
             return;
           }
           const shares =
@@ -818,10 +895,17 @@ async function resumeCurrentStep(
               current.options.map(item => item.name)
             ) || current.options.map(item => item.name).join(" + ");
           const label = `*${openGroup.name}:*\n${shares}`;
-          await sendButtons(to, withHint(label), [
-            { id: "more_options", title: "Mais um" },
-            { id: "done_options", title: "Pronto" }
-          ]);
+          await sendButtons(
+            to,
+            withBatchAbortHint(withHint(label), isBatchActive(context)),
+            appendBatchAbortButton(
+              [
+                { id: "more_options", title: "Mais um" },
+                { id: "done_options", title: "Pronto" }
+              ],
+              isBatchActive(context)
+            )
+          );
           return;
         }
       }
@@ -838,11 +922,11 @@ async function resumeCurrentStep(
       }
       const matching = crustsForPizza(product, crusts);
       if (!matching.length) {
-        await askQuantity(to, product, context.draftSelections ?? []);
+        await askQuantity(to, product, context.draftSelections ?? [], isBatchActive(context));
         return;
       }
       await sendHintIfNeeded();
-      await askCrusts(to, product, matching);
+      await askCrusts(to, product, matching, isBatchActive(context));
       return;
     }
     case "awaiting_addon": {
@@ -852,7 +936,7 @@ async function resumeCurrentStep(
         return;
       }
       await sendHintIfNeeded();
-      await askAddons(to, product, context.draftSelections, context.addonOffset ?? 0);
+      await askAddons(to, product, context.draftSelections, context.addonOffset ?? 0, false, isBatchActive(context));
       return;
     }
     case "awaiting_quantity": {
@@ -861,7 +945,7 @@ async function resumeCurrentStep(
         await showMenu(to, withHint("Escolha um item do cardápio:"), context);
         return;
       }
-      await askQuantity(to, product, context.draftSelections ?? []);
+      await askQuantity(to, product, context.draftSelections ?? [], isBatchActive(context));
       return;
     }
     case "awaiting_batch_size": {
@@ -880,12 +964,16 @@ async function resumeCurrentStep(
       const categoryId = context.menuCategoryId ?? context.batchCategoryId;
       const categories = productCategories(await listProducts());
       const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
+      if (context.batchCountPending != null && context.batchCountPending > 0) {
+        await askBatchCountConfirm(to, context.batchCountPending);
+        return;
+      }
       await askBatchCount(to, categoryName);
       return;
     }
     case "awaiting_item_note":
       if (context.draftItem) {
-        await askItemNote(to, context.draftItem);
+        await askItemNote(to, context.draftItem, isBatchActive(context));
         return;
       }
       await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
@@ -978,14 +1066,17 @@ export async function handleUnsupportedInbound(input: {
   await resumeCurrentStep(input.from, store, state, context);
 }
 
-async function askItemNote(to: string, item: CartItem) {
+async function askItemNote(to: string, item: CartItem, batchAbort = false) {
   const { lines } = itemHeading(item, { withQuantity: true });
   await sendButtons(
     to,
-    ["📝 Observação deste item?", ...lines, "*Digite* por ex.: sem cebola. Ou pode *Pular*."]
-      .filter(Boolean)
-      .join("\n"),
-    [{ id: "skip_note", title: "Pular" }]
+    withBatchAbortHint(
+      ["📝 Observação deste item?", ...lines, "*Digite* por ex.: sem cebola. Ou pode *Pular*."]
+        .filter(Boolean)
+        .join("\n"),
+      batchAbort
+    ),
+    appendBatchAbortButton([{ id: "skip_note", title: "Pular" }], batchAbort)
   );
 }
 
@@ -1251,22 +1342,23 @@ async function showMenuCategories(
   await sendList(to, "📂 Escolha uma *categoria*.", "Categorias", [{ title: "Categorias", rows }]);
 }
 
-function menuItemsPageSize(total: number, offset: number, canGoBack: boolean) {
+function menuItemsPageSize(total: number, offset: number, canGoBack: boolean, reserveAbort = false) {
   const reserveBack = canGoBack ? 1 : 0;
   const reservePrev = offset > 0 ? 1 : 0;
-  const navReserve = reserveBack + reservePrev;
+  const reserveExit = reserveAbort ? 1 : 0;
+  const navReserve = reserveBack + reservePrev + reserveExit;
   const tentativeMore = offset + (WA_LIST_MAX_ROWS - navReserve - 1) < total ? 1 : 0;
   return Math.max(1, WA_LIST_MAX_ROWS - navReserve - tentativeMore);
 }
 
 /** Offset da página anterior de itens (mesmo critério de paginação do Mais itens). */
-function previousMenuItemsOffset(total: number, offset: number, canGoBack: boolean) {
+function previousMenuItemsOffset(total: number, offset: number, canGoBack: boolean, reserveAbort = false) {
   if (offset <= 0) return 0;
   let cursor = 0;
   let previous = 0;
   while (cursor < offset) {
     previous = cursor;
-    cursor += menuItemsPageSize(total, cursor, canGoBack);
+    cursor += menuItemsPageSize(total, cursor, canGoBack, reserveAbort);
     if (cursor <= previous) break;
   }
   return previous;
@@ -1281,9 +1373,11 @@ async function showMenuProducts(
     offset: number;
     canGoBack: boolean;
     listButton?: string;
+    batchAbort?: boolean;
   }
 ) {
-  const pageSize = menuItemsPageSize(products.length, opts.offset, opts.canGoBack);
+  const batchAbort = Boolean(opts.batchAbort);
+  const pageSize = menuItemsPageSize(products.length, opts.offset, opts.canGoBack, batchAbort);
   const page = products.slice(opts.offset, opts.offset + pageSize);
   const hasMore = opts.offset + page.length < products.length;
 
@@ -1317,8 +1411,12 @@ async function showMenuProducts(
       description: "Voltar"
     });
   }
+  if (batchAbort) rows.push(batchAbortListRow());
 
-  const heading = [intro, opts.categoryName ? `📂 *${opts.categoryName}*` : null].filter(Boolean).join("\n");
+  const heading = withBatchAbortHint(
+    [intro, opts.categoryName ? `📂 *${opts.categoryName}*` : null].filter(Boolean).join("\n"),
+    batchAbort
+  );
 
   await sendList(to, heading, opts.listButton?.trim() || "Ver itens", [
     {
@@ -1389,7 +1487,8 @@ async function showMenu(
         ? "Escolher bebida"
         : flavorMenu
           ? "Escolher sabor"
-          : "Ver itens"
+          : "Ver itens",
+      batchAbort: isBatchActive(context)
     });
     return;
   }
@@ -1436,7 +1535,7 @@ async function askAssembly(to: string, product: Product, context: ConversationCo
   }
 
   const group = next.group;
-  return askGroupOptions(to, product, group, context.draftSelections ?? []);
+  return askGroupOptions(to, product, group, context.draftSelections ?? [], isBatchActive(context));
 }
 
 async function pizzaFlavorChoices(kind: PizzaKind | null | undefined, excludeIds: string[] = []) {
@@ -1453,7 +1552,8 @@ async function showFlavorList(
   product: Product,
   group: ProductOptionGroup,
   drafts: CartSelection[],
-  offset = 0
+  offset = 0,
+  batchAbort = false
 ) {
   const current = drafts.find(item => item.groupId === group.id);
   const picked = current?.options.map(option => option.id) ?? [];
@@ -1463,8 +1563,9 @@ async function showFlavorList(
 
   const needsDone = picked.length >= 1;
   const reserveDone = needsDone ? 1 : 0;
-  const tentativeMore = offset + (WA_LIST_MAX_ROWS - reserveDone - 1) < remaining.length ? 1 : 0;
-  const pageSize = WA_LIST_MAX_ROWS - reserveDone - tentativeMore;
+  const reserveAbort = batchAbort ? 1 : 0;
+  const tentativeMore = offset + (WA_LIST_MAX_ROWS - reserveDone - reserveAbort - 1) < remaining.length ? 1 : 0;
+  const pageSize = WA_LIST_MAX_ROWS - reserveDone - reserveAbort - tentativeMore;
   const page = remaining.slice(offset, offset + pageSize);
   const hasMore = offset + page.length < remaining.length;
 
@@ -1491,17 +1592,29 @@ async function showFlavorList(
       description: "Seguir com estes sabores"
     });
   }
+  if (batchAbort) rows.push(batchAbortListRow());
 
-  await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolha o sabor", [
-    {
-      title: "Sabores",
-      rows: rows.slice(0, WA_LIST_MAX_ROWS)
-    }
-  ]);
+  await sendList(
+    to,
+    withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort),
+    "Escolha o sabor",
+    [
+      {
+        title: "Sabores",
+        rows: rows.slice(0, WA_LIST_MAX_ROWS)
+      }
+    ]
+  );
   return false;
 }
 
-async function askGroupOptions(to: string, product: Product, group: ProductOptionGroup, drafts: CartSelection[]) {
+async function askGroupOptions(
+  to: string,
+  product: Product,
+  group: ProductOptionGroup,
+  drafts: CartSelection[],
+  batchAbort = false
+) {
   const current = drafts.find(item => item.groupId === group.id);
   const picked = current?.options.map(option => option.id) ?? [];
   const pickedNames = current?.options.map(option => option.name) ?? [];
@@ -1513,48 +1626,80 @@ async function askGroupOptions(to: string, product: Product, group: ProductOptio
 
     // A partir do 2º sabor extra: botões Escolher sabor + Pronto (Pronto também fica na lista).
     if (picked.length >= 2) {
-      await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
-        { id: "choose_flavor", title: "Escolher sabor" },
-        { id: "done_options", title: "Pronto" }
-      ]);
+      await sendButtons(
+        to,
+        withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort),
+        appendBatchAbortButton(
+          [
+            { id: "choose_flavor", title: "Escolher sabor" },
+            { id: "done_options", title: "Pronto" }
+          ],
+          batchAbort
+        )
+      );
       return false;
     }
 
     // Já escolheu 1 sabor extra: Escolher sabor + Só este sabor.
     if (picked.length > 0) {
-      await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
-        { id: "choose_flavor", title: "Escolher sabor" },
-        { id: "skip_group", title: "Só este sabor" }
-      ]);
+      await sendButtons(
+        to,
+        withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort),
+        appendBatchAbortButton(
+          [
+            { id: "choose_flavor", title: "Escolher sabor" },
+            { id: "skip_group", title: "Só este sabor" }
+          ],
+          batchAbort
+        )
+      );
       return false;
     }
 
     // Primeira decisão (só o sabor do item): Só este sabor + Escolher sabor.
-    await sendButtons(to, groupPrompt(product, group, picked, pickedNames), [
-      { id: "skip_group", title: "Só este sabor" },
-      { id: "choose_flavor", title: "Escolher sabor" }
-    ]);
+    await sendButtons(
+      to,
+      withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort),
+      appendBatchAbortButton(
+        [
+          { id: "skip_group", title: "Só este sabor" },
+          { id: "choose_flavor", title: "Escolher sabor" }
+        ],
+        batchAbort
+      )
+    );
     return false;
   }
 
   const remaining = group.options.filter(option => !picked.includes(option.id));
   if (!remaining.length) return true;
 
-  const pageSize = WA_LIST_MAX_ROWS;
-  await sendList(to, groupPrompt(product, group, picked, pickedNames), "Escolher", [
-    {
-      title: group.name.slice(0, 24),
-      rows: remaining.slice(0, pageSize).map(option => ({
-        id: `opt:${option.id}`,
-        title: option.name.slice(0, 24),
-        ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
-          ? {}
-          : { description: optionDescription(option.extraPrice) })
-      }))
-    }
-  ]);
+  const pageSize = batchAbort ? WA_LIST_MAX_ROWS - 1 : WA_LIST_MAX_ROWS;
+  const rows = remaining.slice(0, pageSize).map(option => ({
+    id: `opt:${option.id}`,
+    title: option.name.slice(0, 24),
+    ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
+      ? {}
+      : { description: optionDescription(option.extraPrice) })
+  }));
+  if (batchAbort) rows.push(batchAbortListRow());
+  await sendList(
+    to,
+    withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort),
+    "Escolher",
+    [
+      {
+        title: group.name.slice(0, 24),
+        rows
+      }
+    ]
+  );
   if (!group.required && picked.length === 0) {
-    await sendButtons(to, "✨ Esta etapa é opcional.", [{ id: "skip_group", title: "Pular" }]);
+    await sendButtons(
+      to,
+      withBatchAbortHint("✨ Esta etapa é opcional.", batchAbort),
+      appendBatchAbortButton([{ id: "skip_group", title: "Pular" }], batchAbort)
+    );
   }
   return false;
 }
@@ -1581,7 +1726,7 @@ async function groupWantingMore(product: Product, drafts: CartSelection[]) {
   return null;
 }
 
-async function askQuantity(to: string, product: Product, extras: CartSelection[]) {
+async function askQuantity(to: string, product: Product, extras: CartSelection[], batchAbort = false) {
   const variant = assembledName(product, extras);
   const price = unitPriceCents(product, extras);
   const sep = " — ";
@@ -1591,19 +1736,62 @@ async function askQuantity(to: string, product: Product, extras: CartSelection[]
   const heading = [`*${title}*`, detail || null, crustLabel(extras), addonLabel(extras), formatReais(price / 100)]
     .filter(Boolean)
     .join("\n");
-  await sendButtons(to, `${heading}\n🔢 Quantas unidades?\nOu digite um número de 1 a 50.`, [
-    { id: "qty:1", title: "1" },
-    { id: "qty:2", title: "2" },
-    { id: "qty:3", title: "3" }
-  ]);
+  await sendButtons(
+    to,
+    withBatchAbortHint(
+      batchAbort
+        ? `${heading}\n🔢 Quantas unidades?\nUse os botões ou digite um número.`
+        : `${heading}\n🔢 Quantas unidades?\nOu digite um número de 1 a 50.`,
+      batchAbort
+    ),
+    batchAbort
+      ? appendBatchAbortButton(
+          [
+            { id: "qty:1", title: "1" },
+            { id: "qty:2", title: "2" }
+          ],
+          true
+        )
+      : [
+          { id: "qty:1", title: "1" },
+          { id: "qty:2", title: "2" },
+          { id: "qty:3", title: "3" }
+        ]
+  );
 }
 
 async function askBatchCount(to: string, categoryName: string) {
-  await sendButtons(to, `*${categoryName}*\n🔢 Você vai querer quantas?\nOu digite um número.`, [
-    { id: "qty:1", title: "1" },
-    { id: "qty:2", title: "2" },
-    { id: "qty:3", title: "3" }
-  ]);
+  await sendButtons(
+    to,
+    withBatchAbortHint(
+      `*${categoryName}*\n🔢 Quantas *pizzas* você quer?\nUse os botões (*1* ou *2*) ou digite o número (ex.: *3*).\n_(Não digite fatias — ex.: “8 fatias” não conta.)_`,
+      true
+    ),
+    appendBatchAbortButton(
+      [
+        { id: "qty:1", title: "1" },
+        { id: "qty:2", title: "2" }
+      ],
+      true
+    )
+  );
+}
+
+async function askBatchCountConfirm(to: string, quantity: number) {
+  await sendButtons(
+    to,
+    withBatchAbortHint(
+      `Você digitou *${quantity}*. Confirma que quer *${quantity} pizzas*?\n\nSe era outra coisa (ex.: número de fatias do tamanho), toque em *Corrigir*.`,
+      true
+    ),
+    appendBatchAbortButton(
+      [
+        { id: `qtyconfirm:${quantity}`, title: `Sim, ${quantity} pizzas`.slice(0, 20) },
+        { id: "qtyconfirm:no", title: "Corrigir" }
+      ],
+      true
+    )
+  );
 }
 
 type BatchSizeOption = {
@@ -1650,16 +1838,24 @@ async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> 
 }
 
 async function askBatchSize(to: string, categoryName: string, sizes: BatchSizeOption[]) {
-  await sendList(to, `*${categoryName}*\n📏 Escolha o tamanho.`, "Tamanhos", [
-    {
-      title: "Tamanhos",
-      rows: sizes.slice(0, WA_LIST_MAX_ROWS).map(size => ({
-        id: `batchsize:${size.id}`,
-        title: size.name.slice(0, 24),
-        description: formatReais(size.price)
-      }))
-    }
-  ]);
+  const maxSizes = Math.max(1, WA_LIST_MAX_ROWS - 1);
+  const rows = sizes.slice(0, maxSizes).map(size => ({
+    id: `batchsize:${size.id}`,
+    title: size.name.slice(0, 24),
+    description: formatReais(size.price)
+  }));
+  rows.push(batchAbortListRow());
+  await sendList(
+    to,
+    withBatchAbortHint(`*${categoryName}*\n📏 Escolha o tamanho.`, true),
+    "Tamanhos",
+    [
+      {
+        title: "Tamanhos",
+        rows
+      }
+    ]
+  );
 }
 
 async function startCategoryBatch(
@@ -1680,6 +1876,42 @@ async function startCategoryBatch(
   }
   await persist("awaiting_batch_size", context);
   await askBatchSize(to, categoryName, sizes);
+}
+
+/** Aborta o lote (remove pizzas desta sessão) e recomeça tamanho/quantidade. */
+async function abortBatchAndRestart(
+  to: string,
+  store: Store,
+  context: ConversationContext,
+  persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
+) {
+  const categoryId = context.batchCategoryId ?? context.menuCategoryId ?? null;
+  const start = context.batchCartStartLength;
+  if (typeof start === "number" && start >= 0 && start <= context.cart.length) {
+    context.cart = context.cart.slice(0, start);
+  }
+  context.draftItem = undefined;
+  context.draftSelections = [];
+  context.selectedProductId = undefined;
+  context.optionGroupIndex = undefined;
+  context.addonOffset = 0;
+  context.flavorOffset = 0;
+  context.menuOffset = 0;
+  context.menuLockCategory = undefined;
+  clearBatch(context);
+
+  await sendText(to, "🔄 Montagem cancelada. Vamos começar de novo — escolha o tamanho e a quantidade.");
+
+  if (categoryId && categoryUsesBatch(store, categoryId)) {
+    const categories = productCategories(await listProducts());
+    const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
+    await startCategoryBatch(to, categoryId, categoryName, context, persist);
+    return;
+  }
+
+  context.menuCategoryId = null;
+  await persist("awaiting_product", context);
+  await showMenu(to, "📋 Escolha um item do cardápio:", context, persist, store);
 }
 
 /** Localiza o grupo de tamanho do produto correspondente ao tamanho do lote. */
@@ -1747,25 +1979,42 @@ function previousAddonsOffset(total: number, offset: number) {
   return previous;
 }
 
-async function askAddons(to: string, product: Product, drafts?: CartSelection[], offset = 0, openList = false) {
+async function askAddons(
+  to: string,
+  product: Product,
+  drafts?: CartSelection[],
+  offset = 0,
+  openList = false,
+  batchAbort = false
+) {
   const remaining = await remainingAddons(product, drafts);
   if (!remaining.length) return true;
 
   const picked = draftAddon(drafts)?.options.map(addonOptionLabel) ?? [];
-  const prompt = [
-    `*${product.name}*`,
-    picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "Deseja colocar algum adicional?",
-    picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const prompt = withBatchAbortHint(
+    [
+      `*${product.name}*`,
+      picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "Deseja colocar algum adicional?",
+      picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    batchAbort
+  );
 
   // Primeira mensagem: botões Sim + Não (sem abrir o modal).
   if (!picked.length && offset === 0 && !openList) {
-    await sendButtons(to, prompt, [
-      { id: "choose_addon", title: "Sim" },
-      { id: "skip_addon", title: "Não" }
-    ]);
+    await sendButtons(
+      to,
+      prompt,
+      appendBatchAbortButton(
+        [
+          { id: "choose_addon", title: "Sim" },
+          { id: "skip_addon", title: "Não" }
+        ],
+        batchAbort
+      )
+    );
     return false;
   }
 
@@ -1781,7 +2030,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
         description: "Seguir sem mais adicionais"
       };
 
-  const pageSize = addonsPageSize(remaining.length, offset);
+  const pageSize = Math.max(1, addonsPageSize(remaining.length, offset) - (batchAbort ? 1 : 0));
   const page = remaining.slice(offset, offset + pageSize);
   const hasMore = offset + page.length < remaining.length;
 
@@ -1807,6 +2056,7 @@ async function askAddons(to: string, product: Product, drafts?: CartSelection[],
   // Com adicionais já escolhidos, "Pronto" no topo (celulares pequenos não veem o fim da lista).
   if (picked.length) rows.unshift(footer);
   else rows.push(footer);
+  if (batchAbort) rows.push(batchAbortListRow());
 
   await sendList(to, prompt, "Adicionais", [
     {
@@ -1840,7 +2090,7 @@ async function applyQuantityAndContinue(
 
   if (product.notesEnabled) {
     await persist("awaiting_item_note", context);
-    await askItemNote(to, context.draftItem);
+    await askItemNote(to, context.draftItem, isBatchActive(context));
     return;
   }
 
@@ -1857,6 +2107,8 @@ async function finishItemOrContinueBatch(
   persist: (state: ConversationState, nextContext?: ConversationContext) => Promise<unknown>
 ) {
   if (isBatchActive(context)) {
+    const total = Math.max(1, context.batchTotal ?? 1);
+    const finished = batchCurrentPizzaNumber(context);
     context.batchRemaining = (context.batchRemaining ?? 1) - 1;
     if ((context.batchRemaining ?? 0) > 0) {
       context.selectedProductId = undefined;
@@ -1867,10 +2119,23 @@ async function finishItemOrContinueBatch(
       context.menuCategoryId = context.batchCategoryId ?? context.menuCategoryId ?? null;
       context.menuOffset = 0;
       await persist("awaiting_product", context);
-      await showMenu(to, batchFlavorMenuIntro(context, "✅ Item adicionado!"), context, persist, store);
+      const next = batchCurrentPizzaNumber(context);
+      const prefix =
+        total > 1
+          ? `✅ *Pizza ${finished} de ${total}* finalizada e adicionada ao carrinho!\n\n➡️ Agora vamos montar a *pizza ${next} de ${total}*:`
+          : "✅ Item adicionado!";
+      await showMenu(to, batchFlavorMenuIntro(context, prefix), context, persist, store);
       return;
     }
     clearBatch(context);
+    context.drinksOfferMore = undefined;
+    await persist("awaiting_fulfillment", context);
+    const intro =
+      total > 1
+        ? `✅ *Pizza ${finished} de ${total}* finalizada e adicionada!\nTodas as pizzas estão no carrinho.`
+        : "✅ Item adicionado!";
+    await showCheckoutOptions(to, store, context, intro);
+    return;
   }
 
   context.drinksOfferMore = undefined;
@@ -1889,19 +2154,19 @@ async function askQuantityStage(
     const crusts = crustsForPizza(product, await listCrusts());
     if (crusts.length) {
       await persist("awaiting_crust", context);
-      await askCrusts(to, product, crusts);
+      await askCrusts(to, product, crusts, isBatchActive(context));
       return;
     }
   }
   if ((await productHasAddons(product)) && !addonStepDone(context.draftSelections)) {
     context.addonOffset = 0;
     await persist("awaiting_addon", context);
-    await askAddons(to, product, context.draftSelections, 0);
+    await askAddons(to, product, context.draftSelections, 0, false, isBatchActive(context));
     return;
   }
   if (product.quantityEnabled) {
     await persist("awaiting_quantity", context);
-    await askQuantity(to, product, context.draftSelections ?? []);
+    await askQuantity(to, product, context.draftSelections ?? [], isBatchActive(context));
     return;
   }
   // Sem flag de quantidade: 1 unidade (lote já perguntou "quantas?" no início).
@@ -1946,7 +2211,7 @@ async function continueProductFlow(
       await askAssembly(to, product, context);
       return;
     }
-    await askGroupOptions(to, product, next.group, context.draftSelections ?? []);
+    await askGroupOptions(to, product, next.group, context.draftSelections ?? [], isBatchActive(context));
     return;
   }
   await askQuantityStage(to, product, context, persist);
@@ -2113,6 +2378,15 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  // No fluxo de lote (tamanho/qtd/montagem): sair = recomeçar, sem encerrar atendimento.
+  if (
+    incoming === BATCH_ABORT_ID ||
+    ((CANCEL_KEYS.includes(command) || isBatchRestartCommand(command)) && isInBatchFlow(state, context))
+  ) {
+    await abortBatchAndRestart(input.from, store, context, persist);
+    return;
+  }
+
   if (CANCEL_KEYS.includes(command)) {
     await persist("welcome", emptyContext(), { close: true });
     await sendText(
@@ -2180,7 +2454,7 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_item_note" && context.draftItem) {
     const notes = isSkipNote(incoming, normalized) ? null : clipNote(input.text);
     if (!isSkipNote(incoming, normalized) && !notes) {
-      await askItemNote(input.from, context.draftItem);
+      await askItemNote(input.from, context.draftItem, isBatchActive(context));
       return;
     }
     const added = context.draftItem;
@@ -2352,7 +2626,7 @@ export async function handleIncomingMessage(input: {
         return;
       }
       await persist("awaiting_option", context);
-      const finished = await askGroupOptions(input.from, product, group, drafts);
+      const finished = await askGroupOptions(input.from, product, group, drafts, isBatchActive(context));
       if (finished) await goNext();
       return;
     }
@@ -2378,7 +2652,14 @@ export async function handleIncomingMessage(input: {
       }
       context.flavorOffset = 0;
       await persist("awaiting_option", context);
-      const finished = await showFlavorList(input.from, product, group, drafts, context.flavorOffset ?? 0);
+      const finished = await showFlavorList(
+        input.from,
+        product,
+        group,
+        drafts,
+        context.flavorOffset ?? 0,
+        isBatchActive(context)
+      );
       if (finished) await goNext();
       return;
     }
@@ -2395,7 +2676,7 @@ export async function handleIncomingMessage(input: {
       }
       context.flavorOffset = (context.flavorOffset ?? 0) + 8;
       await persist("awaiting_option", context);
-      await showFlavorList(input.from, product, group, drafts, context.flavorOffset);
+      await showFlavorList(input.from, product, group, drafts, context.flavorOffset, isBatchActive(context));
       return;
     }
 
@@ -2454,32 +2735,44 @@ export async function handleIncomingMessage(input: {
           if (current.options.length >= 2) {
             await sendButtons(
               input.from,
-              groupPrompt(
-                product,
-                group,
-                current.options.map(item => item.id),
-                current.options.map(item => item.name)
+              withBatchAbortHint(
+                groupPrompt(
+                  product,
+                  group,
+                  current.options.map(item => item.id),
+                  current.options.map(item => item.name)
+                ),
+                isBatchActive(context)
               ),
-              [
-                { id: "choose_flavor", title: "Escolher sabor" },
-                { id: "done_options", title: "Pronto" }
-              ]
+              appendBatchAbortButton(
+                [
+                  { id: "choose_flavor", title: "Escolher sabor" },
+                  { id: "done_options", title: "Pronto" }
+                ],
+                isBatchActive(context)
+              )
             );
             return;
           }
           // 1 sabor extra já escolhido → Escolher sabor + Só este sabor.
           await sendButtons(
             input.from,
-            groupPrompt(
-              product,
-              group,
-              current.options.map(item => item.id),
-              current.options.map(item => item.name)
+            withBatchAbortHint(
+              groupPrompt(
+                product,
+                group,
+                current.options.map(item => item.id),
+                current.options.map(item => item.name)
+              ),
+              isBatchActive(context)
             ),
-            [
-              { id: "choose_flavor", title: "Escolher sabor" },
-              { id: "skip_group", title: "Só este sabor" }
-            ]
+            appendBatchAbortButton(
+              [
+                { id: "choose_flavor", title: "Escolher sabor" },
+                { id: "skip_group", title: "Só este sabor" }
+              ],
+              isBatchActive(context)
+            )
           );
           return;
         }
@@ -2493,17 +2786,20 @@ export async function handleIncomingMessage(input: {
           : `*${group.name}:*\n${shares}`;
         await sendButtons(
           input.from,
-          label,
-          canAddMore
-            ? [
-                { id: "more_options", title: "Mais um" },
-                { id: "done_options", title: "Pronto" }
-              ]
-            : [{ id: "done_options", title: "Pronto" }]
+          withBatchAbortHint(label, isBatchActive(context)),
+          appendBatchAbortButton(
+            canAddMore
+              ? [
+                  { id: "more_options", title: "Mais um" },
+                  { id: "done_options", title: "Pronto" }
+                ]
+              : [{ id: "done_options", title: "Pronto" }],
+            isBatchActive(context)
+          )
         );
         return;
       }
-      await askGroupOptions(input.from, product, group, drafts);
+      await askGroupOptions(input.from, product, group, drafts, isBatchActive(context));
       return;
     }
 
@@ -2634,7 +2930,7 @@ export async function handleIncomingMessage(input: {
     ) {
       context.addonOffset = 0;
       await persist("awaiting_addon", context);
-      const finished = await askAddons(input.from, product, drafts, 0, true);
+      const finished = await askAddons(input.from, product, drafts, 0, true, isBatchActive(context));
       if (finished) await finishAddons();
       return;
     }
@@ -2644,7 +2940,14 @@ export async function handleIncomingMessage(input: {
       const offset = context.addonOffset ?? 0;
       context.addonOffset = offset + addonsPageSize(total, offset);
       await persist("awaiting_addon", context);
-      const finished = await askAddons(input.from, product, drafts, context.addonOffset);
+      const finished = await askAddons(
+        input.from,
+        product,
+        drafts,
+        context.addonOffset,
+        false,
+        isBatchActive(context)
+      );
       if (finished) await finishAddons();
       return;
     }
@@ -2653,7 +2956,14 @@ export async function handleIncomingMessage(input: {
       const total = (await remainingAddons(product, drafts)).length;
       context.addonOffset = previousAddonsOffset(total, context.addonOffset ?? 0);
       await persist("awaiting_addon", context);
-      const finished = await askAddons(input.from, product, drafts, context.addonOffset, true);
+      const finished = await askAddons(
+        input.from,
+        product,
+        drafts,
+        context.addonOffset,
+        true,
+        isBatchActive(context)
+      );
       if (finished) await finishAddons();
       return;
     }
@@ -2696,7 +3006,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
     // Próxima lista já inclui "Pronto" — sem mensagem extra Mais um/Pronto.
-    await askAddons(input.from, product, context.draftSelections, 0);
+    await askAddons(input.from, product, context.draftSelections, 0, false, isBatchActive(context));
     return;
   }
 
@@ -2728,7 +3038,7 @@ export async function handleIncomingMessage(input: {
         : catalog;
       const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
       const offset = context.menuOffset ?? 0;
-      context.menuOffset = offset + menuItemsPageSize(inCategory.length, offset, canGoBack);
+      context.menuOffset = offset + menuItemsPageSize(inCategory.length, offset, canGoBack, isBatchActive(context));
       await persist("awaiting_product", context);
       await showMenu(input.from, productMenuIntro(context), context, persist, store);
       return;
@@ -2739,7 +3049,12 @@ export async function handleIncomingMessage(input: {
         ? catalog.filter(item => (item.categoryId || item.categoryName || "cardapio") === context.menuCategoryId)
         : catalog;
       const canGoBack = canGoBackToCategories(context, productCategories(catalog).length);
-      context.menuOffset = previousMenuItemsOffset(inCategory.length, context.menuOffset ?? 0, canGoBack);
+      context.menuOffset = previousMenuItemsOffset(
+        inCategory.length,
+        context.menuOffset ?? 0,
+        canGoBack,
+        isBatchActive(context)
+      );
       await persist("awaiting_product", context);
       await showMenu(input.from, productMenuIntro(context), context, persist, store);
       return;
@@ -2818,21 +3133,78 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_batch_count") {
-    const quantity = parseQuantity(incoming);
     const categoryId = context.menuCategoryId ?? context.batchCategoryId ?? null;
     const categories = productCategories(await listProducts());
     const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
 
-    if (!categoryId || quantity == null) {
-      await sendText(input.from, "Informe um número de *1 a 50* (pode digitar por extenso, ex.: três).");
+    const confirmNo =
+      incoming === "qtyconfirm:no" ||
+      normalized === "corrigir" ||
+      normalized === "nao" ||
+      normalized === "não";
+    if (confirmNo) {
+      context.batchCountPending = undefined;
+      await persist("awaiting_batch_count", context);
+      await sendText(input.from, "Sem problema! Quantas *pizzas* você quer?");
       await askBatchCount(input.from, categoryName);
       return;
     }
 
+    let quantity: number | null = null;
+    if (incoming.startsWith("qtyconfirm:")) {
+      const parsed = Number(incoming.slice("qtyconfirm:".length));
+      if (Number.isInteger(parsed) && parsed >= 1) quantity = parsed;
+    } else if (
+      context.batchCountPending != null &&
+      (normalized === "sim" ||
+        normalized === "confirmo" ||
+        normalized === "confirmado" ||
+        normalized.startsWith("sim "))
+    ) {
+      quantity = context.batchCountPending;
+    } else if (looksLikeSliceCount(incoming)) {
+      context.batchCountPending = undefined;
+      await persist("awaiting_batch_count", context);
+      await sendText(
+        input.from,
+        "Aqui a pergunta é *quantas pizzas*, não fatias.\nEx.: digite *1*, *2* ou *3* (ou use os botões)."
+      );
+      await askBatchCount(input.from, categoryName);
+      return;
+    } else {
+      quantity = parseQuantity(incoming);
+    }
+
+    if (!categoryId || quantity == null) {
+      await sendText(input.from, "Informe quantas *pizzas* (1 a 20). Pode digitar por extenso, ex.: três.");
+      await askBatchCount(input.from, categoryName);
+      return;
+    }
+
+    if (quantity > BATCH_QTY_HARD_MAX) {
+      context.batchCountPending = undefined;
+      await persist("awaiting_batch_count", context);
+      await sendText(
+        input.from,
+        `O máximo por vez é *${BATCH_QTY_HARD_MAX} pizzas*. Se precisar de mais, feche este pedido e faça outro.`
+      );
+      await askBatchCount(input.from, categoryName);
+      return;
+    }
+
+    if (quantity > BATCH_QTY_SOFT_MAX && !incoming.startsWith("qtyconfirm:")) {
+      context.batchCountPending = quantity;
+      await persist("awaiting_batch_count", context);
+      await askBatchCountConfirm(input.from, quantity);
+      return;
+    }
+
+    context.batchCountPending = undefined;
     context.batchCategoryId = categoryId;
     context.menuCategoryId = categoryId;
     context.batchRemaining = quantity;
     context.batchTotal = quantity;
+    context.batchCartStartLength = context.cart.length;
     context.batchProductId = undefined;
     context.selectedProductId = undefined;
     context.draftSelections = [];
@@ -2870,7 +3242,7 @@ export async function handleIncomingMessage(input: {
 
     if (product.notesEnabled) {
       await persist("awaiting_item_note", context);
-      await askItemNote(input.from, context.draftItem);
+      await askItemNote(input.from, context.draftItem, isBatchActive(context));
       return;
     }
 

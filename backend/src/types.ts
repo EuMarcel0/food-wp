@@ -147,6 +147,10 @@ export type ConversationContext = {
   batchSizeName?: string;
   /** Máx. de sabores do tamanho do lote (cadastro de tamanhos). */
   batchMaxFlavors?: number;
+  /** Qtd. digitada > soft-max aguardando confirmação (“Sim, N pizzas?”). */
+  batchCountPending?: number;
+  /** `cart.length` no início do lote — ao abortar, remove pizzas já montadas nesta sessão. */
+  batchCartStartLength?: number;
 };
 
 export type DeliveryNeighborhood = {

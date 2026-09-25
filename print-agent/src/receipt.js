@@ -264,8 +264,7 @@ export function buildReceiptEscPos(input) {
     setBold(false);
   };
 
-  // Init: fonte A (mais legível), tamanho 1x — o 2x deixava tudo “quadrado” e enorme.
-  // Térmicas não carregam fonte TrueType; tamanho nativo = traço mais limpo.
+  // Init: Font A. Corpo em altura 2x (maior sem estreitar colunas como o 2x largura).
   chunks.push(Buffer.from([ESC, 0x40]));
   chunks.push(Buffer.from([ESC, 0x4d, 0])); // Font A
   setSize(0, 0);
@@ -276,9 +275,9 @@ export function buildReceiptEscPos(input) {
   emit("");
   emit("");
 
-  // Cabeçalho: nome um pouco maior (só altura 2x), sem negrito global
+  // Cabeçalho: nome da loja em 2x (largura+altura); CNPJ normal para caber formatado
   chunks.push(Buffer.from([ESC, 0x61, 1])); // center
-  setSize(0, 1);
+  setSize(1, 1);
   setBold(true);
   emit(store.name || "Estabelecimento");
   setBold(false);
@@ -287,6 +286,8 @@ export function buildReceiptEscPos(input) {
   const cnpj = formatCnpj(store.cnpj);
   if (cnpj) emit(`CNPJ ${cnpj}`);
 
+  // Corpo do cupom: altura dupla (fonte maior, mesma largura de linha)
+  setSize(0, 1);
   chunks.push(Buffer.from([ESC, 0x61, 0])); // left
   emit("");
   section("Pedido");
