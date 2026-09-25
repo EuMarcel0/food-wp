@@ -300,25 +300,30 @@ body,
   }
 }
 
-/* Modal editar itens: cabeçalho/rodapé fixos; só a lista de itens rola. */
-.order-edit-items-modal.ant-modal {
+/* Modais de pedido (editar itens / logs): cabeçalho fixo; só o conteúdo rola. */
+.order-edit-items-modal.ant-modal,
+.order-logs-modal.ant-modal {
   max-width: calc(100vw - 24px);
   top: 12px;
   padding-bottom: 0;
 }
 
-.order-edit-items-modal .ant-modal-content {
+.order-edit-items-modal .ant-modal-content,
+.order-logs-modal .ant-modal-content {
   display: flex;
   flex-direction: column;
   max-height: calc(100dvh - 24px);
 }
 
 .order-edit-items-modal .ant-modal-header,
-.order-edit-items-modal .ant-modal-footer {
+.order-edit-items-modal .ant-modal-footer,
+.order-logs-modal .ant-modal-header,
+.order-logs-modal .ant-modal-footer {
   flex-shrink: 0;
 }
 
-.order-edit-items-modal .ant-modal-body {
+.order-edit-items-modal .ant-modal-body,
+.order-logs-modal .ant-modal-body {
   flex: 1 1 auto;
   min-height: 0;
 }

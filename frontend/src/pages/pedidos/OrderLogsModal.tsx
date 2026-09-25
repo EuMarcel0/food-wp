@@ -146,25 +146,38 @@ export function OrderLogsModal({
       width={760}
       destroyOnHidden
       centered
+      className="order-logs-modal"
+      styles={{
+        body: {
+          maxHeight: "calc(100dvh - 120px)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          paddingTop: 12,
+          paddingBottom: 16,
+        },
+      }}
     >
-      {logsQuery.isLoading ? (
-        <p className="text-sm text-food-muted">Carregando histórico…</p>
-      ) : logsQuery.isError ? (
-        <p className="text-sm text-red-600">
-          {(logsQuery.error as Error)?.message || "Falha ao carregar logs."}
-        </p>
-      ) : !items.length ? (
-        <p className="text-sm text-food-muted">
-          Nenhuma alteração registrada ainda para este pedido.
-        </p>
-      ) : (
-        <Timeline
-          items={items.map((log) => ({
-            key: log.id,
-            children: <LogEntry log={log} />,
-          }))}
-        />
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">
+        {logsQuery.isLoading ? (
+          <p className="text-sm text-food-muted">Carregando histórico…</p>
+        ) : logsQuery.isError ? (
+          <p className="text-sm text-red-600">
+            {(logsQuery.error as Error)?.message || "Falha ao carregar logs."}
+          </p>
+        ) : !items.length ? (
+          <p className="text-sm text-food-muted">
+            Nenhuma alteração registrada ainda para este pedido.
+          </p>
+        ) : (
+          <Timeline
+            items={items.map((log) => ({
+              key: log.id,
+              children: <LogEntry log={log} />,
+            }))}
+          />
+        )}
+      </div>
     </Modal>
   );
 }
