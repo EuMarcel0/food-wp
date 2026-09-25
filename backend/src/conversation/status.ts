@@ -56,7 +56,11 @@ export function canCustomerCancelStatus(status: OrderStatus) {
 
 export function formatOrderStatusMessage(
   order: Order,
-  opts?: { thanks?: boolean; allowCustomerCancel?: boolean },
+  opts?: {
+    thanks?: boolean;
+    allowCustomerCancel?: boolean;
+    cancelReason?: string | null;
+  },
 ) {
   const cancelHint =
     opts?.allowCustomerCancel && canCustomerCancelStatus(order.status)
@@ -66,7 +70,7 @@ export function formatOrderStatusMessage(
   return [
     opts?.thanks ? "Por nada! 😊" : null,
     opts?.thanks ? "" : null,
-    ...statusMessageLines(order),
+    ...statusMessageLines(order, opts?.cancelReason),
     cancelHint,
   ]
     .filter((line): line is string => line != null)
@@ -74,7 +78,10 @@ export function formatOrderStatusMessage(
     .trim();
 }
 
-function statusMessageLines(order: Order): string[] {
+function statusMessageLines(
+  order: Order,
+  cancelReason?: string | null,
+): string[] {
   const code = `*#${order.code}*`;
   const pickup = order.fulfillment === "pickup";
 
@@ -122,8 +129,19 @@ function statusMessageLines(order: Order): string[] {
         "Obrigado pela preferência! ❤️🍕",
         "Deseja fazer um novo pedido?",
       ];
-    case "cancelled":
+    case "cancelled": {
+      const reason = String(cancelReason ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (reason) {
+        return [
+          `❌ Pedido ${code} foi cancelado.`,
+          "",
+          `Motivo: ${reason}`,
+        ];
+      }
       return [`❌ Pedido ${code} foi cancelado.`];
+    }
   }
 }
 

@@ -31,7 +31,10 @@ export async function offerNewOrderAfterDelivered(order: Order) {
 }
 
 /** Mesma mensagem enviada ao mudar status manualmente no painel. */
-export async function notifyCustomerOrderStatus(order: Order) {
+export async function notifyCustomerOrderStatus(
+  order: Order,
+  opts?: { cancelReason?: string | null },
+) {
   if (!order.customerPhone) return;
   if (order.status === "delivered") {
     await offerNewOrderAfterDelivered(order);
@@ -42,6 +45,7 @@ export async function notifyCustomerOrderStatus(order: Order) {
     order.customerPhone,
     formatOrderStatusMessage(order, {
       allowCustomerCancel: store.allowCustomerCancel,
+      cancelReason: opts?.cancelReason,
     }),
   );
 }

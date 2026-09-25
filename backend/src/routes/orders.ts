@@ -274,7 +274,9 @@ ordersRouter.patch("/:id/status", async (req, res) => {
     return;
   }
 
-  await notifyCustomerOrderStatus(order).catch((error) => {
+  await notifyCustomerOrderStatus(order, {
+    cancelReason: status === "cancelled" ? cancelReason : undefined,
+  }).catch((error) => {
     console.error("Falha ao notificar cliente", error);
   });
 
