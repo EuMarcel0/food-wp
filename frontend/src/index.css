@@ -256,6 +256,50 @@ body,
   background-color: transparent;
 }
 
+/*
+ * RangePicker no mobile: dois meses lado a lado estouram a largura.
+ * Empilha os painéis e limita o popup à viewport (inclui modal de Filtros).
+ */
+@media (max-width: 991px) {
+  .ant-picker-dropdown {
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .ant-picker-dropdown .ant-picker-panel-container {
+    max-width: calc(100vw - 16px);
+  }
+
+  .ant-picker-dropdown .ant-picker-panels {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .ant-picker-dropdown .ant-picker-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ant-picker-dropdown .ant-picker-date-panel,
+  .ant-picker-dropdown .ant-picker-month-panel,
+  .ant-picker-dropdown .ant-picker-year-panel,
+  .ant-picker-dropdown .ant-picker-decade-panel {
+    width: 100%;
+  }
+
+  .ant-picker-dropdown .ant-picker-content {
+    width: 100%;
+  }
+
+  .ant-picker-dropdown .ant-picker-header {
+    padding-inline: 8px;
+  }
+
+  /* Acima do Modal de filtros (z-index ~1000). */
+  .ant-picker-dropdown {
+    z-index: 1200 !important;
+  }
+}
+
 @media print {
   @page {
     margin: 4mm;

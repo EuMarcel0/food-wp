@@ -293,6 +293,9 @@ export function OrdersPage() {
           placeholder={["Data início", "Data fim"]}
           value={dateRange}
           onChange={(dates) => setDateRange(dates)}
+          inputReadOnly={!isDesktop}
+          placement="bottomLeft"
+          getPopupContainer={() => document.body}
         />
       </ListFilters>
       <FillTable

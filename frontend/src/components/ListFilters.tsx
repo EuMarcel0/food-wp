@@ -51,6 +51,10 @@ export function ListFilters({
         open={open}
         onCancel={() => setOpen(false)}
         destroyOnHidden={false}
+        zIndex={1100}
+        styles={{
+          body: { overflow: "visible" },
+        }}
         footer={
           <div className="flex justify-end gap-2">
             <Button onClick={onClear} disabled={activeCount === 0}>
@@ -62,7 +66,7 @@ export function ListFilters({
           </div>
         }
       >
-        <div className="flex flex-col gap-3 [&_.ant-input-search]:!w-full [&_.ant-input-affix-wrapper]:!w-full [&_.ant-select]:!w-full [&_.ant-picker]:!w-full">
+        <div className="flex flex-col gap-3 [&_.ant-input-search]:!w-full [&_.ant-input-affix-wrapper]:!w-full [&_.ant-select]:!w-full [&_.ant-picker]:!w-full [&_.ant-picker]:!min-w-0">
           {children}
         </div>
       </Modal>

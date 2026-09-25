@@ -281,7 +281,10 @@ export function SalesByPaymentPage() {
           value={dateRange}
           format="DD/MM/YYYY"
           onChange={(value) => setDateRange(value)}
-          className="!w-[260px]"
+          className="!w-full max-w-[260px] sm:!w-[260px]"
+          inputReadOnly
+          placement="bottomLeft"
+          getPopupContainer={() => document.body}
         />
         <Select
           mode="multiple"
