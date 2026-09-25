@@ -53,6 +53,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Bundle principal ~2.1 MB; default do Workbox é 2 MiB e o build falha.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest,woff2}"],
         navigateFallback: "/index.html",
         runtimeCaching: [
