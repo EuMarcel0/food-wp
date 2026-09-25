@@ -430,20 +430,20 @@ export function OrdersPage() {
                 <RowActions
                   disabled={order.status === "delivered"}
                   items={[
-                    canEditOrder
-                      ? {
-                          key: "edit",
-                          label: "Editar",
-                          disabled: updatingId === order.id,
-                          onClick: () => setEditOrder(order),
-                        }
-                      : null,
                     next
                       ? {
                           key: "next",
                           label: statusActionLabel(next),
                           disabled: updatingId === order.id,
                           onClick: () => changeStatus(order, next),
+                        }
+                      : null,
+                    canEditOrder
+                      ? {
+                          key: "edit",
+                          label: "Editar",
+                          disabled: updatingId === order.id,
+                          onClick: () => setEditOrder(order),
                         }
                       : null,
                     canCancel

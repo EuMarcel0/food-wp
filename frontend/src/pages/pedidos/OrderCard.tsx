@@ -64,20 +64,20 @@ export function OrderCard({
           <RowActions
             disabled={order.status === "delivered"}
             items={[
-              canEditOrder
-                ? {
-                    key: "edit",
-                    label: "Editar",
-                    disabled: updating,
-                    onClick: onEditItems,
-                  }
-                : null,
               next
                 ? {
                     key: "next",
                     label: statusActionLabel(next),
                     disabled: updating,
                     onClick: () => onChangeStatus(order, next),
+                  }
+                : null,
+              canEditOrder
+                ? {
+                    key: "edit",
+                    label: "Editar",
+                    disabled: updating,
+                    onClick: onEditItems,
                   }
                 : null,
               canCancel

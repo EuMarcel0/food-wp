@@ -973,7 +973,7 @@ async function resumeCurrentStep(
     }
     case "awaiting_item_note":
       if (context.draftItem) {
-        await askItemNote(to, context.draftItem, isBatchActive(context));
+        await askItemNote(to, context.draftItem);
         return;
       }
       await showCartPrompt(to, context, hint || "🛒 *Seu carrinho*");
@@ -1066,17 +1066,14 @@ export async function handleUnsupportedInbound(input: {
   await resumeCurrentStep(input.from, store, state, context);
 }
 
-async function askItemNote(to: string, item: CartItem, batchAbort = false) {
+async function askItemNote(to: string, item: CartItem) {
   const { lines } = itemHeading(item, { withQuantity: true });
   await sendButtons(
     to,
-    withBatchAbortHint(
-      ["📝 Observação deste item?", ...lines, "*Digite* por ex.: sem cebola. Ou pode *Pular*."]
-        .filter(Boolean)
-        .join("\n"),
-      batchAbort
-    ),
-    appendBatchAbortButton([{ id: "skip_note", title: "Pular" }], batchAbort)
+    ["📝 Observação deste item?", ...lines, "*Digite* por ex.: sem cebola. Ou pode *Pular*."]
+      .filter(Boolean)
+      .join("\n"),
+    [{ id: "skip_note", title: "Pular" }]
   );
 }
 
@@ -1838,24 +1835,17 @@ async function sizesForCategory(categoryId: string): Promise<BatchSizeOption[]> 
 }
 
 async function askBatchSize(to: string, categoryName: string, sizes: BatchSizeOption[]) {
-  const maxSizes = Math.max(1, WA_LIST_MAX_ROWS - 1);
-  const rows = sizes.slice(0, maxSizes).map(size => ({
+  const rows = sizes.slice(0, WA_LIST_MAX_ROWS).map(size => ({
     id: `batchsize:${size.id}`,
     title: size.name.slice(0, 24),
     description: formatReais(size.price)
   }));
-  rows.push(batchAbortListRow());
-  await sendList(
-    to,
-    withBatchAbortHint(`*${categoryName}*\n📏 Escolha o tamanho.`, true),
-    "Tamanhos",
-    [
-      {
-        title: "Tamanhos",
-        rows
-      }
-    ]
-  );
+  await sendList(to, `*${categoryName}*\n📏 Escolha o tamanho.`, "Tamanhos", [
+    {
+      title: "Tamanhos",
+      rows
+    }
+  ]);
 }
 
 async function startCategoryBatch(
@@ -2090,7 +2080,7 @@ async function applyQuantityAndContinue(
 
   if (product.notesEnabled) {
     await persist("awaiting_item_note", context);
-    await askItemNote(to, context.draftItem, isBatchActive(context));
+    await askItemNote(to, context.draftItem);
     return;
   }
 
@@ -2454,7 +2444,7 @@ export async function handleIncomingMessage(input: {
   if (state === "awaiting_item_note" && context.draftItem) {
     const notes = isSkipNote(incoming, normalized) ? null : clipNote(input.text);
     if (!isSkipNote(incoming, normalized) && !notes) {
-      await askItemNote(input.from, context.draftItem, isBatchActive(context));
+      await askItemNote(input.from, context.draftItem);
       return;
     }
     const added = context.draftItem;
@@ -3242,7 +3232,7 @@ export async function handleIncomingMessage(input: {
 
     if (product.notesEnabled) {
       await persist("awaiting_item_note", context);
-      await askItemNote(input.from, context.draftItem, isBatchActive(context));
+      await askItemNote(input.from, context.draftItem);
       return;
     }
 
