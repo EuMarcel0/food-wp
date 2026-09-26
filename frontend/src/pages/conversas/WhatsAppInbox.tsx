@@ -108,6 +108,64 @@ function clock(iso: string) {
   }
 }
 
+/** Chave de dia local (YYYY-MM-DD) para agrupar mensagens. */
+function dayKey(iso: string) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function dayDividerLabel(iso: string) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  const today = new Date();
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startMsg = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((startToday.getTime() - startMsg.getTime()) / 86_400_000);
+  if (diffDays === 0) return "Hoje";
+  if (diffDays === 1) return "Ontem";
+  if (diffDays > 1 && diffDays < 7) {
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" });
+    return weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  }
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+}
+
+type ThreadItem =
+  | { type: "day"; key: string; label: string }
+  | { type: "message"; message: ConversationMessage };
+
+function buildThreadItems(messages: ConversationMessage[]): ThreadItem[] {
+  const items: ThreadItem[] = [];
+  let lastDay = "";
+  for (const message of messages) {
+    const key = dayKey(message.createdAt);
+    if (key && key !== lastDay) {
+      items.push({ type: "day", key, label: dayDividerLabel(message.createdAt) });
+      lastDay = key;
+    }
+    items.push({ type: "message", message });
+  }
+  return items;
+}
+
+function DayDivider({ label }: { label: string }) {
+  return (
+    <div className="flex justify-center py-2" role="separator" aria-label={label}>
+      <span className="rounded-lg bg-[#e1f2fb] px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-sm dark:bg-[#182229] dark:text-[#8696a0]">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function customerLabel(item: LiveConversation) {
   return item.customerName?.trim() || formatPhoneDisplay(item.customerPhone) || "Cliente";
 }
@@ -348,6 +406,8 @@ export function WhatsAppInbox({
       .reverse()
       .flatMap(page => page.items);
   }, [messagesQuery.data]);
+
+  const threadItems = useMemo(() => buildThreadItems(messages), [messages]);
 
   useEffect(() => {
     const client = supabase;
@@ -868,9 +928,13 @@ export function WhatsAppInbox({
               {!messagesQuery.isLoading && !messages.length ? (
                 <Empty className='py-10' description='Ainda sem mensagens neste chat. Novas mensagens aparecem aqui.' />
               ) : null}
-              {messages.map(message => (
-                <MessageBubble key={message.id} message={message} />
-              ))}
+              {threadItems.map(item =>
+                item.type === "day" ? (
+                  <DayDivider key={`day-${item.key}`} label={item.label} />
+                ) : (
+                  <MessageBubble key={item.message.id} message={item.message} />
+                )
+              )}
             </div>
 
             {!readOnly ? (

@@ -803,7 +803,7 @@ function isOrderInProgress(state: ConversationState) {
 /**
  * Após devolver o atendimento ao bot: avisa o cliente e reenvia a etapa
  * em que o fluxo parou (com botões/lista quando houver).
- * Fora do horário de funcionamento: só devolve ao bot — sem mensagens.
+ * Fora do horário: só bloqueia se não houver pedido em andamento.
  */
 export async function resumeAfterHumanHandoff(input: {
   phone: string;
@@ -812,7 +812,10 @@ export async function resumeAfterHumanHandoff(input: {
   context: ConversationContext;
 }) {
   const store = await getStore();
-  if (!isStoreOpen(store.businessHours, store.timezone)) {
+  if (
+    !isStoreOpen(store.businessHours, store.timezone) &&
+    !isOrderInProgress(input.state)
+  ) {
     return;
   }
 
@@ -1033,13 +1036,6 @@ export async function handleUnsupportedInbound(input: {
   waMessageId?: string;
 }) {
   const store = await getStore();
-  if (!isStoreOpen(store.businessHours, store.timezone)) {
-    if (input.waMessageId) {
-      await sendTypingIndicator(input.waMessageId).catch(() => undefined);
-    }
-    await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
-    return;
-  }
   const customer = await upsertCustomer(input.from, input.name, input.avatarUrl);
   const existing = await getConversation(customer.id);
   if (existing?.handoffMode === "human") {
@@ -1049,15 +1045,24 @@ export async function handleUnsupportedInbound(input: {
   const state: ConversationState = existing?.state ?? "welcome";
   const context = existing?.context ?? emptyContext();
 
+  // Loja fechada: mídia fora de pedido ativo só recebe aviso de horário.
+  if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(state)) {
+    if (input.waMessageId) {
+      await sendTypingIndicator(input.waMessageId).catch(() => undefined);
+    }
+    await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
+    return;
+  }
+  if (input.waMessageId) {
+    await sendTypingIndicator(input.waMessageId).catch(() => undefined);
+  }
+
   // Fora do pedido: figurinha/áudio/mídia não reinicia atendimento.
   if (!isOrderInProgress(state) && state !== "awaiting_order_code") {
     await touchConversation(customer.id);
     return;
   }
 
-  if (input.waMessageId) {
-    await sendTypingIndicator(input.waMessageId).catch(() => undefined);
-  }
   await resumeCurrentStep(input.from, store, state, context);
 }
 
@@ -2310,8 +2315,8 @@ export async function handleIncomingMessage(input: {
     return true;
   }
 
-  // Loja fechada: só informa horário — sem cardápio, status, botões ou qualquer fluxo.
-  if (!isStoreOpen(store.businessHours, store.timezone)) {
+  // Loja fechada: bloqueia novos fluxos; pedido já em andamento continua.
+  if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(state)) {
     await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
     return;
   }
