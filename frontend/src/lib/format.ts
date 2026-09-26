@@ -131,7 +131,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   cart: "Carrinho",
   awaiting_order_note: "Obs. da entrega",
   awaiting_fulfillment: "Entrega ou retirada",
-  awaiting_neighborhood: "Bairro",
+  awaiting_neighborhood: "Endereço",
   awaiting_address: "Endereço",
   awaiting_payment: "Pagamento",
   awaiting_change: "Troco",

@@ -94,7 +94,7 @@
     <p class="lead">Cada etapa cruza o que o bot pergunta (lista ou botões) com o que o cliente responde.</p>
 
     <div class="warn"><strong>Em qualquer etapa:</strong> Sair ou Cancelar encerra e não reabre o menu. Timeout ocioso (padrão 60 min) volta às boas-vindas. Oi / menu também reabre o welcome.</div>
-    <div class="note"><strong>Neste mapa:</strong> adicionais (depois da montagem, antes da quantidade), bairro com taxa quando há zonas, endereço só por texto ou clipe (sem botão nativo de localização) e troco em dinheiro.</div>
+    <div class="note"><strong>Neste mapa:</strong> adicionais (depois da montagem, antes da quantidade), endereço completo digitado com bairro no texto (taxa automática; pin/localização não é aceito) e troco em dinheiro.</div>
 
     <h2>Mapa do pedido</h2>
     <div class="mermaid">
@@ -143,9 +143,8 @@ flowchart TD
         <tr><td>Obs. do item</td><td>Observação para o item? Ex.: sem cebola. Ou Pular.</td><td>Texto ou Pular</td><td>Carrinho</td></tr>
         <tr><td>Carrinho</td><td>Adicionado + resumo.</td><td>Adicionar mais · Fechar pedido · Limpar carrinho</td><td>Cardápio, obs. do pedido, ou welcome se limpar</td></tr>
         <tr><td>Obs. do pedido</td><td>Observação para o pedido inteiro? Ou Pular.</td><td>Texto ou Pular</td><td>Entrega / Retirada</td></tr>
-        <tr><td>Recebimento</td><td>Como você prefere receber?</td><td>Entrega ou Retirada</td><td>Bairro se entrega com zonas; endereço se entrega; senão pagamento</td></tr>
-        <tr><td>Bairro</td><td>Escolha o bairro. A taxa já aparece em cada opção.</td><td>Um bairro da lista</td><td>Endereço</td></tr>
-        <tr><td>Endereço</td><td>Qual o endereço? Texto, ou localização pelo clipe no celular.</td><td>Rua e número, ou pin pelo clipe (sem botão nativo)</td><td>Pagamento</td></tr>
+        <tr><td>Recebimento</td><td>Como você prefere receber?</td><td>Entrega ou Retirada</td><td>Endereço completo se entrega; senão pagamento</td></tr>
+        <tr><td>Endereço</td><td>Digite o endereço completo (rua, número, bairro e referência). Não enviar pin/localização. Botão Quero retirar. Taxa pelo bairro no texto.</td><td>Texto digitado ou Quero retirar</td><td>Pagamento (ou lista se bairro ambíguo)</td></tr>
         <tr><td>Pagamento</td><td>Como deseja pagar?</td><td>Pix · Dinheiro · Cartão crédito · Cartão débito</td><td>Dinheiro pede troco; senão confirma</td></tr>
         <tr><td>Troco</td><td>Troco para quanto? Total na mensagem. Ou sem troco.</td><td>Valor ≥ total, ou sem troco</td><td>Pedido confirmado</td></tr>
         <tr><td>Confirmado</td><td>Pedido #CODE confirmado. Depois avisa status pelo WhatsApp.</td><td>—</td><td>Welcome limpo</td></tr>
@@ -158,7 +157,7 @@ flowchart TD
       <li>Montável → tamanho → sabores → opcionais</li>
       <li>Terá adicional ligado → lista de extras (soma no preço)</li>
       <li>Obs. do item só se a flag do produto estiver ligada</li>
-      <li>Entrega → bairro (se houver zonas) → endereço</li>
+      <li>Entrega → endereço completo (bairro detectado no texto) → pagamento</li>
       <li>Retirada → pagamento</li>
       <li>Dinheiro → troco; Pix/crédito/débito → confirma</li>
       <li>Preço de sabor = máximo do grupo, não a soma</li>
@@ -187,8 +186,8 @@ flowchart TD
       <div class="turn"><div class="n">8</div><div class="bubble bot"><small>Bot</small>Adicionado. Adicionar mais, Fechar ou Limpar?</div><div class="bubble cli"><small>Cliente</small>Fechar pedido</div></div>
       <div class="turn"><div class="n">9</div><div class="bubble bot"><small>Bot</small>Observação para o pedido inteiro? Ou Pular.</div><div class="bubble cli"><small>Cliente</small>Pular</div></div>
       <div class="turn"><div class="n">10</div><div class="bubble bot"><small>Bot</small>Como você prefere receber?</div><div class="bubble cli"><small>Cliente</small>Entrega</div></div>
-      <div class="turn"><div class="n">11</div><div class="bubble bot"><small>Bot</small>Escolha o bairro. A taxa já aparece em cada opção.</div><div class="bubble cli"><small>Cliente</small>Um bairro da lista</div></div>
-      <div class="turn"><div class="n">12</div><div class="bubble bot"><small>Bot</small>Qual o endereço completo? Texto ou localização pelo clipe.</div><div class="bubble cli"><small>Cliente</small>Rua X, 12</div></div>
+      <div class="turn"><div class="n">11</div><div class="bubble bot"><small>Bot</small>Digite o endereço completo (não envie localização). Botão Quero retirar.</div><div class="bubble cli"><small>Cliente</small>Rua X, 12 - Vila Nova</div></div>
+      <div class="turn"><div class="n">12</div><div class="bubble bot"><small>Bot</small>Bairro Vila Nova · taxa R$ … Como deseja pagar?</div><div class="bubble cli"><small>Cliente</small>Pix</div></div>
       <div class="turn"><div class="n">13</div><div class="bubble bot"><small>Bot</small>Endereço anotado. Como deseja pagar?</div><div class="bubble cli"><small>Cliente</small>Dinheiro</div></div>
       <div class="turn"><div class="n">14</div><div class="bubble bot"><small>Bot</small>Troco para quanto? O total é R$ 97,00.</div><div class="bubble cli"><small>Cliente</small>100</div></div>
       <div class="turn"><div class="n">15</div><div class="bubble bot"><small>Bot</small>Pedido #A7K2 confirmado!</div><div class="bubble cli"><small>Cliente</small>—</div></div>

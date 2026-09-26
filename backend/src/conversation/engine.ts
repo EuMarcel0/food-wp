@@ -997,15 +997,10 @@ async function resumeCurrentStep(
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_neighborhood":
+    case "awaiting_address":
       await sendHintIfNeeded();
-      await askNeighborhoods(to, store, context);
+      await askCompleteAddress(to, { pickupEnabled: store.pickupEnabled });
       return;
-    case "awaiting_address": {
-      const zone = (store.neighborhoods ?? []).find(item => item.id === context.neighborhoodId) ?? null;
-      await sendHintIfNeeded();
-      await goToAddress(to, zone, { pickupEnabled: store.pickupEnabled });
-      return;
-    }
     case "awaiting_payment":
       await askPayment(to, withHint("Como deseja pagar?"));
       return;
@@ -1083,16 +1078,22 @@ async function askOrderNote(to: string) {
   ]);
 }
 
-async function askNeighborhoods(to: string, store: Store, _context?: ConversationContext) {
-  const zones = store.neighborhoods ?? [];
-  if (!zones.length) {
-    await sendText(to, "Nenhum bairro cadastrado. Digite o endereço completo.");
+async function askCompleteAddress(to: string, opts?: { pickupEnabled?: boolean }) {
+  const intro = [
+    "🏠 Digite o *endereço completo* da entrega (não envie localização do celular).",
+    "Informe *rua, número, bairro* e uma *referência*.",
+    "Ex.: *Rua das Flores, 123 - Vila Nova - próximo ao mercado*",
+    "Com o bairro no endereço calculamos a taxa de entrega.",
+    opts?.pickupEnabled ? "Caso queira, pode mudar para *retirada*." : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  if (opts?.pickupEnabled) {
+    await sendButtons(to, intro, [{ id: "switch_pickup", title: "Quero retirar" }]);
     return;
   }
-  await sendText(
-    to,
-    ["📍 Qual o *bairro* da entrega?", "Digite o bairro *CORRETAMENTE* para calcularmos a taxa de entrega"].join("\n")
-  );
+  await sendText(to, intro);
 }
 
 async function askNeighborhoodAmbiguous(to: string, matches: { zone: DeliveryNeighborhood; score: number }[]) {
@@ -1104,24 +1105,6 @@ async function askNeighborhoodAmbiguous(to: string, matches: { zone: DeliveryNei
   await sendList(to, "📍 Encontrei mais de um bairro parecido. Qual é o certo?", "Ver bairros", [
     { title: "Bairros", rows }
   ]);
-}
-
-async function goToAddress(to: string, zone?: DeliveryNeighborhood | null, opts?: { pickupEnabled?: boolean }) {
-  const intro = [
-    zone ? `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.` : null,
-    "🏠 Qual o endereço completo da entrega?",
-    "*Pode digitar o endereço*.",
-    "*Por favor, informe também a referência da entrega*.",
-    opts?.pickupEnabled ? "Caso queira, pode mudar para *retirada*." : null
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  if (opts?.pickupEnabled) {
-    await sendButtons(to, intro, [{ id: "switch_pickup", title: "Quero retirar" }]);
-    return;
-  }
-  await sendText(to, intro);
 }
 
 function wantsSwitchToPickup(incoming: string, normalized: string) {
@@ -1136,22 +1119,7 @@ function wantsSwitchToPickup(incoming: string, normalized: string) {
   );
 }
 
-function formatLocation(location: { latitude: number; longitude: number; name?: string; address?: string }) {
-  const maps = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
-  const label = location.address?.trim() || location.name?.trim();
-  return label ? `${label}\n${maps}` : maps;
-}
-
-function resolveAddress(input: {
-  text: string;
-  location?: {
-    latitude: number;
-    longitude: number;
-    name?: string;
-    address?: string;
-  };
-}): string | null {
-  if (input.location) return formatLocation(input.location);
+function resolveTypedAddress(input: { text: string }): string | null {
   const text = input.text.trim();
   return text || null;
 }
@@ -2424,8 +2392,13 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  // Localização só vale na etapa de endereço.
-  if (orderActive && input.location && state !== "awaiting_address") {
+  // Localização do celular não é aceita; na etapa de endereço tratamos com mensagem própria.
+  if (
+    orderActive &&
+    input.location &&
+    state !== "awaiting_address" &&
+    state !== "awaiting_neighborhood"
+  ) {
     await resumeCurrentStep(input.from, store, state, context);
     return;
   }
@@ -3322,17 +3295,12 @@ export async function handleIncomingMessage(input: {
       }
       context.fulfillment = fromCart;
       if (fromCart === "delivery") {
-        const zones = store.neighborhoods ?? [];
-        if (zones.length) {
-          context.neighborhoodId = undefined;
-          context.neighborhoodName = undefined;
-          context.neighborhoodPage = null;
-          await persist("awaiting_neighborhood", context);
-          await askNeighborhoods(input.from, store, context);
-          return;
-        }
+        context.neighborhoodId = undefined;
+        context.neighborhoodName = undefined;
+        context.neighborhoodPage = null;
+        context.addressText = undefined;
         await persist("awaiting_address", context);
-        await goToAddress(input.from, null, { pickupEnabled: store.pickupEnabled });
+        await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
         return;
       }
       await persist("awaiting_payment", context);
@@ -3359,17 +3327,12 @@ export async function handleIncomingMessage(input: {
 
     context.fulfillment = resolved;
     if (resolved === "delivery") {
-      const zones = store.neighborhoods ?? [];
-      if (zones.length) {
-        context.neighborhoodId = undefined;
-        context.neighborhoodName = undefined;
-        context.neighborhoodPage = null;
-        await persist("awaiting_neighborhood", context);
-        await askNeighborhoods(input.from, store, context);
-        return;
-      }
+      context.neighborhoodId = undefined;
+      context.neighborhoodName = undefined;
+      context.neighborhoodPage = null;
+      context.addressText = undefined;
       await persist("awaiting_address", context);
-      await goToAddress(input.from, null, { pickupEnabled: store.pickupEnabled });
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
       return;
     }
 
@@ -3378,48 +3341,27 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
-  if (state === "awaiting_neighborhood") {
-    const zones = store.neighborhoods ?? [];
-    const query = (input.text || incoming || "").trim();
-    if (!query || query.length < 2) {
-      await sendText(input.from, "Digite o nome do bairro com pelo menos 2 letras.");
-      await askNeighborhoods(input.from, store, context);
-      return;
-    }
-
-    const result = matchNeighborhoodQuery(query, zones);
-    if (result.status === "none") {
+  // Sessões antigas em awaiting_neighborhood passam a usar o fluxo de endereço completo.
+  if (state === "awaiting_neighborhood" || state === "awaiting_address") {
+    if (input.location) {
       await sendText(
         input.from,
         [
-          "😕 Não encontrei esse bairro na nossa área de entrega.",
-          "Confira a escrita e digite de novo (ex.: *Jardim América* ou *Jd América*)."
-        ].join("\n")
+          "😊 Obrigado pela localização!",
+          "Para calcularmos a taxa certinho, *digite* o endereço completo (rua, número, bairro e referência).",
+          "Não usamos o pin do mapa nesta etapa.",
+        ].join("\n"),
       );
-      await askNeighborhoods(input.from, store, context);
+      await persist("awaiting_address", context);
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
       return;
     }
 
-    if (result.status === "ambiguous") {
-      await persist("awaiting_neighborhood", context);
-      await askNeighborhoodAmbiguous(input.from, result.matches);
-      return;
-    }
-
-    const zone = result.match.zone;
-    context.neighborhoodId = zone.id;
-    context.neighborhoodName = zone.name;
-    context.neighborhoodPage = null;
-    await persist("awaiting_address", context);
-    await goToAddress(input.from, zone, { pickupEnabled: store.pickupEnabled });
-    return;
-  }
-
-  if (state === "awaiting_address") {
     if (wantsSwitchToPickup(incoming, normalized)) {
       if (!store.pickupEnabled) {
         await sendText(input.from, "No momento a retirada não está disponível.");
-        await resumeCurrentStep(input.from, store, state, context);
+        await persist("awaiting_address", context);
+        await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
         return;
       }
       context.fulfillment = "pickup";
@@ -3432,17 +3374,85 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    const address = resolveAddress(input);
-    if (!address) {
-      await resumeCurrentStep(input.from, store, state, context);
+    const zones = store.neighborhoods ?? [];
+
+    // Desambiguação: cliente escolheu um bairro da lista.
+    if (incoming.startsWith("nbh:")) {
+      const zoneId = incoming.slice(4);
+      const zone = zones.find((item) => item.id === zoneId);
+      if (!zone) {
+        await sendText(input.from, "Não reconheci esse bairro. Envie o endereço completo de novo.");
+        await persist("awaiting_address", context);
+        await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+        return;
+      }
+      context.neighborhoodId = zone.id;
+      context.neighborhoodName = zone.name;
+      context.neighborhoodPage = null;
+      if (!context.addressText) {
+        await persist("awaiting_address", context);
+        await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+        return;
+      }
+      await sendText(
+        input.from,
+        `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`,
+      );
+      await persist("awaiting_payment", context);
+      await askPayment(input.from);
       return;
     }
+
+    const address = resolveTypedAddress(input);
+    if (!address || address.trim().length < 5) {
+      await sendText(
+        input.from,
+        "Digite o *endereço completo* (rua, número, bairro e referência). Não envie localização do celular.",
+      );
+      await persist("awaiting_address", context);
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      return;
+    }
+
     context.addressText = address;
-    // if (ORDER_NOTE_STEP_ENABLED) {
-    //   await persist("awaiting_order_note", context);
-    //   await askOrderNote(input.from);
-    //   return;
-    // }
+
+    if (!zones.length) {
+      context.neighborhoodId = undefined;
+      context.neighborhoodName = undefined;
+      context.neighborhoodPage = null;
+      await persist("awaiting_payment", context);
+      await askPayment(input.from);
+      return;
+    }
+
+    const result = matchNeighborhoodQuery(address, zones);
+    if (result.status === "none") {
+      await sendText(
+        input.from,
+        [
+          "😕 Não encontrei um *bairro* cadastrado nesse endereço.",
+          "Confira e envie de novo incluindo o nome do bairro (ex.: *Rua X, 10 - Vila Nova*).",
+        ].join("\n"),
+      );
+      await persist("awaiting_address", context);
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      return;
+    }
+
+    if (result.status === "ambiguous") {
+      await persist("awaiting_address", context);
+      await askNeighborhoodAmbiguous(input.from, result.matches);
+      return;
+    }
+
+    const zone = result.match.zone;
+    context.neighborhoodId = zone.id;
+    context.neighborhoodName = zone.name;
+    context.neighborhoodPage = null;
+    await sendText(
+      input.from,
+      `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`,
+    );
     await persist("awaiting_payment", context);
     await askPayment(input.from);
     return;
