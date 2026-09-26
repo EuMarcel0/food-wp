@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button, DatePicker, Input, Select, Table, Tag, Tooltip } from "antd";
-import { FileTextOutlined, HistoryOutlined } from "@ant-design/icons";
+import { EditOutlined, FileTextOutlined, HistoryOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { ListFilters } from "../../components/ListFilters";
@@ -16,6 +16,7 @@ import { RowActions } from "../../components/RowActions";
 import { CancelOrderModal } from "./CancelOrderModal";
 import { OrderCard } from "./OrderCard";
 import { OrderEditItemsModal } from "./OrderEditItemsModal";
+import { OrderFulfillmentModal } from "./OrderFulfillmentModal";
 import { OrderItemsLeaders } from "./OrderItemsLeaders";
 import { OrderLogsModal } from "./OrderLogsModal";
 import { PrepTimeModal } from "./PrepTimeModal";
@@ -157,6 +158,7 @@ export function OrdersPage() {
   const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [logsOrder, setLogsOrder] = useState<Order | null>(null);
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
+  const [fulfillmentOrder, setFulfillmentOrder] = useState<Order | null>(null);
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -236,6 +238,34 @@ export function OrdersPage() {
     },
   });
 
+  const fulfillmentMutation = useMutation({
+    mutationFn: ({
+      order,
+      fulfillment,
+      neighborhoodId,
+      addressText,
+    }: {
+      order: Order;
+      fulfillment: Order["fulfillment"];
+      neighborhoodId?: string | null;
+      addressText?: string | null;
+    }) =>
+      api.updateOrderFulfillment(order.id, {
+        fulfillment,
+        neighborhoodId,
+        addressText,
+        actorName: displayName(user),
+      }),
+    onSuccess: async (updated) => {
+      const tipo = updated.fulfillment === "delivery" ? "Entrega" : "Retirada";
+      toast.success(
+        `Pedido #${updated.code}: ${tipo} · total ${formatBRL(updated.totalCents)}`,
+      );
+      setFulfillmentOrder(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+    },
+  });
+
   function changeStatus(order: Order, next: OrderStatus) {
     if (next === "preparing") {
       setPrepOrder(order);
@@ -257,6 +287,9 @@ export function OrdersPage() {
       : null) ||
     (itemsMutation.isPending && itemsMutation.variables
       ? itemsMutation.variables.order.id
+      : null) ||
+    (fulfillmentMutation.isPending && fulfillmentMutation.variables
+      ? fulfillmentMutation.variables.order.id
       : null);
 
   const pagination = serverPagination(page, limit, total, (nextPage, nextSize) => {
@@ -405,10 +438,27 @@ export function OrdersPage() {
           {
             title: "Tipo",
             dataIndex: "fulfillment",
-            width: 108,
+            width: 148,
             align: "center",
-            render: (value: Order["fulfillment"]) =>
-              value === "delivery" ? "Entrega" : "Retirada",
+            render: (value: Order["fulfillment"], order) => {
+              const isClosed =
+                order.status === "delivered" || order.status === "cancelled";
+              return (
+                <span className="inline-flex items-center justify-center gap-0.5">
+                  <span>{value === "delivery" ? "Entrega" : "Retirada"}</span>
+                  <Tooltip title={isClosed ? undefined : "Alterar tipo"}>
+                    <Button
+                      type="text"
+                      size="small"
+                      aria-label={`Alterar tipo do pedido ${order.code}`}
+                      icon={<EditOutlined />}
+                      disabled={isClosed || updatingId === order.id}
+                      onClick={() => setFulfillmentOrder(order)}
+                    />
+                  </Tooltip>
+                </span>
+              );
+            },
           },
           {
             title: "Pagamento",
@@ -543,6 +593,7 @@ export function OrdersPage() {
                 paymentMutation.mutate({ order: target, method })
               }
               onEditItems={() => setEditOrder(order)}
+              onEditFulfillment={() => setFulfillmentOrder(order)}
               onOpenLogs={() => setLogsOrder(order)}
               onPreviewReceipt={setReceiptOrder}
             />
@@ -554,6 +605,22 @@ export function OrdersPage() {
         store={storeQuery.data}
         open={Boolean(receiptOrder)}
         onClose={() => setReceiptOrder(null)}
+      />
+      <OrderFulfillmentModal
+        order={fulfillmentOrder}
+        store={storeQuery.data}
+        open={Boolean(fulfillmentOrder)}
+        submitting={fulfillmentMutation.isPending}
+        onCancel={() => {
+          if (!fulfillmentMutation.isPending) setFulfillmentOrder(null);
+        }}
+        onSave={(input) => {
+          if (!fulfillmentOrder) return;
+          fulfillmentMutation.mutate({
+            order: fulfillmentOrder,
+            ...input,
+          });
+        }}
       />
       <OrderEditItemsModal
         order={editOrder}

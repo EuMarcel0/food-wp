@@ -9,6 +9,7 @@ const ACTION_LABEL: Record<OrderLogAction, string> = {
   items_updated: "Itens alterados",
   payment_updated: "Pagamento alterado",
   status_updated: "Status alterado",
+  fulfillment_updated: "Tipo alterado",
 };
 
 const ACTION_COLOR: Record<OrderLogAction, string> = {
@@ -16,6 +17,7 @@ const ACTION_COLOR: Record<OrderLogAction, string> = {
   items_updated: "blue",
   payment_updated: "purple",
   status_updated: "orange",
+  fulfillment_updated: "cyan",
 };
 
 function money(value: unknown) {

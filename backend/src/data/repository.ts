@@ -1,6 +1,6 @@
 import { flags } from "../config/env.js";
 import { DEFAULT_TIMEZONE, parseBusinessHours } from "../lib/businessHours.js";
-import { createOrderCode } from "../lib/money.js";
+import { createOrderCode, recalculateCashChangeForCents } from "../lib/money.js";
 import type {
   CategoryFilter,
   OrderFilter,
@@ -44,6 +44,7 @@ import {
   type StorePaymentMethod,
 } from "../types.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
+import { resolveDeliveryFee } from "../conversation/deliveryFee.js";
 import { memoryStore } from "./memory.js";
 
 const PRODUCT_SELECT_CORE =
@@ -355,6 +356,8 @@ function mapOrder(row: Record<string, unknown>): Order {
       row.change_for_cents == null ? null : Math.max(0, Number(row.change_for_cents)),
     addressText: (row.address_text as string | null) ?? null,
     neighborhoodName: (row.neighborhood_name as string | null) ?? null,
+    neighborhoodId:
+      row.neighborhood_id != null ? String(row.neighborhood_id) : null,
     notes: (row.notes as string | null) ?? null,
     cancelReason:
       row.cancel_reason != null
@@ -4100,6 +4103,200 @@ export async function updateOrderPayment(
   return order;
 }
 
+const FULFILLMENT_LABEL: Record<Fulfillment, string> = {
+  delivery: "Entrega",
+  pickup: "Retirada",
+};
+
+function remapStatusForFulfillment(
+  status: OrderStatus,
+  fulfillment: Fulfillment,
+): OrderStatus {
+  if (!isAllowedOrderStatus(fulfillment, status)) {
+    // Status incompatível com o novo tipo → volta para preparo.
+    return "preparing";
+  }
+  return status;
+}
+
+export async function updateOrderFulfillment(
+  id: string,
+  input: {
+    fulfillment: Fulfillment;
+    neighborhoodId?: string | null;
+    addressText?: string | null;
+    actorName?: string;
+  },
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return memoryStore.updateOrderFulfillment(id, input);
+  }
+
+  const { data: currentRow, error: currentError } = await supabase
+    .from("orders")
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (currentError || !currentRow) return null;
+
+  const before = mapOrder(currentRow as Record<string, unknown>);
+  if (before.status === "delivered") {
+    throw new Error("Pedido entregue não pode ter o tipo alterado.");
+  }
+  if (before.status === "cancelled") {
+    throw new Error("Pedido cancelado não pode ter o tipo alterado.");
+  }
+
+  const fulfillment = input.fulfillment;
+  const actorName = input.actorName?.trim() || "Equipe";
+  let deliveryFeeCents = 0;
+  let neighborhoodId: string | null = null;
+  let neighborhoodName: string | null = null;
+  let addressText: string | null = null;
+  let nextStatus = remapStatusForFulfillment(before.status, fulfillment);
+
+  if (fulfillment === "pickup") {
+    deliveryFeeCents = 0;
+    neighborhoodId = null;
+    neighborhoodName = null;
+    addressText = null;
+  } else {
+    const store = await getStore();
+    if (!store.deliveryEnabled) {
+      throw new Error("Entrega está desativada nesta loja.");
+    }
+    const zones = store.neighborhoods ?? [];
+    const requestedId = String(input.neighborhoodId ?? "").trim() || null;
+    if (zones.length && !requestedId) {
+      throw new Error("Selecione o bairro da entrega.");
+    }
+    const resolved = resolveDeliveryFee(store, {
+      neighborhoodId: requestedId ?? undefined,
+      address: String(input.addressText ?? before.addressText ?? ""),
+    });
+    if (zones.length && !resolved.neighborhood) {
+      throw new Error("Bairro de entrega inválido.");
+    }
+    deliveryFeeCents = resolved.cents;
+    neighborhoodId = resolved.neighborhood?.id ?? null;
+    neighborhoodName = resolved.neighborhood?.name ?? null;
+    addressText =
+      input.addressText !== undefined
+        ? String(input.addressText ?? "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 280) || null
+        : before.addressText;
+  }
+
+  const totalCents = before.subtotalCents + deliveryFeeCents;
+  const nextChangeForCents = recalculateCashChangeForCents({
+    paymentMethod: before.paymentMethod,
+    previousChangeForCents: before.changeForCents,
+    previousTotalCents: before.totalCents,
+    nextTotalCents: totalCents,
+  });
+  const payload: Record<string, unknown> = {
+    fulfillment,
+    delivery_fee_cents: deliveryFeeCents,
+    total_cents: totalCents,
+    neighborhood_id: neighborhoodId,
+    neighborhood_name: neighborhoodName,
+    address_text: addressText,
+    status: nextStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (before.paymentMethod === "cash" && nextChangeForCents != null) {
+    payload.change_for_cents = nextChangeForCents;
+  }
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update(payload)
+    .eq("id", id)
+    .select("*, customers(wa_phone, name), order_items(*)")
+    .single();
+  if (error || !data) {
+    if (error?.message?.includes("neighborhood_")) {
+      throw new Error("Rode a migration 024_order_neighborhood.sql no Supabase.");
+    }
+    throw new Error(error?.message || "Não foi possível atualizar o tipo.");
+  }
+
+  const order = mapOrder(data as Record<string, unknown>);
+  const changed =
+    before.fulfillment !== order.fulfillment ||
+    before.deliveryFeeCents !== order.deliveryFeeCents ||
+    before.neighborhoodName !== order.neighborhoodName ||
+    (before.addressText ?? null) !== (order.addressText ?? null) ||
+    before.status !== order.status ||
+    before.changeForCents !== order.changeForCents;
+
+  if (changed) {
+    const feePart =
+      before.deliveryFeeCents !== order.deliveryFeeCents
+        ? ` · taxa ${(before.deliveryFeeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} → ${(order.deliveryFeeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+        : "";
+    const statusPart =
+      before.status !== order.status
+        ? ` · status ${STATUS_LABEL[before.status]} → ${STATUS_LABEL[order.status]}`
+        : "";
+    const summary = `Tipo: ${FULFILLMENT_LABEL[before.fulfillment]} → ${FULFILLMENT_LABEL[order.fulfillment]}${feePart}${statusPart}`;
+    await createNotification({
+      storeId: order.storeId,
+      type: "order_updated",
+      orderId: order.id,
+      orderCode: order.code,
+      title: `Pedido #${order.code} alterado`,
+      changeSummary: summary,
+      actorName,
+    });
+    try {
+      await createOrderLog({
+        storeId: order.storeId,
+        orderId: order.id,
+        action: "fulfillment_updated",
+        actorName,
+        summary,
+        beforeData: {
+          fulfillment: before.fulfillment,
+          deliveryFeeCents: before.deliveryFeeCents,
+          totalCents: before.totalCents,
+          changeForCents: before.changeForCents,
+          neighborhoodId: before.neighborhoodId ?? null,
+          neighborhoodName: before.neighborhoodName,
+          addressText: before.addressText,
+          status: before.status,
+        },
+        afterData: {
+          fulfillment: order.fulfillment,
+          deliveryFeeCents: order.deliveryFeeCents,
+          totalCents: order.totalCents,
+          changeForCents: order.changeForCents,
+          neighborhoodId: order.neighborhoodId ?? null,
+          neighborhoodName: order.neighborhoodName,
+          addressText: order.addressText,
+          status: order.status,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message.includes("fulfillment_updated") ||
+          error.message.includes("order_logs_action_check"))
+      ) {
+        throw new Error(
+          "Rode a migration 052_order_fulfillment_log.sql no Supabase.",
+        );
+      }
+      throw error;
+    }
+  }
+
+  return order;
+}
+
 function missingOrderLogsTable(message?: string) {
   return Boolean(message?.includes("order_logs"));
 }
@@ -4301,6 +4498,12 @@ export async function updateOrderItems(
     0,
   );
   const totalCents = subtotalCents + before.deliveryFeeCents;
+  const nextChangeForCents = recalculateCashChangeForCents({
+    paymentMethod: before.paymentMethod,
+    previousChangeForCents: before.changeForCents,
+    previousTotalCents: before.totalCents,
+    nextTotalCents: totalCents,
+  });
 
   const { error: deleteError } = await supabase
     .from("order_items")
@@ -4321,13 +4524,18 @@ export async function updateOrderItems(
   );
   if (insertError) throw new Error(insertError.message);
 
+  const orderUpdate: Record<string, unknown> = {
+    subtotal_cents: subtotalCents,
+    total_cents: totalCents,
+    updated_at: new Date().toISOString(),
+  };
+  if (before.paymentMethod === "cash" && nextChangeForCents != null) {
+    orderUpdate.change_for_cents = nextChangeForCents;
+  }
+
   const { data: updated, error: updateError } = await supabase
     .from("orders")
-    .update({
-      subtotal_cents: subtotalCents,
-      total_cents: totalCents,
-      updated_at: new Date().toISOString(),
-    })
+    .update(orderUpdate)
     .eq("id", id)
     .select("*, customers(wa_phone, name), order_items(*)")
     .single();

@@ -116,7 +116,8 @@ export type OrderLogAction =
   | "order_created"
   | "items_updated"
   | "payment_updated"
-  | "status_updated";
+  | "status_updated"
+  | "fulfillment_updated";
 
 export type OrderLog = {
   id: string;
@@ -139,6 +140,7 @@ export type Order = {
   changeForCents?: number | null;
   addressText: string | null;
   neighborhoodName?: string | null;
+  neighborhoodId?: string | null;
   notes?: string | null;
   cancelReason?: string | null;
   customerPhone?: string;

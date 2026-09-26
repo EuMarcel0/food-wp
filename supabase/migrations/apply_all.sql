@@ -1063,3 +1063,16 @@ alter table public.orders
 comment on column public.orders.cancel_reason is
   'Motivo informado ao cancelar o pedido (painel ou WhatsApp).';
 
+-- ========== 052_order_fulfillment_log ==========
+alter table public.order_logs drop constraint if exists order_logs_action_check;
+
+alter table public.order_logs
+  add constraint order_logs_action_check
+  check (action in (
+    'order_created',
+    'items_updated',
+    'payment_updated',
+    'status_updated',
+    'fulfillment_updated'
+  ));
+

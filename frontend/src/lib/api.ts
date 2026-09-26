@@ -513,6 +513,19 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  updateOrderFulfillment: (
+    id: string,
+    payload: {
+      fulfillment: Order["fulfillment"];
+      neighborhoodId?: string | null;
+      addressText?: string | null;
+      actorName?: string;
+    },
+  ) =>
+    request<Order>(`/api/orders/${id}/fulfillment`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   orderLogs: (id: string) =>
     request<{ items: OrderLog[] }>(`/api/orders/${id}/logs`),
   notifications: (

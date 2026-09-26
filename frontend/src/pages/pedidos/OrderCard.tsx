@@ -1,5 +1,9 @@
 import { Button, Tag } from "antd";
-import { FileTextOutlined, HistoryOutlined } from "@ant-design/icons";
+import {
+  EditOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+} from "@ant-design/icons";
 import { EntityCard } from "../../components/EntityCard";
 import { RowActions } from "../../components/RowActions";
 import {
@@ -24,6 +28,7 @@ export function OrderCard({
   onChangeStatus,
   onChangePayment,
   onEditItems,
+  onEditFulfillment,
   onOpenLogs,
   onPreviewReceipt,
 }: {
@@ -34,6 +39,7 @@ export function OrderCard({
   onChangeStatus: (order: Order, status: OrderStatus) => void;
   onChangePayment: (order: Order, method: StorePaymentMethod) => void;
   onEditItems: () => void;
+  onEditFulfillment: () => void;
   onOpenLogs: () => void;
   onPreviewReceipt: (order: Order) => void;
 }) {
@@ -46,7 +52,24 @@ export function OrderCard({
   return (
     <EntityCard
       tone={order.status}
-      kicker={order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
+      kicker={
+        <span className="inline-flex items-center gap-1 normal-case tracking-normal">
+          <span className="uppercase tracking-wider">
+            {order.fulfillment === "delivery" ? "Entrega" : "Retirada"}
+          </span>
+          {canEditOrder ? (
+            <Button
+              type="text"
+              size="small"
+              className="!h-5 !w-5 !min-w-0 !p-0"
+              aria-label="Alterar tipo"
+              icon={<EditOutlined className="text-[11px]" />}
+              disabled={updating}
+              onClick={onEditFulfillment}
+            />
+          ) : null}
+        </span>
+      }
       title={`#${order.code}`}
       extra={
         <span className="flex items-center">

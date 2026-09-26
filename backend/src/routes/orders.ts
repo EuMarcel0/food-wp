@@ -12,6 +12,7 @@ import {
   updateOrderItems,
   updateOrderPayment,
   updateOrderStatus,
+  updateOrderFulfillment,
 } from "../data/repository.js";
 import {
   parseDateDay,
@@ -20,7 +21,7 @@ import {
 } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { notifyCustomerOrderStatus } from "../lib/orderNotify.js";
-import type { OrderStatus, PaymentMethod } from "../types.js";
+import type { OrderStatus, PaymentMethod, Fulfillment } from "../types.js";
 
 const STATUSES = new Set<OrderStatus>([
   "received",
@@ -331,6 +332,50 @@ ordersRouter.patch("/:id/payment", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Não foi possível atualizar o pagamento.",
+    });
+    return;
+  }
+  if (!order) {
+    res.status(404).json({ error: "Pedido não encontrado." });
+    return;
+  }
+
+  res.json(order);
+});
+
+ordersRouter.patch("/:id/fulfillment", async (req, res) => {
+  const fulfillment = String(req.body?.fulfillment ?? "").trim() as Fulfillment;
+  if (fulfillment !== "delivery" && fulfillment !== "pickup") {
+    res.status(400).json({ error: "Tipo inválido. Use delivery ou pickup." });
+    return;
+  }
+
+  const actorName = String(req.body?.actorName ?? "").trim() || "Equipe";
+  const neighborhoodId =
+    req.body?.neighborhoodId === undefined || req.body?.neighborhoodId === null
+      ? undefined
+      : String(req.body.neighborhoodId).trim() || null;
+  const addressText =
+    req.body?.addressText === undefined
+      ? undefined
+      : req.body.addressText === null
+        ? null
+        : String(req.body.addressText);
+
+  let order;
+  try {
+    order = await updateOrderFulfillment(String(req.params.id), {
+      fulfillment,
+      neighborhoodId,
+      addressText,
+      actorName,
+    });
+  } catch (error) {
+    res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar o tipo do pedido.",
     });
     return;
   }

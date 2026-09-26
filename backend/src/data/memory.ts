@@ -1,4 +1,4 @@
-import { createOrderCode } from "../lib/money.js";
+import { createOrderCode, recalculateCashChangeForCents } from "../lib/money.js";
 import type {
   CategoryFilter,
   OrderFilter,
@@ -7,6 +7,7 @@ import type {
 import { buildOrderStats } from "../lib/orderStats.js";
 import { paginateItems } from "../lib/pagination.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
+import { resolveDeliveryFee } from "../conversation/deliveryFee.js";
 import { env } from "../config/env.js";
 import {
   isOrderFlowState,
@@ -1626,6 +1627,7 @@ export const memoryStore = {
         input.paymentMethod === "cash" ? (input.changeForCents ?? 0) : null,
       addressText: input.addressText ?? null,
       neighborhoodName: input.neighborhoodName?.trim() || null,
+      neighborhoodId: input.neighborhoodId ?? null,
       notes: input.notes?.trim() || null,
       cancelReason: null,
       subtotalCents,
@@ -2027,6 +2029,142 @@ export const memoryStore = {
     return order;
   },
 
+  updateOrderFulfillment(
+    id: string,
+    input: {
+      fulfillment: Fulfillment;
+      neighborhoodId?: string | null;
+      addressText?: string | null;
+      actorName?: string;
+    },
+  ) {
+    const order = orders.get(id);
+    if (!order) return null;
+    if (order.status === "delivered") {
+      throw new Error("Pedido entregue não pode ter o tipo alterado.");
+    }
+    if (order.status === "cancelled") {
+      throw new Error("Pedido cancelado não pode ter o tipo alterado.");
+    }
+
+    const before = {
+      fulfillment: order.fulfillment,
+      deliveryFeeCents: order.deliveryFeeCents,
+      totalCents: order.totalCents,
+      changeForCents: order.changeForCents,
+      neighborhoodId: order.neighborhoodId ?? null,
+      neighborhoodName: order.neighborhoodName,
+      addressText: order.addressText,
+      status: order.status,
+    };
+
+    const fulfillment = input.fulfillment;
+    const actorName = input.actorName?.trim() || "Equipe";
+    let nextStatus = order.status;
+    if (!isAllowedOrderStatus(fulfillment, nextStatus)) {
+      nextStatus = "preparing";
+    }
+
+    if (fulfillment === "pickup") {
+      order.fulfillment = "pickup";
+      order.deliveryFeeCents = 0;
+      order.neighborhoodId = null;
+      order.neighborhoodName = null;
+      order.addressText = null;
+    } else {
+      const currentStore = this.getStore();
+      if (!currentStore.deliveryEnabled) {
+        throw new Error("Entrega está desativada nesta loja.");
+      }
+      const zones = currentStore.neighborhoods ?? [];
+      const requestedId = String(input.neighborhoodId ?? "").trim() || null;
+      if (zones.length && !requestedId) {
+        throw new Error("Selecione o bairro da entrega.");
+      }
+      const resolved = resolveDeliveryFee(currentStore, {
+        neighborhoodId: requestedId ?? undefined,
+        address: String(input.addressText ?? order.addressText ?? ""),
+      });
+      if (zones.length && !resolved.neighborhood) {
+        throw new Error("Bairro de entrega inválido.");
+      }
+      order.fulfillment = "delivery";
+      order.deliveryFeeCents = resolved.cents;
+      order.neighborhoodId = resolved.neighborhood?.id ?? null;
+      order.neighborhoodName = resolved.neighborhood?.name ?? null;
+      order.addressText =
+        input.addressText !== undefined
+          ? String(input.addressText ?? "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 280) || null
+          : order.addressText;
+    }
+
+    order.status = nextStatus;
+    order.totalCents = order.subtotalCents + order.deliveryFeeCents;
+    if (order.paymentMethod === "cash") {
+      order.changeForCents = recalculateCashChangeForCents({
+        paymentMethod: order.paymentMethod,
+        previousChangeForCents: before.changeForCents,
+        previousTotalCents: before.totalCents,
+        nextTotalCents: order.totalCents,
+      });
+    }
+
+    const changed =
+      before.fulfillment !== order.fulfillment ||
+      before.deliveryFeeCents !== order.deliveryFeeCents ||
+      before.neighborhoodName !== order.neighborhoodName ||
+      (before.addressText ?? null) !== (order.addressText ?? null) ||
+      before.status !== order.status ||
+      before.changeForCents !== order.changeForCents;
+
+    if (changed) {
+      const FULFILLMENT_LABEL: Record<Fulfillment, string> = {
+        delivery: "Entrega",
+        pickup: "Retirada",
+      };
+      const feePart =
+        before.deliveryFeeCents !== order.deliveryFeeCents
+          ? ` · taxa ${(before.deliveryFeeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} → ${(order.deliveryFeeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+          : "";
+      const statusPart =
+        before.status !== order.status
+          ? ` · status ${STATUS_LABEL[before.status]} → ${STATUS_LABEL[order.status]}`
+          : "";
+      const summary = `Tipo: ${FULFILLMENT_LABEL[before.fulfillment]} → ${FULFILLMENT_LABEL[order.fulfillment]}${feePart}${statusPart}`;
+      this.createNotification({
+        type: "order_updated",
+        orderId: order.id,
+        orderCode: order.code,
+        title: `Pedido #${order.code} alterado`,
+        changeSummary: summary,
+        actorName,
+      });
+      this.createOrderLog({
+        storeId: order.storeId,
+        orderId: order.id,
+        action: "fulfillment_updated",
+        actorName,
+        summary,
+        beforeData: before,
+        afterData: {
+          fulfillment: order.fulfillment,
+          deliveryFeeCents: order.deliveryFeeCents,
+          totalCents: order.totalCents,
+          changeForCents: order.changeForCents,
+          neighborhoodId: order.neighborhoodId ?? null,
+          neighborhoodName: order.neighborhoodName,
+          addressText: order.addressText,
+          status: order.status,
+        },
+      });
+    }
+
+    return order;
+  },
+
   updateOrderItems(
     id: string,
     input: {
@@ -2057,6 +2195,7 @@ export const memoryStore = {
     const beforeItems = (order.items ?? []).map((item) => ({ ...item }));
     const beforeSubtotal = order.subtotalCents;
     const beforeTotal = order.totalCents;
+    const beforeChangeForCents = order.changeForCents;
 
     const normalized: OrderItem[] = input.items.map((item, index) => {
       const quantity = Math.round(Number(item.quantity));
@@ -2086,6 +2225,14 @@ export const memoryStore = {
     order.items = normalized;
     order.subtotalCents = subtotalCents;
     order.totalCents = subtotalCents + order.deliveryFeeCents;
+    if (order.paymentMethod === "cash") {
+      order.changeForCents = recalculateCashChangeForCents({
+        paymentMethod: order.paymentMethod,
+        previousChangeForCents: beforeChangeForCents,
+        previousTotalCents: beforeTotal,
+        nextTotalCents: order.totalCents,
+      });
+    }
 
     const actorName = input.actorName?.trim() || "Equipe";
     const summary = `Itens atualizados (${beforeItems.length} → ${normalized.length})`;
@@ -2108,12 +2255,14 @@ export const memoryStore = {
         subtotalCents: beforeSubtotal,
         totalCents: beforeTotal,
         deliveryFeeCents: order.deliveryFeeCents,
+        changeForCents: beforeChangeForCents,
       },
       afterData: {
         items: normalized,
         subtotalCents: order.subtotalCents,
         totalCents: order.totalCents,
         deliveryFeeCents: order.deliveryFeeCents,
+        changeForCents: order.changeForCents,
       },
     });
     return order;
