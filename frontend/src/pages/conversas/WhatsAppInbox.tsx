@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Avatar, Badge, Button, Dropdown, Empty, Input, Popover, Spin, Tag } from "antd";
 import {
+  ArrowDownOutlined,
   ArrowLeftOutlined,
   CheckOutlined,
   CloseCircleOutlined,
@@ -17,6 +18,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { api } from "../../lib/api";
 import { conversationStateLabel, formatPhoneDisplay } from "../../lib/format";
 import { useMediaQuery } from "../../lib/hooks";
+import { usePullToRefresh } from "../../lib/usePullToRefresh";
 import { displayName, generatedAvatar } from "../../lib/profile";
 import { queryKeys } from "../../lib/queryKeys";
 import { supabase } from "../../lib/supabase";
@@ -200,6 +202,7 @@ export function WhatsAppInbox({
   hasMore = false,
   loadingMore = false,
   onLoadMore,
+  onRefresh,
   onTakeover,
   onRelease,
   onClose,
@@ -216,6 +219,8 @@ export function WhatsAppInbox({
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /** Mobile: “puxar para atualizar” no topo da lista. */
+  onRefresh?: () => Promise<unknown>;
   onTakeover?: (item: LiveConversation) => void;
   onRelease?: (item: LiveConversation) => void;
   onClose?: (item: LiveConversation) => void;
@@ -241,6 +246,7 @@ export function WhatsAppInbox({
   const lastSelectedIdRef = useRef<string | null>(null);
   const onLoadMoreRef = useRef(onLoadMore);
   onLoadMoreRef.current = onLoadMore;
+  const pullToRefresh = usePullToRefresh(listScrollRef, onRefresh, !isDesktop);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -671,7 +677,44 @@ export function WhatsAppInbox({
           />
         </div>
 
-        <div ref={listScrollRef} className='min-h-0 flex-1 overflow-y-auto'>
+        <div className='relative flex min-h-0 flex-1 flex-col overflow-hidden'>
+          {!isDesktop && onRefresh ? (
+            <div
+              aria-hidden={!pullToRefresh.refreshing}
+              aria-live='polite'
+              className='pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center'
+              style={{
+                transform: `translateY(${pullToRefresh.pull - 44}px)`,
+                opacity: pullToRefresh.refreshing ? 1 : pullToRefresh.progress,
+                transition: pullToRefresh.dragging ? "none" : "transform 220ms ease, opacity 220ms ease"
+              }}
+            >
+              <span className='mt-1.5 flex size-9 items-center justify-center rounded-full border border-food-border bg-food-card text-food-accent shadow-food-soft'>
+                {pullToRefresh.refreshing ? (
+                  <Spin size='small' />
+                ) : (
+                  <ArrowDownOutlined
+                    style={{
+                      transform: `rotate(${pullToRefresh.progress >= 1 ? 180 : 0}deg)`,
+                      transition: "transform 180ms ease"
+                    }}
+                  />
+                )}
+              </span>
+            </div>
+          ) : null}
+        <div
+          ref={listScrollRef}
+          className='min-h-0 flex-1 overflow-y-auto overscroll-y-contain'
+          style={
+            pullToRefresh.pull > 0 || pullToRefresh.refreshing
+              ? {
+                  transform: `translateY(${pullToRefresh.pull}px)`,
+                  transition: pullToRefresh.dragging ? "none" : "transform 220ms ease"
+                }
+              : { transition: "transform 220ms ease" }
+          }
+        >
           {error ? (
             <Alert
               type='error'
@@ -777,6 +820,7 @@ export function WhatsAppInbox({
               {loadingMore ? <Spin size='small' /> : null}
             </div>
           ) : null}
+        </div>
         </div>
       </aside>
 

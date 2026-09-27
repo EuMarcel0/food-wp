@@ -289,6 +289,7 @@ export function ConversationsPage() {
                 void historyQuery.fetchNextPage();
               }
             }}
+            onRefresh={() => historyQuery.refetch()}
             onMobileChatOpenChange={setMobileChatOpen}
           />
         ) : (
@@ -305,6 +306,7 @@ export function ConversationsPage() {
                 void activeQuery.fetchNextPage();
               }
             }}
+            onRefresh={() => activeQuery.refetch()}
             busyId={
               takeoverMutation.isPending
                 ? takeoverMutation.variables
