@@ -46,6 +46,11 @@ const ROMAN_OR_DIGIT: Record<string, string> = {
   iv: "4",
   v: "5",
   vi: "6",
+  ll: "2",
+  lll: "3",
+  um: "1",
+  dois: "2",
+  tres: "3",
   "01": "1",
   "02": "2",
   "03": "3",
@@ -69,6 +74,7 @@ function compact(text: string) {
   return tokenize(text).join("");
 }
 
+/** Levenshtein com transposição de letras vizinhas (Damerau/OSA). */
 function levenshtein(left: string, right: string) {
   if (left === right) return 0;
   if (!left.length) return right.length;
@@ -86,9 +92,60 @@ function levenshtein(left: string, right: string) {
         matrix[i][j - 1] + 1,
         matrix[i - 1][j - 1] + cost,
       );
+      if (i > 1 && j > 1 && left[i - 1] === right[j - 2] && left[i - 2] === right[j - 1]) {
+        matrix[i][j] = Math.min(matrix[i][j], matrix[i - 2][j - 2] + 1);
+      }
     }
   }
   return matrix[left.length][right.length];
+}
+
+/** Palavras comuns em nomes de bairro que, sozinhas, não identificam nenhum. */
+const GENERIC_NAME_TOKENS = new Set([
+  "jardim",
+  "vila",
+  "parque",
+  "residencial",
+  "conjunto",
+  "santo",
+  "santa",
+  "sao",
+  "nossa",
+  "senhora",
+  "senhor",
+  "distrito",
+  "setor",
+  "loteamento",
+  "chacara",
+  "chacaras",
+  "recanto",
+  "condominio",
+  "cidade",
+]);
+
+/**
+ * Mesma palavra com erro de digitação (ex.: gortado ≈ gotardo, mirnate ≈ mirante).
+ * Exige a mesma inicial e tolera 1 erro de 5 a 6 letras, 2 erros a partir de 7.
+ */
+function tokensSimilar(query: string, name: string) {
+  if (query === name) return true;
+  if (query.length < 5 || name.length < 5) return false;
+  if (/\d/.test(query) || /\d/.test(name)) return false;
+  if (query[0] !== name[0]) return false;
+  const maxLen = Math.max(query.length, name.length);
+  const allowed = maxLen >= 7 ? 2 : 1;
+  if (Math.abs(query.length - name.length) > allowed) return false;
+  return levenshtein(query, name) <= allowed;
+}
+
+function containsConsecutiveTokensFuzzy(haystack: string[], needle: string[]) {
+  if (!needle.length || haystack.length < needle.length) return false;
+  for (let i = 0; i <= haystack.length - needle.length; i++) {
+    if (needle.every((token, offset) => tokensSimilar(haystack[i + offset], token))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function similarity(left: string, right: string) {
@@ -114,14 +171,37 @@ function containsConsecutiveTokens(haystack: string[], needle: string[]) {
   return false;
 }
 
+/**
+ * Cidade/UF no fim do endereço não são bairro — e "Bom Jesus da Lapa" colidiria
+ * com os bairros "Bom Jesus" e "... Lapa".
+ */
+const CITY_MENTIONS = [
+  /\bbom\s+jesus\s+(?:da\s+)?lapa\b/gi,
+  /\bbj\s*(?:da\s*)?lapa\b/gi,
+  /\bbjl\b/gi,
+];
+const STATE_SUFFIX = /(?:^|[\s,\-\/])(?:ba|bahia)\s*$/i;
+
+function stripCityMentions(query: string) {
+  let text = query.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  for (const pattern of CITY_MENTIONS) text = text.replace(pattern, " ");
+  text = text.replace(STATE_SUFFIX, " ");
+  return text.replace(/\s+/g, " ").replace(/[\s,\-\/]+$/, "").trim();
+}
+
+const STREET_PREFIX = /^(rua|r|av|avenida|travessa|tv|alameda|al|rodovia|rod|estrada|est|via)\b/;
+
 /** Trechos da mensagem que costumam trazer o bairro (endereço completo). */
 function neighborhoodQueryHints(query: string) {
   const hints = [query];
   const afterBairro = query.match(/\bbairro\b\s*[:\-]?\s*(.+)$/i);
   if (afterBairro?.[1]?.trim()) hints.push(afterBairro[1].trim());
-  for (const part of query.split(/[,;|/]+/)) {
+  for (const part of query.split(/[,;|/]+|\s[-–—]\s/)) {
     const trimmed = part.trim();
-    if (trimmed.length >= 3 && trimmed !== query) hints.push(trimmed);
+    if (trimmed.length < 3 || trimmed === query) continue;
+    // Trecho "Rua das Flores" é logradouro, não bairro.
+    if (STREET_PREFIX.test(normalizeNeighborhoodText(trimmed))) continue;
+    hints.push(trimmed);
   }
   return hints;
 }
@@ -159,10 +239,14 @@ function scoreNeighborhood(queryRaw: string, zone: DeliveryNeighborhood): Neighb
   }
 
   if (queryTokens.length && nameTokens.length) {
-    const nameSet = new Set(nameTokens);
-    const hit = queryTokens.filter(token => nameSet.has(token)).length;
-    const coverage = hit / queryTokens.length;
-    const reverseCoverage = hit / nameTokens.length;
+    // Números soltos (nº da casa/rua) não contam como palavra do bairro;
+    // o "1" de "Mirante da Lapa 1" só vale colado ao nome (regras abaixo).
+    const isNumber = (token: string) => /^\d+$/.test(token);
+    const nameSet = new Set(nameTokens.filter(token => !isNumber(token)));
+    const queryWords = queryTokens.filter(token => !isNumber(token));
+    const hit = queryWords.filter(token => nameSet.has(token)).length;
+    const coverage = queryWords.length ? hit / queryWords.length : 0;
+    const reverseCoverage = nameSet.size ? hit / nameSet.size : 0;
     if (containsConsecutiveTokens(queryTokens, nameTokens)) {
       const distinctive =
         nameTokens.length >= 2 || nameTokens.some(token => token.length >= 4);
@@ -201,6 +285,51 @@ function scoreNeighborhood(queryRaw: string, zone: DeliveryNeighborhood): Neighb
       score = Math.max(score, 86);
       reason = "tokens-fuzzy";
     }
+
+    // Nome do bairro inteiro dentro do endereço, com erro de digitação (ex.: "sao gortado").
+    if (score < 94 && containsConsecutiveTokensFuzzy(queryTokens, nameTokens)) {
+      const distinctive = nameTokens.some(token => token.length >= 4 && !GENERIC_NAME_TOKENS.has(token));
+      if (distinctive) {
+        score = 94;
+        reason = "endereco-fuzzy";
+      }
+    }
+
+    // Palavras que identificam o bairro presentes no endereço, mesmo sem o prefixo
+    // (ex.: "bairro mirante casa 80" → "Jardim Mirante").
+    const distinctiveTokens = nameTokens.filter(
+      token => token.length >= 4 && !GENERIC_NAME_TOKENS.has(token) && !/^\d+$/.test(token),
+    );
+    if (
+      score < 86 &&
+      distinctiveTokens.length &&
+      distinctiveTokens.every(name => queryTokens.some(q => tokensSimilar(q, name)))
+    ) {
+      const exact = distinctiveTokens.every(name => queryTokens.includes(name));
+      score = Math.max(score, exact ? 86 : 84);
+      reason = "tokens-distintivos";
+    }
+
+    // Parte marcante do nome (ex.: "mirante" → Mirante da Lapa 1 / 2): vira opção para o cliente escolher.
+    if (
+      score < 76 &&
+      distinctiveTokens.length >= 2 &&
+      distinctiveTokens.some(name => name.length >= 5 && queryTokens.some(q => tokensSimilar(q, name)))
+    ) {
+      score = 76;
+      reason = "tokens-distintivos-parcial";
+
+      // "mirante 1" → Mirante da Lapa 1: número logo após a parte marcante do nome.
+      const nameNumber = nameTokens.find(token => /^\d+$/.test(token));
+      if (nameNumber) {
+        const followedByNumber = queryTokens.some(
+          (q, index) =>
+            queryTokens[index + 1] === nameNumber &&
+            distinctiveTokens.some(name => name.length >= 5 && tokensSimilar(q, name)),
+        );
+        if (followedByNumber) score = 84;
+      }
+    }
   }
 
   const fullSim = Math.max(similarity(queryNorm, nameNorm), similarity(queryCompact, nameCompact));
@@ -226,16 +355,19 @@ export function matchNeighborhoodQuery(
   query: string,
   zones: DeliveryNeighborhood[],
 ): { status: "unique"; match: NeighborhoodMatch } | { status: "ambiguous"; matches: NeighborhoodMatch[] } | { status: "none" } {
-  const trimmed = query.trim();
-  if (!trimmed || !zones.length) return { status: "none" };
+  const raw = query.trim();
+  if (!raw || !zones.length) return { status: "none" };
 
-  if (trimmed.startsWith("nbh:")) {
-    const id = trimmed.slice(4);
+  if (raw.startsWith("nbh:")) {
+    const id = raw.slice(4);
     const zone = zones.find(item => item.id === id);
     return zone
       ? { status: "unique", match: { zone, score: 100, reason: "id" } }
       : { status: "none" };
   }
+
+  const trimmed = stripCityMentions(raw);
+  if (!trimmed) return { status: "none" };
 
   const scored = zones
     .flatMap(zone =>
@@ -254,6 +386,25 @@ export function matchNeighborhoodQuery(
     const current = uniqueByZone.get(item.zone.id);
     if (!current || item.score > current.score) uniqueByZone.set(item.zone.id, item);
   }
+  // "Jardim Mirante" inteiro no texto explica o "Mirante": descarta o bairro menor contido nele.
+  const queryTokens = tokenize(trimmed);
+  const fullNameHits = [...uniqueByZone.values()].filter(item =>
+    containsConsecutiveTokens(queryTokens, tokenize(item.zone.name)),
+  );
+  for (const item of [...uniqueByZone.values()]) {
+    const tokens = tokenize(item.zone.name);
+    const words = tokens.filter(token => !/^\d+$/.test(token)).join(" ");
+    const covered = fullNameHits.some(other => {
+      if (other.zone.id === item.zone.id) return false;
+      const otherTokens = tokenize(other.zone.name);
+      if (otherTokens.length > tokens.length && containsConsecutiveTokens(otherTokens, tokens)) return true;
+      // "Maravilha 2" inteiro no texto descarta o irmão "Maravilha 1".
+      const otherWords = otherTokens.filter(token => !/^\d+$/.test(token)).join(" ");
+      return otherWords === words && !containsConsecutiveTokens(queryTokens, tokens);
+    });
+    if (covered) uniqueByZone.delete(item.zone.id);
+  }
+
   const ranked = [...uniqueByZone.values()].sort(
     (left, right) =>
       right.score - left.score ||
@@ -264,6 +415,9 @@ export function matchNeighborhoodQuery(
   if (!ranked.length) return { status: "none" };
 
   const best = ranked[0];
+  if (best.score === 100 && (ranked[1]?.score ?? 0) < 100) {
+    return { status: "unique", match: best };
+  }
   const strong = ranked.filter(item => item.score >= 80 && item.score >= best.score - 8);
 
   if (best.score >= 90 && (strong.length === 1 || best.score - (ranked[1]?.score ?? 0) >= 8)) {
