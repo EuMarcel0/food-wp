@@ -9,6 +9,7 @@ export function PageHeader({
   subtitle,
   extra,
   titleExtra,
+  titleAddon,
   className,
   kickerClassName,
 }: {
@@ -16,6 +17,8 @@ export function PageHeader({
   title: string;
   subtitle?: string;
   extra?: ReactNode;
+  /** Colado ao título, na mesma linha (ex.: contador). */
+  titleAddon?: ReactNode;
   /** Alinhado à direita na mesma linha do título (ex.: datepicker). */
   titleExtra?: ReactNode;
   className?: string;
@@ -28,12 +31,15 @@ export function PageHeader({
           <p className={cn(kicker, kickerClassName)}>{kickerLabel}</p>
         ) : null}
         <div className="flex items-center justify-between gap-4">
-          <Typography.Title
-            level={3}
-            className="min-h-[1.35em] !mt-0 !mb-1 min-w-0 flex-1 font-extrabold tracking-tight text-pretty max-sm:!text-2xl"
-          >
-            {title}
-          </Typography.Title>
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <Typography.Title
+              level={3}
+              className="min-h-[1.35em] !mt-0 !mb-1 min-w-0 font-extrabold tracking-tight text-pretty max-sm:!text-2xl"
+            >
+              {title}
+            </Typography.Title>
+            {titleAddon ? <div className="mb-1 shrink-0">{titleAddon}</div> : null}
+          </div>
           {titleExtra ? (
             <div className="shrink-0 max-sm:self-end">{titleExtra}</div>
           ) : null}

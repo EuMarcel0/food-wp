@@ -106,6 +106,16 @@ export function OrdersPage() {
     queryKey: queryKeys.store,
     queryFn: api.store,
   });
+  const todayKey = dayjs().format("YYYY-MM-DD");
+  const todayStatsQuery = useQuery({
+    queryKey: queryKeys.stats(todayKey),
+    queryFn: () => api.orderStats(todayKey),
+    refetchInterval: 30_000,
+  });
+  const todayStats = todayStatsQuery.data?.today;
+  const todayOrdersCount = todayStats
+    ? Math.max(0, todayStats.created - todayStats.cancelled)
+    : null;
   const paymentMethodsQuery = useQuery({
     queryKey: queryKeys.paymentMethods.list(1, 100, { active: true }),
     queryFn: () => api.listPaymentMethods(1, 100, { active: true }),
@@ -304,6 +314,24 @@ export function OrdersPage() {
         kicker="Fila"
         kickerClassName="!text-food-muted"
         title="Pedidos"
+        titleAddon={
+          todayOrdersCount != null ? (
+            <Tooltip
+              title={
+                todayStats
+                  ? `${todayStats.open} em aberto · ${todayStats.delivered} entregues · ${todayStats.cancelled} cancelados`
+                  : undefined
+              }
+            >
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-food-border bg-food-chip px-2.5 py-0.5 text-[13px] font-semibold text-food-text">
+                <span className="tabular-nums">{todayOrdersCount}</span>
+                <span className="font-normal text-food-muted">
+                  {todayOrdersCount === 1 ? "pedido hoje" : "pedidos hoje"}
+                </span>
+              </span>
+            </Tooltip>
+          ) : null
+        }
         subtitle="Ao mudar o status, o cliente recebe o aviso no WhatsApp."
       />
       <ListFilters
