@@ -334,6 +334,19 @@ function isBatchRestartCommand(command: string) {
   return BATCH_RESTART_KEYS.includes(command);
 }
 
+/** "não", "n", "pronto", "seguir", "não quero", "só isso"... encerram a escolha de adicionais. */
+function isAddonsDoneText(text: string) {
+  const plain = normalize(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return false;
+  if (/^(n|nao|no|nn|nop|nope)\b/.test(plain)) return true;
+  return /^(pronto|seguir|segue|sigo|pode seguir|continuar|continua|pular|pula|nenhum|nenhuma|nada|sem adicional|sem adicionais|sem|so isso|so|somente isso|apenas isso|e so|e isso|finalizar|terminar|ta bom|ta bom assim|ja ta bom|ja esta bom|esta bom|chega|basta)$/.test(
+    plain
+  );
+}
+
 function withBatchAbortHint(text: string, enabled: boolean) {
   if (!enabled) return text;
   return `${text}\n\n${BATCH_ABORT_HINT}`;
@@ -2111,7 +2124,7 @@ async function askAddons(
     [
       `*${product.name}*`,
       picked.length ? `🧀 Adicionais: ${picked.join(", ")}` : "Deseja colocar algum adicional?",
-      picked.length ? "Quer outro? Escolha ou toque em *Pronto* na lista." : ""
+      picked.length ? "Quer outro?\n*Sim?* Escolha na lista.\n*Não?* Digite *Não* para seguir." : ""
     ]
       .filter(Boolean)
       .join("\n"),
@@ -3087,7 +3100,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     if (
       incoming === "done_addons" ||
       incoming === "skip_addon" ||
-      ["nao", "não", "pular", "pronto", "sem adicional", "nenhum"].includes(normalized)
+      (!hasReply && isAddonsDoneText(input.text))
     ) {
       await nextItem();
       return;
@@ -3556,9 +3569,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       incoming === "done_options" ||
       normalized === "adicionais" ||
       normalized === "sim" ||
-      normalized === "pular" ||
-      normalized === "nao" ||
-      normalized === "não";
+      (!hasReply && isAddonsDoneText(input.text));
 
     if (!addonAction) {
       await persist("awaiting_addon", context);
@@ -3599,10 +3610,16 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
 
-    if (incoming === "skip_addon" || normalized === "pular" || normalized === "nao" || normalized === "não") {
+    if (incoming === "skip_addon") {
       context.addonOffset = 0;
       context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
+      return;
+    }
+
+    if (!hasReply && isAddonsDoneText(input.text)) {
+      context.addonOffset = 0;
+      await finishAddons();
       return;
     }
 
