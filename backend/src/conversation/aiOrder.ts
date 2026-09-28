@@ -143,6 +143,16 @@ async function buildCatalog(): Promise<Catalog> {
         const price = crust.addsPrice && crust.price > 0 ? `+ ${formatReais(crust.price)}` : "grátis";
         lines.push(`${key}: ${crust.name} (pizza ${crust.pizzaKind}) — ${price}`);
       });
+      // "Com borda" sem sabor = Catupiry (a de nome mais curto, ex.: "Catupiry" antes de "Catupiry com bacon").
+      const defaults = [...crusts.entries()]
+        .filter(([, crust]) => /catupiry|catupiri/.test(normalize(crust.name)))
+        .sort(([, left], [, right]) => left.name.length - right.name.length);
+      for (const kind of new Set(defaults.map(([, crust]) => crust.pizzaKind))) {
+        const [key, crust] = defaults.find(([, item]) => item.pizzaKind === kind)!;
+        lines.push(
+          `BORDA PADRÃO (pizza ${kind}): se o cliente pedir "com borda"/"borda recheada" sem dizer o sabor, use ${key} (${crust.name}).`,
+        );
+      }
     }
   }
 
@@ -277,6 +287,7 @@ function systemPrompt(catalogText: string) {
     "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família' = tamanho que começa com F). Se não der para saber o tamanho de uma pizza, deixe size=null e pergunte em 'question'.",
     "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L).",
     "- Borda e adicionais só quando o cliente pedir explicitamente. Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
+    "- 'Com borda' sem sabor: use a BORDA PADRÃO do cardápio para o tipo da pizza, sem perguntar. Se não houver borda padrão para esse tipo, pergunte o sabor da borda em 'question'.",
     "- Outros produtos: kind=product, product=código iN, com options quando houver opções obrigatórias ditas pelo cliente.",
     "- quantity >= 1. 'duas cocas' = quantity 2.",
     "- Itens que não existem no cardápio vão em not_found (texto curto como o cliente escreveu). Não coloque ali saudações, perguntas, endereço, pagamento ou palavras soltas.",

@@ -200,6 +200,7 @@ export const PAYMENT_LABEL: Record<NonNullable<Order["paymentMethod"]>, string> 
   card: "Cartão",
   credit: "Crédito",
   debit: "Débito",
+  mixed: "Misto",
   other: "Outro",
 };
 
@@ -211,6 +212,7 @@ export const PAYMENT_KIND_LABEL: Record<
   cash: "Dinheiro (pede troco)",
   credit: "Cartão crédito",
   debit: "Cartão débito",
+  mixed: "Misto (sem troco)",
   other: "Outro",
 };
 
@@ -233,5 +235,6 @@ export const PAYMENT_COLOR: Record<NonNullable<Order["paymentMethod"]>, string> 
   card: "purple",
   credit: "purple",
   debit: "blue",
+  mixed: "magenta",
   other: "default",
 };

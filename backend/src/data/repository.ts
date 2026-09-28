@@ -1292,7 +1292,13 @@ function missingPaymentMethodsTable(message?: string) {
 }
 
 function parsePaymentMethodKind(value: unknown): PaymentMethodKind {
-  if (value === "pix" || value === "cash" || value === "credit" || value === "debit") {
+  if (
+    value === "pix" ||
+    value === "cash" ||
+    value === "credit" ||
+    value === "debit" ||
+    value === "mixed"
+  ) {
     return value;
   }
   return "other";
@@ -3658,6 +3664,7 @@ const PAYMENT_FALLBACK_LABEL: Record<string, string> = {
   card: "Cartão",
   credit: "Crédito",
   debit: "Débito",
+  mixed: "Misto",
   other: "Outro",
 };
 
@@ -4037,6 +4044,7 @@ const PAYMENT_METHOD_FALLBACK: Record<PaymentMethod, string> = {
   card: "Cartão",
   credit: "Crédito",
   debit: "Débito",
+  mixed: "Misto",
   other: "Outro",
 };
 

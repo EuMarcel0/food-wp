@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Cardápio · Casa das Pizzas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Titan+One&family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=block" rel="stylesheet" />
+<style>
+  :root {
+    --tomate: #a8231a;
+    --tomate-escuro: #7e1911;
+    --massa: #fff1d6;
+    --massa-funda: #f3d9a8;
+    --crosta: #e9a23b;
+    --queijo: #ffd66b;
+    --carvao: #2a1512;
+    --tempero: #6b4a3f;
+    --manjericao: #2e6b3f;
+    --display: "Titan One", cursive;
+    --cond: "Barlow Condensed", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1400px; }
+  body {
+    background:
+      radial-gradient(circle at 8% 3%, rgba(255, 255, 255, 0.10), transparent 30%),
+      radial-gradient(circle at 95% 70%, rgba(0, 0, 0, 0.18), transparent 40%),
+      var(--tomate);
+    color: var(--carvao);
+    font-family: "Barlow", sans-serif;
+    padding: 44px 44px 40px;
+  }
+
+  /* ---------- Topo: marca + tamanhos ---------- */
+  .top { display: grid; grid-template-columns: 380px 1fr; gap: 28px; align-items: stretch; margin-bottom: 24px; }
+  .brand { display: flex; flex-direction: column; justify-content: center; }
+  .brand h1 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 72px;
+    line-height: 0.95;
+    color: var(--massa);
+    text-shadow: 0 5px 0 var(--tomate-escuro);
+  }
+  .brand h1 span { color: var(--crosta); }
+  .brand p {
+    margin-top: 12px;
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 27px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--massa);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+  .chip {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 22px;
+    padding: 2px 13px;
+    border-radius: 999px;
+    background: var(--massa);
+    color: var(--carvao);
+  }
+
+  .sizes {
+    background: var(--carvao);
+    border-radius: 34px;
+    padding: 22px 18px 22px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    align-items: end;
+  }
+  .size { text-align: center; color: var(--massa); }
+  .size svg { display: block; margin: 0 auto 8px; }
+  .size .line { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+  .size .letter { font-family: var(--display); font-size: 52px; line-height: 1; color: var(--crosta); }
+  .size .slices { font-family: var(--cond); font-weight: 700; font-size: 25px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.85; }
+  .size .price {
+    display: inline-block;
+    margin-top: 8px;
+    font-family: var(--cond);
+    font-weight: 800;
+    font-size: 40px;
+    line-height: 1.1;
+    padding: 0 18px;
+    border-radius: 14px;
+    background: var(--tomate);
+    color: #fff;
+  }
+  .size .price sup { font-size: 21px; vertical-align: 12px; margin-right: 2px; }
+
+  /* ---------- Cartões ---------- */
+  .card {
+    background: var(--massa);
+    border-radius: 30px;
+    padding: 28px 32px 24px;
+    box-shadow: 0 8px 0 var(--tomate-escuro);
+  }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .card h2 { font-family: var(--display); font-weight: 400; font-size: 46px; line-height: 1; color: var(--tomate); }
+  .note { font-size: 23px; color: var(--tempero); font-weight: 500; }
+  .note b { color: var(--carvao); }
+
+  .main { display: grid; grid-template-columns: 1fr 330px; gap: 24px; margin-bottom: 24px; }
+  .stack { display: flex; flex-direction: column; gap: 24px; }
+
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 30px; }
+  .group { margin-top: 18px; }
+  .group h3 {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--cond);
+    font-weight: 800;
+    font-size: 23px;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--manjericao);
+    margin-bottom: 2px;
+  }
+  .group h3::after { content: ""; flex: 1; height: 3px; border-radius: 3px; background: var(--massa-funda); }
+
+  .flavor { padding: 8px 0 9px; border-bottom: 2px dotted var(--massa-funda); }
+  .flavor:last-child { border-bottom: 0; }
+  .flavor strong {
+    display: block;
+    font-family: var(--cond);
+    font-weight: 800;
+    font-size: 32px;
+    line-height: 1.05;
+    text-transform: uppercase;
+  }
+  .flavor span { display: block; font-size: 21px; line-height: 1.25; color: var(--tempero); margin-top: 1px; }
+
+  .free {
+    background: var(--manjericao);
+    color: var(--massa);
+    border-radius: 30px;
+    padding: 28px 30px;
+    box-shadow: 0 8px 0 #1d4529;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .free small { font-family: var(--cond); font-weight: 800; font-size: 22px; letter-spacing: 3px; text-transform: uppercase; color: #bfe3c8; }
+  .free h2 { font-family: var(--display); font-weight: 400; font-size: 50px; line-height: 1; margin: 8px 0 14px; }
+  .free p { font-size: 27px; font-weight: 600; line-height: 1.3; }
+  .free p em { font-style: normal; color: var(--queijo); }
+  .free .alt { margin-top: 10px; font-size: 22px; font-weight: 500; opacity: 0.85; }
+
+  /* ---------- Adicionais + bebidas ---------- */
+  .bottom { display: grid; grid-template-columns: 470px 1fr; gap: 24px; }
+  .addons { display: grid; grid-template-columns: 1fr 1fr; column-gap: 26px; margin-top: 10px; }
+  .addon { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; }
+  .addon b { font-family: var(--cond); font-weight: 700; font-size: 29px; }
+  .addon u { flex: 1; border-bottom: 3px dotted var(--massa-funda); text-decoration: none; transform: translateY(-6px); }
+  .addon i { white-space: nowrap; font-style: normal; font-family: var(--cond); font-weight: 800; font-size: 29px; color: var(--tomate); }
+
+  .drinks { display: grid; grid-template-columns: 1.25fr 1fr; column-gap: 28px; margin-top: 10px; align-items: start; }
+  .soda { width: 100%; border-collapse: collapse; font-size: 22px; }
+  .soda th, .soda td { padding: 6px 0; border-bottom: 2px dotted var(--massa-funda); }
+  .soda tbody tr:last-child th, .soda tbody tr:last-child td { border-bottom: 0; }
+  .soda tbody th { text-align: left; font-weight: 600; }
+  .soda thead th {
+    font-family: var(--cond); font-weight: 800; font-size: 20px; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--manjericao); text-align: center; vertical-align: bottom;
+    border-bottom: 3px solid var(--massa-funda);
+  }
+  .soda thead th:first-child { text-align: left; }
+  .soda thead th small { display: block; font-size: 14px; letter-spacing: 0.5px; color: var(--tempero); text-transform: none; font-weight: 700; }
+  .soda td {
+    width: 72px; text-align: center; white-space: nowrap;
+    font-family: var(--cond); font-weight: 800; font-size: 26px; color: var(--tomate);
+  }
+  .soda td small { margin-right: 3px; font-size: 18px; font-weight: 700; }
+  .soda tbody th { white-space: nowrap; }
+  .soda td s { text-decoration: none; color: var(--massa-funda); }
+  .drink-side { display: flex; flex-direction: column; gap: 6px; }
+  .drink-list li {
+    list-style: none;
+    font-size: 22px;
+    font-weight: 600;
+    padding: 6px 0;
+    border-bottom: 2px dotted var(--massa-funda);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  }
+  .drink-list li:last-child { border-bottom: 0; }
+  .drink-list li small { margin-left: 8px; font-size: 17px; font-weight: 500; color: var(--tempero); }
+  .drink-list li em {
+    font-style: normal; white-space: nowrap;
+    font-family: var(--cond); font-weight: 800; font-size: 26px; color: var(--tomate);
+  }
+  .drink-list li.stacked { flex-wrap: wrap; }
+  .drink-list li.stacked p { flex-basis: 100%; margin-top: 1px; font-size: 18px; font-weight: 500; line-height: 1.3; color: var(--tempero); }
+  #sucos { border-top: 3px solid var(--massa-funda); }
+  /* ---------- Como pedir ---------- */
+  .how {
+    flex: 1;
+    background: var(--carvao);
+    color: var(--massa);
+    border-radius: 30px;
+    padding: 26px 26px 28px;
+    display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  }
+  .how-head { display: flex; align-items: center; gap: 14px; }
+  .how .bubble { flex: none; width: 58px; height: 58px; border-radius: 50%; background: #25d366; display: grid; place-items: center; }
+  .how h2 { font-family: var(--display); font-weight: 400; font-size: 38px; line-height: 1.05; color: var(--crosta); }
+  .how p { font-size: 22px; line-height: 1.3; }
+  .how q {
+    display: block;
+    padding: 14px 18px;
+    border-radius: 20px 20px 20px 4px;
+    background: #fff;
+    color: var(--carvao);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.3;
+    quotes: "“" "”";
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Casa das<br /><span>Pizzas</span></h1>
+    <p>Sabor que conquista!</p>
+    <div class="chips">
+      <span class="chip">Pix</span><span class="chip">Dinheiro</span><span class="chip">Visa</span><span class="chip">Master</span><span class="chip">Elo</span>
+    </div>
+  </div>
+  <section class="sizes" id="sizes"></section>
+</header>
+
+<div class="main">
+  <section class="card">
+    <div class="card-head">
+      <h2>Pizzas salgadas</h2>
+      <p class="note">Todas levam <b>molho e mussarela</b></p>
+    </div>
+    <div class="groups" id="salgadas"></div>
+  </section>
+
+  <div class="stack">
+    <section class="card">
+      <h2>Pizzas doces</h2>
+      <div id="doces" style="margin-top:8px"></div>
+    </section>
+    <section class="free">
+      <small>Cortesia da casa</small>
+      <h2>Borda recheada grátis</h2>
+      <p>Escolha <em>Catupiry</em> ou <em>Cheddar</em>.</p>
+      <p class="alt">Também fazemos sem borda recheada.</p>
+    </section>
+    <section class="how">
+      <div class="how-head">
+        <div class="bubble">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Z"/></svg>
+        </div>
+        <h2>Pedir é fácil</h2>
+      </div>
+      <p>Escreva tamanho, sabores (pode ser meio a meio), borda e bebida numa mensagem só:</p>
+      <q>Uma G meia calabresa meia frango catupiry, borda de cheddar e uma Coca 2 litros</q>
+    </section>
+  </div>
+</div>
+
+<div class="bottom">
+  <section class="card">
+    <h2>Adicionais</h2>
+    <div class="addons" id="addons"></div>
+  </section>
+  <section class="card">
+    <h2>Bebidas</h2>
+    <div class="drinks">
+      <table class="soda" id="refri"></table>
+      <div class="drink-side">
+        <ul class="drink-list" id="outros"></ul>
+        <ul class="drink-list" id="sucos"></ul>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+  const sizes = [
+    { letter: "P", slices: 4, price: "45", r: 42 },
+    { letter: "M", slices: 6, price: "55", r: 50 },
+    { letter: "G", slices: 8, price: "65", r: 58 },
+    { letter: "F", slices: 12, price: "75", r: 67 },
+  ];
+  const pizza = ({ slices, r }) => {
+    const box = 140, c = box / 2, inner = r - 8;
+    const cuts = Array.from({ length: slices }, (_, i) => {
+      const a = (i / slices) * Math.PI * 2 - Math.PI / 2;
+      return `<line x1="${c}" y1="${c}" x2="${c + Math.cos(a) * r}" y2="${c + Math.sin(a) * r}" stroke="#2a1512" stroke-width="3.2" stroke-linecap="round"/>`;
+    }).join("");
+    const dots = Array.from({ length: slices }, (_, i) => {
+      const a = ((i + 0.5) / slices) * Math.PI * 2 - Math.PI / 2;
+      const d = inner * 0.58;
+      return `<circle cx="${c + Math.cos(a) * d}" cy="${c + Math.sin(a) * d}" r="${Math.max(3.5, 8 - slices / 2)}" fill="#a8231a"/>`;
+    }).join("");
+    return `<svg width="${box}" height="${box}" viewBox="0 0 ${box} ${box}" aria-hidden="true">
+      <circle cx="${c}" cy="${c}" r="${r}" fill="#e9a23b"/>
+      <circle cx="${c}" cy="${c}" r="${inner}" fill="#ffd66b"/>
+      ${dots}${cuts}
+    </svg>`;
+  };
+  document.getElementById("sizes").innerHTML = sizes
+    .map(s => `<div class="size">${pizza(s)}<div class="line"><span class="letter">${s.letter}</span><span class="slices">${s.slices} fatias</span></div><div class="price"><sup>R$</sup>${s.price}</div></div>`)
+    .join("");
+
+  const columns = [
+    [
+      ["Clássicas", [
+        ["Mussarela", "Mussarela e orégano"],
+        ["Milho Verde", "Milho verde e orégano"],
+        ["Presunto", "Presunto e orégano"],
+        ["Calabresa", "Calabresa e orégano"],
+        ["Calabresa Bacon", "Calabresa, bacon e orégano"],
+        ["Corn Bacon", "Milho verde, bacon e orégano"],
+        ["Peito de Peru", "Peito de peru e orégano"],
+        ["Atum", "Atum e orégano"],
+        ["Lombinho", "Lombinho, catupiry e orégano"],
+      ]],
+    ],
+    [
+      ["Frango", [
+        ["Só Frango", "Frango e orégano"],
+        ["Frangalho", "Frango, alho e orégano"],
+        ["Frango Catupiry", "Frango, catupiry e orégano"],
+        ["Frango Bacon", "Frango, bacon e orégano"],
+        ["Framilho", "Frango, milho e orégano"],
+        ["Casa das Pizzas", "Frango, calabresa, milho e bacon"],
+        ["Gazela", "Pasta de alho, cream cheese, frango, orégano, mussarela e pimenta biquinho"],
+      ]],
+      ["Queijos", [
+        ["Quatro Queijos", "Catupiry, queijo prato, provolone e orégano"],
+        ["Docheff", "Queijo prato, provolone, catupiry, alho, cebola e orégano"],
+      ]],
+    ],
+    [
+      ["Mais recheadas", [
+        ["Marguerita", "Tomate, catupiry, manjericão e orégano"],
+        ["Portuguesa", "Calabresa, milho, ervilha, palmito e ovos ralados"],
+        ["À Moda", "Calabresa, presunto, milho verde e orégano"],
+        ["Vegetariana", "Milho verde, ervilha, palmito, cebola, azeitonas, tomate e orégano"],
+      ]],
+      ["Sabores do sertão", [
+        ["Nordestina", "Catupiry, carne de sol, orégano e cebola (a gosto)"],
+        ["Nord Cheddar", "Carne de sol, cheddar, orégano e cebola (a gosto)"],
+        ["Cangaceira", "Carne seca, banana da terra e queijo coalho"],
+        ["Sertaneja", "Carne seca, queijo coalho e cebola caramelizada"],
+        ["Melizada", "Calabresa, queijo coalho e cebola caramelizada"],
+      ]],
+    ],
+  ];
+  const flavor = ([name, desc]) => `<div class="flavor"><strong>${name}</strong><span>${desc}</span></div>`;
+  const group = ([title, items]) => `<div class="group"><h3>${title}</h3>${items.map(flavor).join("")}</div>`;
+  document.getElementById("salgadas").innerHTML = columns.map(col => `<div>${col.map(group).join("")}</div>`).join("");
+
+  document.getElementById("doces").innerHTML = [
+    ["Romeu e Julieta", "Mussarela, goiabada e catupiry"],
+    ["Chocolate", "Mussarela e chocolate ao leite"],
+  ].map(flavor).join("");
+
+  document.getElementById("addons").innerHTML = [
+    ["Tomate", "3"], ["Catupiry", "5"],
+    ["Cebola", "3"], ["Cheddar", "5"],
+    ["Milho", "5"], ["Bacon", "15"],
+    ["Azeitonas", "10"], ["Calabresa", "15"],
+    ["Mussarela", "20"],
+  ].map(([n, p]) => `<div class="addon"><b>${n}</b><u></u><i>R$ ${p}</i></div>`).join("");
+
+  const cell = (p) => `<td>${p ? `<small>R$</small>${p}` : "<s>—</s>"}</td>`;
+  document.getElementById("refri").innerHTML =
+    `<thead><tr><th>Refrigerantes</th><th>Lata<small>350 ml</small></th><th>1L</th><th>2L</th></tr></thead><tbody>` +
+    [
+      ["Coca-Cola", "6", "10", "15"],
+      ["Coca-Cola Zero", "5", "10", null],
+      ["Guaraná Antarctica", "5", "10", "15"],
+      ["Guaraná Zero", null, "10", null],
+      ["Fanta Laranja", "5", null, null],
+      ["Guaraná Kuat", "5", null, null],
+    ].map(([n, ...p]) => `<tr><th>${n}</th>${p.map(cell).join("")}</tr>`).join("") +
+    `</tbody>`;
+
+  const li = ([n, size, price]) => `<li><span>${n}<small>${size}</small></span><em>R$ ${price}</em></li>`;
+  document.getElementById("outros").innerHTML = [
+    ["Água com gás", "500 ml", "5"],
+    ["Água sem gás", "500 ml", "3"],
+    ["Red Bull", "250 ml", "15"],
+    ["Monster", "473 ml", "15"],
+  ].map(li).join("");
+  document.getElementById("sucos").innerHTML = [
+    `<li class="stacked"><span>Sucos<small>500 ml</small></span><em>R$ 15</em><p>Abacaxi · acerola · goiaba · laranja · maracujá</p></li>`,
+    li(["Uva e maçã 100%", "900 ml", "23,50"]),
+  ].join("");
+
+  document.fonts.ready.then(() => { document.title = String(document.documentElement.scrollHeight); });
+</script>
+</body>
+</html>

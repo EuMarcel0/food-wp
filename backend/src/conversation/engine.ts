@@ -1243,7 +1243,10 @@ async function resolvePaymentMethod(
 
 /** Aceita "no pix", "vou pagar no cartão de crédito", "pix por favor" etc. */
 async function resolvePaymentMethodLoose(raw: string): Promise<StorePaymentMethod | null> {
-  const base = normalize(raw).replace(/[!?.,]+/g, " ").replace(/\s+/g, " ").trim();
+  const base = normalize(raw)
+    .replace(/[!?.,]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const stripped = base
     .replace(
       /\b(vou|vai|quero|pagar|pagamento|pago|pode ser|sera|no|na|em|pelo|pela|via|com|de|por favor|pfv|pf|moco|moca)\b/g,
@@ -1360,7 +1363,7 @@ async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: bool
   await askAiOrder(to);
 }
 
-async function askAiOrder(to: string, intro = "✍️ *Digite seu pedido* aqui em uma mensagem.") {
+async function askAiOrder(to: string, intro = "✍️ *Digite seu pedido* em *uma mensagem*.") {
   await sendText(to, [intro, AI_ORDER_EXAMPLE, "Para encerrar sem pedir, digite *Sair*."].join("\n"));
 }
 
@@ -2673,7 +2676,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       ctx.aiStepIndex = undefined;
       ctx.addonOffset = 0;
       if (asked) {
-        ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Carrinho atualizado:\n${renderCart(ctx)}` });
+        ctx.aiTurns = appendAiTurn(ctx.aiTurns, {
+          role: "assistant",
+          content: `Carrinho atualizado:\n${renderCart(ctx)}`
+        });
       }
     }
     await continueAfterAiCart(ctx, intro ?? "✅ Pedido atualizado!");
@@ -3092,8 +3098,8 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     const addon = incoming.startsWith("addon:")
       ? remaining.find(entry => entry.id === incoming.slice("addon:".length))
       : typed
-        ? remaining.find(entry => normalize(entry.name) === typed) ??
-          remaining.find(entry => normalize(entry.name).includes(typed))
+        ? (remaining.find(entry => normalize(entry.name) === typed) ??
+          remaining.find(entry => normalize(entry.name).includes(typed)))
         : undefined;
     if (!addon) {
       await persist("awaiting_ai_addon", context);

@@ -27,6 +27,24 @@ import { toast } from "../../../lib/toast";
 import type { Order, SalesByPaymentReport } from "../../../types";
 import { listPage, tableClass } from "../../../ui";
 
+const isMixed = (method: string | null | undefined) => method === "mixed";
+
+const MIXED_ROW = "[&>td]:!bg-violet-500/8";
+
+function PaymentTag({ label, method }: { label: string; method: string | null | undefined }) {
+  if (!isMixed(method)) return <Tag color="blue">{label}</Tag>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Tag color="purple" className="!me-0 !font-semibold">
+        {label}
+      </Tag>
+      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-violet-500">
+        Misto
+      </span>
+    </span>
+  );
+}
+
 function todayRange(): [Dayjs, Dayjs] {
   const today = dayjs().startOf("day");
   return [today, today];
@@ -60,8 +78,8 @@ function openSalesReportPdfA4(input: {
   const summaryRows = report.summary
     .map(
       (row) =>
-        `<tr>
-          <td>${escapeHtml(row.paymentMethodLabel)}</td>
+        `<tr${isMixed(row.paymentMethod) ? ` class="mixed"` : ""}>
+          <td>${escapeHtml(row.paymentMethodLabel)}${isMixed(row.paymentMethod) ? ` <span class="badge">Misto</span>` : ""}</td>
           <td class="num">${row.orderCount}</td>
           <td class="num">${escapeHtml(formatBRL(row.totalCents))}</td>
         </tr>`,
@@ -70,7 +88,7 @@ function openSalesReportPdfA4(input: {
   const orderRows = report.orders
     .map(
       (row) =>
-        `<tr>
+        `<tr${isMixed(row.paymentMethod) ? ` class="mixed"` : ""}>
           <td>#${escapeHtml(row.code)}</td>
           <td>${escapeHtml(formatDate(row.createdAt))}</td>
           <td>${escapeHtml(row.customerName || "—")}</td>
@@ -102,6 +120,12 @@ function openSalesReportPdfA4(input: {
     th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #555; }
     .num { text-align: right; white-space: nowrap; }
     .total { font-weight: 700; }
+    tr.mixed td { background: #f3eefe; font-weight: 600; }
+    .badge {
+      display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px;
+      background: #6d28d9; color: #fff; font-size: 9px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; vertical-align: middle;
+    }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
@@ -199,6 +223,13 @@ export function SalesByPaymentPage() {
   });
 
   const report = reportQuery.data;
+  const mixedTotals = useMemo(() => {
+    const rows = (report?.summary ?? []).filter((row) => isMixed(row.paymentMethod));
+    return {
+      orderCount: rows.reduce((sum, row) => sum + row.orderCount, 0),
+      totalCents: rows.reduce((sum, row) => sum + row.totalCents, 0),
+    };
+  }, [report]);
   const paymentFilterLabel = useMemo(() => {
     if (!paymentMethods.length) return "Todas";
     return paymentMethods
@@ -307,12 +338,25 @@ export function SalesByPaymentPage() {
             {report?.totals.orderCount ?? "—"}
           </p>
         </div>
-        <div className="rounded-xl border border-food-border bg-food-surface px-4 py-3 sm:col-span-2">
+        <div className="rounded-xl border border-food-border bg-food-surface px-4 py-3">
           <Typography.Text type="secondary" className="text-xs uppercase tracking-wide">
             Total vendido
           </Typography.Text>
           <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-accent">
             {report ? formatBRL(report.totals.totalCents) : "—"}
+          </p>
+        </div>
+        <div className="rounded-xl border border-violet-500/30 bg-violet-500/8 px-4 py-3">
+          <Typography.Text className="text-xs font-semibold uppercase tracking-wide !text-violet-500">
+            Pagamentos mistos
+          </Typography.Text>
+          <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-text">
+            {report ? formatBRL(mixedTotals.totalCents) : "—"}
+          </p>
+          <p className="m-0 mt-0.5 text-xs text-food-muted">
+            {report
+              ? `${mixedTotals.orderCount} ${mixedTotals.orderCount === 1 ? "pedido" : "pedidos"}`
+              : ""}
           </p>
         </div>
       </div>
@@ -327,12 +371,15 @@ export function SalesByPaymentPage() {
         loading={reportQuery.isLoading}
         pagination={false}
         dataSource={report?.summary ?? []}
+        rowClassName={(row) => (isMixed(row.paymentMethod) ? MIXED_ROW : "")}
         locale={{ emptyText: "Sem vendas no período." }}
         columns={[
           {
             title: "Forma de pagamento",
             dataIndex: "paymentMethodLabel",
-            render: (value: string) => <Tag color="blue">{value}</Tag>,
+            render: (value: string, row) => (
+              <PaymentTag label={value} method={row.paymentMethod} />
+            ),
           },
           {
             title: "Pedidos",
@@ -360,6 +407,7 @@ export function SalesByPaymentPage() {
         loading={reportQuery.isLoading}
         pagination={{ pageSize: 50, showSizeChanger: true }}
         dataSource={report?.orders ?? []}
+        rowClassName={(row) => (isMixed(row.paymentMethod) ? MIXED_ROW : "")}
         locale={{ emptyText: "Nenhum pedido neste período." }}
         columns={[
           {
@@ -382,6 +430,12 @@ export function SalesByPaymentPage() {
           {
             title: "Pagamento",
             dataIndex: "displayPaymentLabel",
+            render: (value: string, row) =>
+              isMixed(row.paymentMethod) ? (
+                <PaymentTag label={value} method={row.paymentMethod} />
+              ) : (
+                value
+              ),
           },
           {
             title: "Total",

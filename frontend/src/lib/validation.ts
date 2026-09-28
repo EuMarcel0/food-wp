@@ -197,7 +197,7 @@ export const sizeSchema = Yup.object({
 export const paymentMethodSchema = Yup.object({
   name: Yup.string().trim().required("Informe o nome da forma de pagamento"),
   kind: Yup.string()
-    .oneOf(["pix", "cash", "credit", "debit", "other"], "Informe o tipo")
+    .oneOf(["pix", "cash", "credit", "debit", "mixed", "other"], "Informe o tipo")
     .required("Informe o tipo"),
   active: Yup.boolean().default(true),
 });

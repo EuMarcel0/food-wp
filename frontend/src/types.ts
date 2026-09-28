@@ -135,7 +135,7 @@ export type Order = {
   code: string;
   status: OrderStatus;
   fulfillment: "delivery" | "pickup";
-  paymentMethod: "pix" | "cash" | "card" | "credit" | "debit" | "other" | null;
+  paymentMethod: "pix" | "cash" | "card" | "credit" | "debit" | "mixed" | "other" | null;
   paymentMethodLabel?: string | null;
   changeForCents?: number | null;
   addressText: string | null;
@@ -190,7 +190,7 @@ export type Size = {
   active: boolean;
 };
 
-export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "other";
+export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "mixed" | "other";
 
 export type StorePaymentMethod = {
   id: string;

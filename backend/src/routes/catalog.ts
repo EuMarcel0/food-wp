@@ -729,7 +729,7 @@ catalogRouter.delete("/sizes/:id", async (req, res) => {
 
 function paymentMethodPayload(body: Record<string, unknown>): {
   name: string;
-  kind: "pix" | "cash" | "credit" | "debit" | "other";
+  kind: "pix" | "cash" | "credit" | "debit" | "mixed" | "other";
   active: boolean;
 } | null {
   const name = String(body.name ?? "").trim();
@@ -739,6 +739,7 @@ function paymentMethodPayload(body: Record<string, unknown>): {
     kindRaw === "cash" ||
     kindRaw === "credit" ||
     kindRaw === "debit" ||
+    kindRaw === "mixed" ||
     kindRaw === "other"
       ? kindRaw
       : null;

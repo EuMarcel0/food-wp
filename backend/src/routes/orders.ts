@@ -39,6 +39,7 @@ const PAYMENT_METHODS = new Set([
   "card",
   "credit",
   "debit",
+  "mixed",
   "other",
 ]);
 

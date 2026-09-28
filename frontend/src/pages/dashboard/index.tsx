@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { DatePicker } from "antd";
+import { DatePicker, Tooltip } from "antd";
 import {
   CheckCircleFilled,
   ClockCircleOutlined,
   CloseCircleFilled,
+  EyeOutlined,
   FireOutlined,
   RocketOutlined,
   ShopOutlined,
@@ -20,6 +21,7 @@ import { STATUS_LABEL } from "../../lib/format";
 import { isStoreOpenNow, todayHoursLabel } from "../../lib/hours";
 import { queryKeys } from "../../lib/queryKeys";
 import { cn } from "../../lib/cn";
+import { CancelledOrdersModal } from "./CancelledOrdersModal";
 import type { OrderStats, OrderStatus } from "../../types";
 
 const SUBTITLE_SUFFIX =
@@ -168,11 +170,13 @@ function DayMetric({
   value,
   hint,
   accent,
+  action,
 }: {
   label: string;
   value: number;
   hint: string;
   accent?: "orange" | "emerald" | "rose" | "zinc";
+  action?: ReactNode;
 }) {
   const accents = {
     orange: "text-food-accent",
@@ -182,9 +186,12 @@ function DayMetric({
   };
   return (
     <div className="min-w-0 flex-1 border-l border-food-border/80 pl-4 first:border-l-0 first:pl-0 max-sm:border-l-0 max-sm:border-t max-sm:pl-0 max-sm:pt-3 first:max-sm:border-t-0 first:max-sm:pt-0">
-      <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-food-muted">
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-food-muted">
+          {label}
+        </p>
+        {action}
+      </div>
       <p
         className={cn(
           "m-0 mt-1 text-[2rem] font-extrabold leading-none tracking-[-0.04em] tabular-nums",
@@ -200,6 +207,7 @@ function DayMetric({
 
 export function DashboardPage() {
   const [day, setDay] = useState(() => dayjs());
+  const [cancelledOpen, setCancelledOpen] = useState(false);
   const dayKey = day.format("YYYY-MM-DD");
   const isSelectedToday = dayKey === dayjs().format("YYYY-MM-DD");
 
@@ -425,6 +433,20 @@ export function DashboardPage() {
                   : "Nenhum cancelamento"
               }
               accent={stats.today.cancelled ? "rose" : "zinc"}
+              action={
+                stats.today.cancelled ? (
+                  <Tooltip title="Ver pedidos cancelados">
+                    <button
+                      type="button"
+                      aria-label="Ver pedidos cancelados e motivos"
+                      onClick={() => setCancelledOpen(true)}
+                      className="-my-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-food-muted transition-colors hover:bg-rose-500/10 hover:text-rose-500 focus-visible:outline-2 focus-visible:outline-rose-500"
+                    >
+                      <EyeOutlined />
+                    </button>
+                  </Tooltip>
+                ) : null
+              }
             />
           </div>
         </article>
@@ -664,6 +686,12 @@ export function DashboardPage() {
           </div>
         </section>
       </div>
+      <CancelledOrdersModal
+        open={cancelledOpen}
+        onClose={() => setCancelledOpen(false)}
+        dayKey={dayKey}
+        dayLabel={dayLabel}
+      />
     </div>
   );
 }

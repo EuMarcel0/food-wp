@@ -1751,6 +1751,7 @@ export const memoryStore = {
       card: "Cartão",
       credit: "Crédito",
       debit: "Débito",
+      mixed: "Misto",
       other: "Outro",
     };
 
@@ -1980,6 +1981,7 @@ export const memoryStore = {
       card: "Cartão",
       credit: "Crédito",
       debit: "Débito",
+      mixed: "Misto",
       other: "Outro",
     };
     const prevDisplay =

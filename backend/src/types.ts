@@ -1,6 +1,6 @@
 export type Fulfillment = "delivery" | "pickup";
-export type PaymentMethod = "pix" | "cash" | "card" | "credit" | "debit" | "other";
-export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "other";
+export type PaymentMethod = "pix" | "cash" | "card" | "credit" | "debit" | "mixed" | "other";
+export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "mixed" | "other";
 
 export type OrderStatus =
   | "received"
