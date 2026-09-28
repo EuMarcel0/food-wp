@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExportOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Skeleton, Tooltip } from "antd";
+import { Alert, Button, Card, Segmented, Skeleton, Tooltip } from "antd";
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
@@ -60,7 +60,21 @@ export function OpenAiUsageCard() {
     }
   };
 
+  const [displayCurrency, setDisplayCurrency] = useState<"USD" | "BRL">("USD");
+  const rateQuery = useQuery({
+    queryKey: queryKeys.usdBrlRate,
+    queryFn: api.usdBrlRate,
+    enabled: displayCurrency === "BRL",
+    staleTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+  const rate = displayCurrency === "BRL" ? rateQuery.data?.rate : undefined;
+
   const report = usageQuery.data;
+  const money = (value: number) =>
+    rate && report?.currency.toLowerCase() === "usd"
+      ? formatMoney(value * rate, "BRL")
+      : formatMoney(value, report?.currency ?? "usd");
   const maxCost = Math.max(0, ...(report?.days ?? []).map(day => day.cost));
   const maxRequests = Math.max(0, ...(report?.days ?? []).map(day => day.requests));
 
@@ -70,9 +84,20 @@ export function OpenAiUsageCard() {
       title='Consumo da OpenAI (bot v2)'
       extra={
         report?.configured ? (
-          <Button size='small' icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
-            Atualizar
-          </Button>
+          <div className='flex items-center gap-2'>
+            <Segmented
+              size='small'
+              value={displayCurrency}
+              onChange={value => setDisplayCurrency(value as "USD" | "BRL")}
+              options={[
+                { label: "US$", value: "USD" },
+                { label: "R$", value: "BRL" },
+              ]}
+            />
+            <Button size='small' icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
+              Atualizar
+            </Button>
+          </div>
         ) : null
       }
     >
@@ -106,15 +131,25 @@ export function OpenAiUsageCard() {
             minutos para aparecer.
           </p>
 
+          {displayCurrency === "BRL" ? (
+            <p className='-mt-2 mb-4 text-xs text-food-muted'>
+              {rateQuery.isPending
+                ? "Buscando cotação do dólar…"
+                : rateQuery.isError || !rateQuery.data
+                  ? "Cotação do dólar indisponível no momento. Valores em US$."
+                  : `Convertido pela cotação de hoje: US$ 1 = ${formatMoney(rateQuery.data.rate, "BRL")} (${rateQuery.data.source}). Valor aproximado; a fatura da OpenAI é em dólar.`}
+            </p>
+          ) : null}
+
           <div className='mb-5 flex flex-wrap gap-3'>
-            <Stat label='Gasto no mês' value={formatMoney(report.totalCost, report.currency)} />
-            <Stat label='Hoje' value={formatMoney(report.todayCost, report.currency)} />
+            <Stat label='Gasto no mês' value={money(report.totalCost)} />
+            <Stat label='Hoje' value={money(report.todayCost)} />
             <Stat
               label='Requisições'
               value={formatCount(report.totals.requests)}
               hint={
                 report.totals.requests
-                  ? `≈ ${formatMoney(report.totalCost / report.totals.requests, report.currency)} cada`
+                  ? `≈ ${money(report.totalCost / report.totals.requests)} cada`
                   : undefined
               }
             />
@@ -134,7 +169,7 @@ export function OpenAiUsageCard() {
                   return (
                     <Tooltip
                       key={day.date}
-                      title={`${shortDay(day.date)} · ${formatMoney(day.cost, report.currency)} · ${day.requests} req.`}
+                      title={`${shortDay(day.date)} · ${money(day.cost)} · ${day.requests} req.`}
                     >
                       <div className='flex h-full min-w-[14px] flex-1 flex-col items-center justify-end gap-1'>
                         <div

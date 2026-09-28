@@ -51,6 +51,7 @@ import { parseBusinessHours } from "../lib/businessHours.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { isOpenAiConfigured } from "../lib/openai.js";
 import { getOpenAiUsageReport } from "../lib/openaiUsage.js";
+import { getUsdBrlRate } from "../lib/exchangeRate.js";
 import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
 import type { PizzaKind, ProductOptionGroup, StorePatch } from "../types.js";
 
@@ -128,6 +129,14 @@ catalogRouter.get("/openai/usage", async (req, res) => {
     res.json(await getOpenAiUsageReport(req.query.refresh === "1"));
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : "Falha ao consultar a OpenAI." });
+  }
+});
+
+catalogRouter.get("/fx/usd-brl", async (_req, res) => {
+  try {
+    res.json(await getUsdBrlRate());
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Falha ao buscar a cotação." });
   }
 });
 
