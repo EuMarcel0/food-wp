@@ -4,7 +4,10 @@ import { env } from "../config/env.js";
 import {
   handleIncomingMessage,
   handleUnsupportedInbound,
+  isAiCollecting,
+  queueAiOrderText,
 } from "../conversation/engine.js";
+import { getStore } from "../data/repository.js";
 import { logInboundByPhone, logPhoneEchoByCustomerPhone } from "../lib/messageLog.js";
 import {
   describeInboundWithoutMedia,
@@ -12,7 +15,7 @@ import {
   persistInboundWhatsAppMedia,
   type WhatsAppInboundMessage,
 } from "../lib/inboundWhatsAppMedia.js";
-import { enqueueByUser, queueKeyForPhone } from "../lib/userQueue.js";
+import { enqueueByUser, isUserBusy, queueKeyForPhone } from "../lib/userQueue.js";
 import { noteWebhook } from "../lib/webhookStats.js";
 
 const SILENT_TYPES = new Set(["reaction", "system"]);
@@ -260,23 +263,36 @@ webhookRouter.post("/whatsapp", (req, res) => {
               ? `[opção] ${replyId}`
               : "");
 
-        enqueueByUser(queueKey, async () => {
-          await logInboundByPhone(
-            to,
-            inboundBody,
-            location ? "location" : replyId ? "interactive" : "text",
-            { name, avatarUrl },
-          );
-          await handleIncomingMessage({
-            from: to,
-            name,
-            avatarUrl,
-            text,
-            replyId,
-            location,
-            waMessageId: message.id,
+        const plainText = Boolean(text?.trim()) && !replyId && !location;
+        void (async () => {
+          // v2: texto no meio do pedido (ou com o bot ocupado) é agrupado, nunca descartado.
+          const burst =
+            plainText &&
+            (isAiCollecting(to) ||
+              (isUserBusy(queueKey) && (await getStore()).botFlowVersion === "v2"));
+          if (burst) {
+            await logInboundByPhone(to, inboundBody, "text", { name, avatarUrl });
+            await queueAiOrderText({ from: to, name, avatarUrl, text, waMessageId: message.id });
+            return;
+          }
+          await enqueueByUser(queueKey, async () => {
+            await logInboundByPhone(
+              to,
+              inboundBody,
+              location ? "location" : replyId ? "interactive" : "text",
+              { name, avatarUrl },
+            );
+            await handleIncomingMessage({
+              from: to,
+              name,
+              avatarUrl,
+              text,
+              replyId,
+              location,
+              waMessageId: message.id,
+            });
           });
-        }).catch((error) => {
+        })().catch((error) => {
           console.error("Falha ao processar mensagem WhatsApp", error);
         });
       }

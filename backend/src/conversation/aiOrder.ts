@@ -1,4 +1,4 @@
-import { listAddons, listCrusts, listProducts, listSizes } from "../data/repository.js";
+import { listAddons, listCrusts, listPaymentMethods, listProducts, listSizes } from "../data/repository.js";
 import { formatReais } from "../lib/money.js";
 import { chatJson } from "../lib/openai.js";
 import {
@@ -23,10 +23,25 @@ import type {
 /** Histórico curto da montagem do pedido na v2 (vai junto em cada chamada à IA). */
 export type AiTurn = { role: "user" | "assistant"; content: string };
 
-const MAX_TURNS = 10;
+const MAX_TURNS = 12;
 
 export function appendAiTurn(turns: AiTurn[] | undefined, turn: AiTurn): AiTurn[] {
-  return [...(turns ?? []), { role: turn.role, content: turn.content.slice(0, 800) }].slice(-MAX_TURNS);
+  return [...(turns ?? []), { role: turn.role, content: turn.content.slice(0, 1200) }].slice(-MAX_TURNS);
+}
+
+/** Dados de entrega/pagamento que o cliente já soltou no meio do pedido. */
+export type AiOrderHints = {
+  fulfillment?: "delivery" | "pickup";
+  address?: string;
+  payment?: string;
+};
+
+export function mergeAiHints(current: AiOrderHints | undefined, next: AiOrderHints): AiOrderHints {
+  return {
+    fulfillment: next.fulfillment ?? current?.fulfillment,
+    address: next.address ?? current?.address,
+    payment: next.payment ?? current?.payment,
+  };
 }
 
 function normalize(value: string) {
@@ -57,11 +72,12 @@ function isPizzaFlavor(product: Product) {
 }
 
 async function buildCatalog(): Promise<Catalog> {
-  const [allProducts, allCrusts, allAddons, catalogSizes] = await Promise.all([
+  const [allProducts, allCrusts, allAddons, catalogSizes, paymentMethods] = await Promise.all([
     listProducts(),
     listCrusts(),
     listAddons(),
     listSizes(),
+    listPaymentMethods().catch(() => []),
   ]);
   const products = allProducts.filter(item => item.active);
 
@@ -162,6 +178,11 @@ async function buildCatalog(): Promise<Catalog> {
     });
   }
 
+  if (paymentMethods.length) {
+    lines.push("", "FORMAS DE PAGAMENTO (use o nome exato em 'payment'):");
+    lines.push(paymentMethods.map(method => method.name).join(" | "));
+  }
+
   return { text: lines.join("\n"), pizzas, sizes, crusts, addons, products: others, options };
 }
 
@@ -181,13 +202,39 @@ type AiResult = {
   items: AiItem[];
   not_found: string[];
   question: string | null;
+  answer: string | null;
+  menu_requested: boolean;
+  fulfillment: "delivery" | "pickup" | null;
+  address: string | null;
+  payment: string | null;
 };
 
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["items", "not_found", "question"],
+  required: ["items", "not_found", "question", "answer", "menu_requested", "fulfillment", "address", "payment"],
   properties: {
+    answer: {
+      type: ["string", "null"],
+      description: "Resposta curta a perguntas do cliente (preço, frete, sabores etc.). Não bloqueia o pedido.",
+    },
+    menu_requested: {
+      type: "boolean",
+      description: "true só se a ÚLTIMA mensagem do cliente pede o cardápio/menu/opções/sabores.",
+    },
+    fulfillment: {
+      type: ["string", "null"],
+      enum: ["delivery", "pickup", null],
+      description: "delivery se pediu entrega/mandou endereço; pickup se vai buscar/retirar; senão null.",
+    },
+    address: {
+      type: ["string", "null"],
+      description: "Endereço de entrega exatamente como o cliente escreveu (rua, número, bairro, referência).",
+    },
+    payment: {
+      type: ["string", "null"],
+      description: "Nome EXATO de uma forma de pagamento da lista, se o cliente disse como vai pagar.",
+    },
     items: {
       type: "array",
       items: {
@@ -232,19 +279,48 @@ function systemPrompt(catalogText: string) {
     "- Borda e adicionais só quando o cliente pedir explicitamente. Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
     "- Outros produtos: kind=product, product=código iN, com options quando houver opções obrigatórias ditas pelo cliente.",
     "- quantity >= 1. 'duas cocas' = quantity 2.",
-    "- Itens que não existem no cardápio vão em not_found (texto curto como o cliente escreveu).",
-    "- Se a mensagem não tiver pedido nenhum (ex.: saudação ou pergunta), devolva items vazio e use 'question' para responder curto e pedir o pedido.",
-    "- 'question' deve ser curta, simpática, em português, sem mencionar códigos.",
+    "- Itens que não existem no cardápio vão em not_found (texto curto como o cliente escreveu). Não coloque ali saudações, perguntas, endereço, pagamento ou palavras soltas.",
+    "",
+    "Clientes escrevem de forma bagunçada. Seja tolerante:",
+    "- Várias mensagens seguidas (uma por linha) formam UM pedido só. Junte as informações de todas as mensagens do cliente na conversa.",
+    "- Ignore ruído: saudações, 'por favor', 'moço', 'boa noite', 'tô com fome', emojis, 'kkk', 'rápido' etc.",
+    "- Sabores ditos juntos sem outro tamanho/quantidade ('quatro queijos e atum', 'calabresa com frango') = UMA pizza meio a meio, se o tamanho permitir; se passar do limite, pergunte.",
+    "- Quantidade por fatias/pedaços: use o tamanho cujo nome cite as fatias; se nenhum citar, use o padrão P/broto = 4, M = 6, G = 8, F/família = 12 fatias (o mais próximo) e avise em 'answer' qual tamanho considerou.",
+    "- Tamanho informado numa mensagem e sabores em outra: combine (ex.: 'o preço da M' e depois 'quero de calabresa' = pizza M de calabresa, se não houver outro tamanho pedido).",
+    "- Escrita por extenso ou abreviada: 'uma', 'duas', '2x', 'refri', 'refrigerante 2 litros', 'coca lata', 'guaraná 1,5' etc.",
+    "- Nomes de sabores com erros ('calabreza', 'frango catupiri', 'portugueza', 'mussarela/muçarela', '4 queijo') = sabor mais parecido do cardápio.",
+    "- Se o cliente pedir algo vago de bebida ('um refri') e houver várias opções, pergunte qual em 'question'.",
+    "",
+    "Perguntas e outras informações (não bloqueiam o pedido):",
+    "- Perguntas de preço/tamanho/sabores: responda em 'answer' usando SÓ os preços do cardápio (ex.: 'A pizza M custa R$ 55,00 e aceita até 2 sabores.').",
+    "- Pergunta de frete/taxa/entrega: a taxa depende do bairro e é calculada quando o cliente informar o endereço; diga isso em 'answer' (nunca invente valor de frete).",
+    "- Pedido de cardápio/menu/sabores/opções na ÚLTIMA mensagem do cliente: menu_requested=true (mensagens antigas não contam).",
+    "- 'answer' responde só às perguntas da ÚLTIMA mensagem do cliente; se não houver pergunta nova, answer=null.",
+    "- Endereço de entrega em qualquer mensagem: copie em 'address' e use fulfillment=delivery. 'Vou buscar', 'retirar', 'pego aí' = fulfillment=pickup.",
+    "- Forma de pagamento ('no pix', 'cartão', 'dinheiro', 'troco pra 100'): 'payment' = nome exato da lista de formas de pagamento; se não houver correspondência, null.",
+    "- Perguntas sobre horário, tempo de entrega ou coisas fora do cardápio: responda em 'answer' que um atendente pode confirmar, sem inventar.",
+    "",
+    "Quando usar 'question':",
+    "- Só quando faltar algo OBRIGATÓRIO para montar um item (tamanho da pizza, qual bebida, limite de sabores).",
+    "- Se ainda não houver item nenhum, deixe items vazio e use 'question' apenas se o cliente começou um pedido incompleto; saudação/pergunta pura vai em 'answer'.",
+    "- 'question' e 'answer' devem ser curtas, simpáticas, em português, sem mencionar códigos.",
     "",
     "CARDÁPIO:",
     catalogText,
   ].join("\n");
 }
 
+type AiOutcomeExtras = {
+  notFound: string[];
+  answer?: string;
+  menuRequested: boolean;
+  hints: AiOrderHints;
+};
+
 export type AiOrderOutcome =
-  | { status: "ok"; items: CartItem[]; notFound: string[] }
-  | { status: "question"; question: string; items: CartItem[]; notFound: string[] }
-  | { status: "empty"; notFound: string[] }
+  | ({ status: "ok"; items: CartItem[] } & AiOutcomeExtras)
+  | ({ status: "question"; question: string; items: CartItem[] } & AiOutcomeExtras)
+  | ({ status: "empty" } & AiOutcomeExtras)
   | { status: "error"; message: string };
 
 function crustSelection(crust: Crust): CartSelection {
@@ -419,8 +495,19 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   const { items, problems } = toCartItems(result, catalog);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
   const question = problems[0] ?? (result.question?.trim() || undefined);
+  const address = result.address?.replace(/\s+/g, " ").trim().slice(0, 300);
+  const extras: AiOutcomeExtras = {
+    notFound,
+    answer: result.answer?.trim() || undefined,
+    menuRequested: Boolean(result.menu_requested),
+    hints: {
+      fulfillment: result.fulfillment ?? (address ? "delivery" : undefined),
+      address: address && address.length >= 5 ? address : undefined,
+      payment: result.payment?.trim() || undefined,
+    },
+  };
 
-  if (question) return { status: "question", question, items, notFound };
-  if (!items.length) return { status: "empty", notFound };
-  return { status: "ok", items, notFound };
+  if (question) return { status: "question", question, items, ...extras };
+  if (!items.length) return { status: "empty", ...extras };
+  return { status: "ok", items, ...extras };
 }

@@ -31,3 +31,24 @@ export function enqueueByUser(
       busy.delete(normalized);
     });
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Como `enqueueByUser`, mas espera a vez em vez de descartar (até `maxWaitMs`). */
+export async function enqueueWaitByUser(
+  key: string,
+  task: () => Promise<void>,
+  maxWaitMs = 60_000,
+): Promise<void> {
+  const normalized = key.trim() || "unknown";
+  const deadline = Date.now() + maxWaitMs;
+  while (busy.has(normalized) && Date.now() < deadline) {
+    await sleep(150);
+  }
+  busy.add(normalized);
+  try {
+    await task();
+  } finally {
+    busy.delete(normalized);
+  }
+}

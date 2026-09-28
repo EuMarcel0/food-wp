@@ -159,6 +159,8 @@ export type ConversationContext = {
   batchCartStartLength?: number;
   /** v2: conversa da montagem do pedido enviada à IA (mensagens do cliente e respostas do bot). */
   aiTurns?: { role: "user" | "assistant"; content: string }[];
+  /** v2: entrega/endereço/pagamento que o cliente já informou junto com o pedido. */
+  aiHints?: { fulfillment?: "delivery" | "pickup"; address?: string; payment?: string };
 };
 
 export type DeliveryNeighborhood = {

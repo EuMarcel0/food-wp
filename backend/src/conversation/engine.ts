@@ -2,7 +2,8 @@ import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
 import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
-import { appendAiTurn, interpretOrder } from "./aiOrder.js";
+import { appendAiTurn, interpretOrder, mergeAiHints } from "./aiOrder.js";
+import { enqueueWaitByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
@@ -1211,6 +1212,36 @@ async function resolvePaymentMethod(
   return null;
 }
 
+/** Aceita "no pix", "vou pagar no cartão de crédito", "pix por favor" etc. */
+async function resolvePaymentMethodLoose(raw: string): Promise<StorePaymentMethod | null> {
+  const base = normalize(raw).replace(/[!?.,]+/g, " ").replace(/\s+/g, " ").trim();
+  const stripped = base
+    .replace(
+      /\b(vou|vai|quero|pagar|pagamento|pago|pode ser|sera|no|na|em|pelo|pela|via|com|de|por favor|pfv|pf|moco|moca)\b/g,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  for (const candidate of [base, stripped]) {
+    if (!candidate) continue;
+    const method = await resolvePaymentMethod(candidate, candidate);
+    if (method && method !== "card_ambiguous") return method;
+  }
+  return null;
+}
+
+async function menuPlainText() {
+  const products = (await listProducts()).filter(item => item.active);
+  const byCategory = new Map<string, string[]>();
+  for (const product of products) {
+    const list = byCategory.get(product.categoryName) ?? [];
+    list.push(product.price > 0 ? `• ${product.name} — ${formatReais(product.price)}` : `• ${product.name}`);
+    byCategory.set(product.categoryName, list);
+  }
+  const text = [...byCategory.entries()].map(([name, lines]) => `*${name}*\n${lines.join("\n")}`).join("\n\n");
+  return `📋 *Cardápio*\n\n${text}`.slice(0, 3900);
+}
+
 function paymentDisplayLabel(method: PaymentMethod, label?: string | null) {
   const custom = label?.trim();
   if (custom) return custom;
@@ -1329,16 +1360,22 @@ async function askFeeConfirm(to: string, store: Store, context: ConversationCont
     address: context.addressText
   });
   const place = fee.neighborhood?.name ?? context.neighborhoodName;
+  const payment = context.aiHints?.payment;
   const body = [
+    context.addressText ? `🏠 ${context.addressText}` : null,
     place
       ? `📍 Bairro *${place}* · taxa de entrega *${formatBRL(fee.cents)}*.`
       : `🛵 Taxa de entrega: *${formatBRL(fee.cents)}*.`,
     `💰 Total com entrega: *${formatBRL(orderTotalCents(store, context))}*`,
+    payment ? `💳 Pagamento: *${payment}*` : null,
     "Podemos seguir?"
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
   const buttons = [{ id: "fee_accept", title: "Aceitar" }];
   if (store.pickupEnabled) buttons.push({ id: "switch_pickup", title: "Quero retirar" });
-  await sendButtons(to, body, buttons);
+  buttons.push({ id: "ai_fix", title: "Corrigir pedido" });
+  await sendButtons(to, body, buttons.slice(0, 3));
 }
 
 function isFeeAccept(incoming: string, normalized: string) {
@@ -2345,7 +2382,7 @@ async function finishOrder(
   await applyAutoAccept(order);
 }
 
-export async function handleIncomingMessage(input: {
+type IncomingMessageInput = {
   from: string;
   name?: string;
   avatarUrl?: string;
@@ -2358,7 +2395,92 @@ export async function handleIncomingMessage(input: {
     name?: string;
     address?: string;
   };
-}) {
+  /** Mensagens de texto já agrupadas (v2): processa direto, sem esperar mais. */
+  aiFlush?: boolean;
+};
+
+/** v2: etapas de texto livre em que mensagens picadas são agrupadas antes de processar. */
+const AI_TEXT_STATES = new Set<ConversationState>([
+  "awaiting_ai_order",
+  "awaiting_fulfillment",
+  "cart",
+  "awaiting_fee_confirm",
+  "awaiting_address"
+]);
+/** Espera o cliente parar de digitar antes de chamar a IA (mensagens picadas viram uma só). */
+const AI_BURST_QUIET_MS = 3500;
+const AI_BURST_MAX_WAIT_MS = 12_000;
+const AI_COLLECTING_TTL_MS = 3 * 60 * 60 * 1000;
+
+type AiBurst = { texts: string[]; firstAt: number; timer?: ReturnType<typeof setTimeout>; last: IncomingMessageInput };
+const aiBursts = new Map<string, AiBurst>();
+const aiBurstChains = new Map<string, Promise<void>>();
+const aiCollecting = new Map<string, number>();
+
+function setAiCollecting(phone: string, on: boolean) {
+  const key = queueKeyForPhone(phone);
+  if (on) aiCollecting.set(key, Date.now() + AI_COLLECTING_TTL_MS);
+  else aiCollecting.delete(key);
+}
+
+/** Cliente está digitando o pedido na v2: textos devem ser agrupados, nunca descartados. */
+export function isAiCollecting(phone: string) {
+  const key = queueKeyForPhone(phone);
+  const until = aiCollecting.get(key);
+  if (!until) return false;
+  if (until < Date.now()) {
+    aiCollecting.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function bufferAiOrderText(input: IncomingMessageInput) {
+  const text = input.text.trim();
+  if (!text) return;
+  const key = queueKeyForPhone(input.from);
+  const now = Date.now();
+  const burst = aiBursts.get(key) ?? { texts: [], firstAt: now, last: input };
+  if (burst.timer) clearTimeout(burst.timer);
+  burst.texts.push(text);
+  burst.last = input;
+  const wait = Math.max(0, Math.min(AI_BURST_QUIET_MS, burst.firstAt + AI_BURST_MAX_WAIT_MS - now));
+  burst.timer = setTimeout(() => flushAiBurst(key), wait);
+  aiBursts.set(key, burst);
+}
+
+function flushAiBurst(key: string) {
+  const burst = aiBursts.get(key);
+  if (!burst) return;
+  aiBursts.delete(key);
+  const run = async () => {
+    await enqueueWaitByUser(key, () =>
+      handleIncomingMessage({
+        ...burst.last,
+        text: burst.texts.join("\n"),
+        replyId: undefined,
+        location: undefined,
+        aiFlush: true
+      })
+    );
+  };
+  const chain = (aiBurstChains.get(key) ?? Promise.resolve())
+    .then(run)
+    .catch(error => console.error("[v2] falha ao processar mensagens agrupadas", error));
+  aiBurstChains.set(key, chain);
+  void chain.finally(() => {
+    if (aiBurstChains.get(key) === chain) aiBurstChains.delete(key);
+  });
+}
+
+/** Webhook: texto que chegou com o bot ocupado (ou no meio do pedido v2) entra no agrupamento. */
+export async function queueAiOrderText(input: IncomingMessageInput) {
+  if (input.waMessageId) await sendTypingIndicator(input.waMessageId).catch(() => undefined);
+  setAiCollecting(input.from, true);
+  bufferAiOrderText(input);
+}
+
+export async function handleIncomingMessage(input: IncomingMessageInput) {
   const store = await getStore();
   const customer = await upsertCustomer(input.from, input.name, input.avatarUrl);
   const existing = await getConversation(customer.id);
@@ -2380,11 +2502,27 @@ export async function handleIncomingMessage(input: {
   const normalized = normalize(incoming);
   const command = normalized.replace(/[!?.,]+$/g, "").trim();
 
-  const persist = (nextState: ConversationState, nextContext = context, options?: SaveConversationOptions) =>
-    saveConversation(customer, nextState, nextContext, options);
+  if (
+    !input.aiFlush &&
+    isV2(store) &&
+    AI_TEXT_STATES.has(state) &&
+    !input.replyId &&
+    !input.location &&
+    input.text.trim()
+  ) {
+    setAiCollecting(input.from, true);
+    bufferAiOrderText(input);
+    return;
+  }
+
+  const persist = async (nextState: ConversationState, nextContext = context, options?: SaveConversationOptions) => {
+    const saved = await saveConversation(customer, nextState, nextContext, options);
+    setAiCollecting(input.from, isV2(store) && AI_TEXT_STATES.has(nextState));
+    return saved;
+  };
 
   /** v2: interpreta o texto do cliente com IA e monta (ou corrige) o carrinho inteiro. */
-  async function handleAiOrderText(ctx: ConversationContext, text: string) {
+  async function handleAiOrderText(ctx: ConversationContext, text: string, opts?: { menuSent?: boolean }) {
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
     const outcome = await interpretOrder(ctx.aiTurns);
 
@@ -2394,16 +2532,34 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
+    ctx.aiHints = mergeAiHints(ctx.aiHints, outcome.hints);
+
+    if (outcome.menuRequested && !opts?.menuSent) {
+      if (store.menuImageUrl) {
+        await sendImage(input.from, store.menuImageUrl, "📋 Nosso cardápio").catch(error => {
+          console.warn("[v2] falha ao enviar imagem do cardápio:", error instanceof Error ? error.message : error);
+        });
+      } else {
+        await sendText(input.from, await menuPlainText());
+      }
+    }
+
     const notFoundLine = outcome.notFound.length
       ? `⚠️ Não encontrei no cardápio: *${outcome.notFound.join(", ")}*.`
       : null;
 
     if (outcome.status === "empty") {
+      const helped = Boolean(outcome.answer || outcome.menuRequested || ctx.aiHints?.address || ctx.aiHints?.payment);
       const reply = [
-        notFoundLine ?? "😕 Não consegui identificar itens do cardápio nessa mensagem.",
-        "Confira o cardápio e me envie o pedido de novo.",
-        AI_ORDER_EXAMPLE
-      ].join("\n");
+        outcome.answer,
+        notFoundLine,
+        helped
+          ? "✍️ Quando decidir, é só *digitar seu pedido* aqui."
+          : "😕 Não consegui identificar itens do cardápio nessa mensagem. Me envie seu pedido, por favor.",
+        helped ? null : AI_ORDER_EXAMPLE
+      ]
+        .filter(Boolean)
+        .join("\n");
       ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
       await persist("awaiting_ai_order", ctx);
       await sendText(input.from, reply);
@@ -2411,7 +2567,7 @@ export async function handleIncomingMessage(input: {
     }
 
     if (outcome.status === "question") {
-      const reply = [notFoundLine, outcome.question].filter(Boolean).join("\n");
+      const reply = [outcome.answer, notFoundLine, outcome.question].filter(Boolean).join("\n");
       ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
       await persist("awaiting_ai_order", ctx);
       await sendText(input.from, reply);
@@ -2423,14 +2579,106 @@ export async function handleIncomingMessage(input: {
     ctx.neighborhoodId = undefined;
     ctx.neighborhoodName = undefined;
     ctx.addressText = undefined;
-    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
-    await persist("awaiting_fulfillment", ctx);
-    await showAiCartOptions(
-      input.from,
-      store,
-      ctx,
-      notFoundLine ? `✅ Entendi seu pedido!\n${notFoundLine}` : undefined
-    );
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, {
+      role: "assistant",
+      content: [outcome.answer, `Pedido montado:\n${renderCart(ctx)}`].filter(Boolean).join("\n")
+    });
+    const intro = [outcome.answer, "✅ Entendi seu pedido!", notFoundLine].filter(Boolean).join("\n");
+    await continueAfterAiCart(ctx, intro);
+  }
+
+  /**
+   * v2: carrinho pronto. Se o cliente já mandou o endereço, pula direto para a taxa;
+   * senão mostra Entrega / Retirada / Corrigir.
+   */
+  async function continueAfterAiCart(ctx: ConversationContext, intro: string) {
+    const hints = ctx.aiHints ?? {};
+    const address = hints.fulfillment !== "pickup" ? hints.address : undefined;
+    if (!address || !store.deliveryEnabled) {
+      await persist("awaiting_fulfillment", ctx);
+      await showAiCartOptions(input.from, store, ctx, intro);
+      return;
+    }
+    await sendText(input.from, [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)].join("\n"));
+    ctx.fulfillment = "delivery";
+    await applyTypedAddress(ctx, address);
+  }
+
+  /** Endereço digitado → bairro/taxa (v2 confirma a taxa; v1 segue para pagamento). */
+  async function applyTypedAddress(ctx: ConversationContext, typed: string) {
+    const address = typed
+      .split(/\n+/)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .join(", ");
+    ctx.addressText = address;
+    const zones = store.neighborhoods ?? [];
+
+    if (!zones.length) {
+      ctx.neighborhoodId = undefined;
+      ctx.neighborhoodName = undefined;
+      ctx.neighborhoodPage = null;
+      if (isV2(store) && store.deliveryFeeCents > 0) {
+        await persist("awaiting_fee_confirm", ctx);
+        await askFeeConfirm(input.from, store, ctx);
+        return;
+      }
+      await goToPayment(ctx);
+      return;
+    }
+
+    const result = matchNeighborhoodQuery(address, zones);
+    if (result.status === "none") {
+      await sendText(
+        input.from,
+        [
+          "😕 Não encontrei um *bairro* cadastrado nesse endereço.",
+          "Confira e envie de novo incluindo o nome do bairro (ex.: *Rua X, 10 - Vila Nova*)."
+        ].join("\n")
+      );
+      await persist("awaiting_address", ctx);
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      return;
+    }
+
+    if (result.status === "ambiguous") {
+      await persist("awaiting_address", ctx);
+      await askNeighborhoodAmbiguous(input.from, result.matches);
+      return;
+    }
+
+    const zone = result.match.zone;
+    ctx.neighborhoodId = zone.id;
+    ctx.neighborhoodName = zone.name;
+    ctx.neighborhoodPage = null;
+    if (isV2(store)) {
+      await persist("awaiting_fee_confirm", ctx);
+      await askFeeConfirm(input.from, store, ctx);
+      return;
+    }
+    await sendText(input.from, `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`);
+    await goToPayment(ctx);
+  }
+
+  /** Pagamento: na v2, usa a forma que o cliente já informou (ex.: "no pix"); senão pergunta. */
+  async function goToPayment(ctx: ConversationContext) {
+    const hint = isV2(store) ? ctx.aiHints?.payment?.trim() : undefined;
+    const method = hint ? await resolvePaymentMethodLoose(hint) : null;
+    if (!method) {
+      await persist("awaiting_payment", ctx);
+      await askPayment(input.from);
+      return;
+    }
+    ctx.paymentMethod = method.kind;
+    ctx.paymentMethodId = method.id;
+    ctx.paymentMethodLabel = method.name;
+    if (method.kind === "cash") {
+      await persist("awaiting_change", ctx);
+      await askChange(input.from, orderTotalCents(store, ctx));
+      return;
+    }
+    ctx.changeForCents = undefined;
+    await askContactOrFinish(ctx);
   }
 
   /** v2: novo atendimento — saudação + cardápio; se a 1ª mensagem já for o pedido, interpreta direto. */
@@ -2447,18 +2695,18 @@ export async function handleIncomingMessage(input: {
       return;
     }
     await showWelcomeV2(input.from, store, { greetOnly: true });
-    await handleAiOrderText(next, text);
+    await handleAiOrderText(next, text, { menuSent: Boolean(store.menuImageUrl) });
   }
 
   /** Nome para contato: se o cliente já informou em um pedido anterior, não pergunta de novo. */
-  async function askContactOrFinish() {
-    const known = context.contactName?.trim() || (await findLastContactName(customer.id));
+  async function askContactOrFinish(ctx: ConversationContext = context) {
+    const known = ctx.contactName?.trim() || (await findLastContactName(customer.id));
     if (known) {
-      context.contactName = known;
-      await finishOrder(input.from, store, customer, context, persist);
+      ctx.contactName = known;
+      await finishOrder(input.from, store, customer, ctx, persist);
       return;
     }
-    await persist("awaiting_contact_name", context);
+    await persist("awaiting_contact_name", ctx);
     await askContactName(input.from);
   }
 
@@ -2694,8 +2942,7 @@ export async function handleIncomingMessage(input: {
 
   if (state === "awaiting_fee_confirm") {
     if (isFeeAccept(incoming, normalized)) {
-      await persist("awaiting_payment", context);
-      await askPayment(input.from);
+      await goToPayment(context);
       return;
     }
     if (wantsSwitchToPickup(incoming, normalized) && store.pickupEnabled) {
@@ -2704,8 +2951,27 @@ export async function handleIncomingMessage(input: {
       context.neighborhoodName = undefined;
       context.neighborhoodPage = null;
       context.addressText = undefined;
-      await persist("awaiting_payment", context);
-      await askPayment(input.from);
+      if (context.aiHints) context.aiHints = { ...context.aiHints, fulfillment: "pickup", address: undefined };
+      await goToPayment(context);
+      return;
+    }
+    if (isAiFix(incoming, normalized)) {
+      await persist("awaiting_ai_order", context);
+      await sendText(
+        input.from,
+        "✏️ O que você quer mudar? Escreva do seu jeito (ex.: *troca a coca por guaraná* ou *o endereço é Rua X, 10 - Centro*)."
+      );
+      return;
+    }
+    const typedPayment = !hasReply && input.text.trim() ? await resolvePaymentMethodLoose(input.text) : null;
+    if (typedPayment) {
+      context.aiHints = { ...context.aiHints, payment: typedPayment.name };
+      await goToPayment(context);
+      return;
+    }
+    // Texto livre (ex.: outro endereço, "mais uma coca") = ajuste pela IA.
+    if (!hasReply && input.text.trim()) {
+      await handleAiOrderText(context, input.text.trim());
       return;
     }
     await resumeCurrentStep(input.from, store, state, context);
@@ -3533,13 +3799,17 @@ export async function handleIncomingMessage(input: {
       context.neighborhoodName = undefined;
       context.neighborhoodPage = null;
       context.addressText = undefined;
+      const knownAddress = isV2(store) ? context.aiHints?.address : undefined;
+      if (knownAddress) {
+        await applyTypedAddress(context, knownAddress);
+        return;
+      }
       await persist("awaiting_address", context);
       await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
       return;
     }
 
-    await persist("awaiting_payment", context);
-    await askPayment(input.from);
+    await goToPayment(context);
     return;
   }
 
@@ -3618,54 +3888,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    context.addressText = address;
-
-    if (!zones.length) {
-      context.neighborhoodId = undefined;
-      context.neighborhoodName = undefined;
-      context.neighborhoodPage = null;
-      if (isV2(store) && store.deliveryFeeCents > 0) {
-        await persist("awaiting_fee_confirm", context);
-        await askFeeConfirm(input.from, store, context);
-        return;
-      }
-      await persist("awaiting_payment", context);
-      await askPayment(input.from);
-      return;
-    }
-
-    const result = matchNeighborhoodQuery(address, zones);
-    if (result.status === "none") {
-      await sendText(
-        input.from,
-        [
-          "😕 Não encontrei um *bairro* cadastrado nesse endereço.",
-          "Confira e envie de novo incluindo o nome do bairro (ex.: *Rua X, 10 - Vila Nova*)."
-        ].join("\n")
-      );
-      await persist("awaiting_address", context);
-      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
-      return;
-    }
-
-    if (result.status === "ambiguous") {
-      await persist("awaiting_address", context);
-      await askNeighborhoodAmbiguous(input.from, result.matches);
-      return;
-    }
-
-    const zone = result.match.zone;
-    context.neighborhoodId = zone.id;
-    context.neighborhoodName = zone.name;
-    context.neighborhoodPage = null;
-    if (isV2(store)) {
-      await persist("awaiting_fee_confirm", context);
-      await askFeeConfirm(input.from, store, context);
-      return;
-    }
-    await sendText(input.from, `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`);
-    await persist("awaiting_payment", context);
-    await askPayment(input.from);
+    await applyTypedAddress(context, address);
     return;
   }
 
@@ -3691,7 +3914,9 @@ export async function handleIncomingMessage(input: {
   }
 
   if (state === "awaiting_payment") {
-    const payment = await resolvePaymentMethod(incoming, normalized);
+    const payment =
+      (await resolvePaymentMethod(incoming, normalized)) ??
+      (isV2(store) && !hasReply ? await resolvePaymentMethodLoose(input.text) : null);
     if (payment === "card_ambiguous") {
       const methods = await listPaymentMethods();
       const cardMethods = methods.filter(item => item.kind === "credit" || item.kind === "debit");
