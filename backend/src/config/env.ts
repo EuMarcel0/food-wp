@@ -25,6 +25,9 @@ export const env = {
   whatsappGraphVersion: read("WHATSAPP_GRAPH_VERSION", "v21.0"),
   whatsappWabaId: read("WHATSAPP_WABA_ID"),
 
+  openaiApiKey: read("OPENAI_API_KEY"),
+  openaiModel: read("OPENAI_MODEL", "gpt-4.1-mini"),
+
   defaultStoreId: read("DEFAULT_STORE_ID", "00000000-0000-0000-0000-000000000001"),
   frontendOrigins: read("FRONTEND_ORIGIN")
     .split(",")

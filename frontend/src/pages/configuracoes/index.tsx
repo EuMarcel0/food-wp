@@ -17,6 +17,7 @@ import { ReceiptSettingsCard } from "./ReceiptSettingsCard";
 import { PrinterSettingsCard } from "./PrinterSettingsCard";
 import { PrepSettingsCard } from "./PrepSettingsCard";
 import { BatchCategorySettingsCard } from "./BatchCategorySettingsCard";
+import { BotFlowSettingsCard } from "./BotFlowSettingsCard";
 
 function formatIdleLabel(minutes: number) {
   if (!Number.isFinite(minutes) || minutes < 1) return "—";
@@ -69,6 +70,8 @@ export function SettingsPage() {
 
       <div className="flex flex-col gap-6">
         <BrandingCard store={store} whatsappReady={health?.whatsapp} />
+
+        <BotFlowSettingsCard store={store} />
 
         <PrepSettingsCard store={store} />
 

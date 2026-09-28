@@ -76,6 +76,16 @@ function extractOutboundBody(payload: Record<string, unknown>) {
     const msgType = interactive?.type === "list" ? "list" : "buttons";
     return { body, msgType, actions };
   }
+  if (type === "image") {
+    const image = payload.image as { link?: string; caption?: string } | undefined;
+    return {
+      body: image?.caption?.trim() || "🖼️ Imagem",
+      msgType: "image",
+      actions: null as ConversationMessageActions | null,
+      mediaUrl: image?.link ?? null,
+      mediaMime: "image/jpeg",
+    };
+  }
   return { body: "", msgType: type, actions: null as ConversationMessageActions | null };
 }
 
@@ -89,7 +99,8 @@ export async function logOutboundByPhone(
   try {
     const found = await findConversationByCustomerPhone(to);
     if (!found) return;
-    const { body, msgType, actions } = extractOutboundBody(payload);
+    const extracted = extractOutboundBody(payload);
+    const { body, msgType, actions } = extracted;
     if (!body.trim()) return;
     await appendConversationMessage({
       conversationId: found.conversation.id,
@@ -100,6 +111,7 @@ export async function logOutboundByPhone(
       body,
       msgType,
       actions,
+      ...("mediaUrl" in extracted ? { mediaUrl: extracted.mediaUrl, mediaMime: extracted.mediaMime } : {}),
       bumpLastMessageAt: options?.bumpLastMessageAt,
     });
   } catch (error) {

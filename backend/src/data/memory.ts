@@ -64,6 +64,8 @@ const store: Store = {
   receiptFooter: null,
   businessHours: null,
   neighborhoods: [],
+  botFlowVersion: "v1",
+  menuImageUrl: null,
 };
 
 const categories: Category[] = [
@@ -319,6 +321,12 @@ export const memoryStore = {
     }
     if (patch.allowCustomerCancel !== undefined) {
       store.allowCustomerCancel = Boolean(patch.allowCustomerCancel);
+    }
+    if (patch.botFlowVersion !== undefined) {
+      store.botFlowVersion = patch.botFlowVersion === "v2" ? "v2" : "v1";
+    }
+    if (patch.menuImageUrl !== undefined) {
+      store.menuImageUrl = patch.menuImageUrl;
     }
     if (patch.batchCategoryIds !== undefined) {
       store.batchCategoryIds = [

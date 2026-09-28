@@ -277,7 +277,11 @@ export type Store = {
   receiptFooter: string | null;
   businessHours: BusinessHoursDay[] | null;
   neighborhoods: DeliveryNeighborhood[];
+  botFlowVersion: BotFlowVersion;
+  menuImageUrl: string | null;
 };
+
+export type BotFlowVersion = "v1" | "v2";
 
 export type Health = {
   ok: boolean;

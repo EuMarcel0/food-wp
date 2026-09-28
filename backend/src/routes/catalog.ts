@@ -31,6 +31,7 @@ import {
   listSizes,
   listSizesPage,
   reorderProducts,
+  saveStoreMenuImage,
   saveStoreProfilePhoto,
   updateAddon,
   updateCategory,
@@ -48,6 +49,7 @@ import {
 } from "../lib/filters.js";
 import { parseBusinessHours } from "../lib/businessHours.js";
 import { parsePageQuery } from "../lib/pagination.js";
+import { isOpenAiConfigured } from "../lib/openai.js";
 import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
 import type { PizzaKind, ProductOptionGroup, StorePatch } from "../types.js";
 
@@ -228,6 +230,45 @@ catalogRouter.patch("/store", async (req, res) => {
     patch.batchCategoryIds = body.batchCategoryIds
       .map((id) => String(id ?? "").trim())
       .filter(Boolean);
+  }
+
+  if (body.botFlowVersion !== undefined) {
+    if (body.botFlowVersion !== "v1" && body.botFlowVersion !== "v2") {
+      res.status(400).json({ error: "Versão do bot inválida (v1 ou v2)." });
+      return;
+    }
+    if (body.botFlowVersion === "v2" && !isOpenAiConfigured()) {
+      res.status(400).json({
+        error: "Configure a variável OPENAI_API_KEY no backend para usar o bot v2 (simplificado).",
+      });
+      return;
+    }
+    patch.botFlowVersion = body.botFlowVersion;
+  }
+
+  if (body.menuImageUrl === null) {
+    patch.menuImageUrl = null;
+  }
+
+  const menuImage = body.menuImage as { mime?: string; data?: string } | undefined;
+  if (menuImage?.data) {
+    const match = String(menuImage.data).match(/^data:(image\/(?:png|jpeg|jpg));base64,/);
+    const mime = match?.[1] === "image/png" ? "image/png" : "image/jpeg";
+    const raw = String(menuImage.data).replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+    const bytes = Buffer.from(raw, "base64");
+    if (bytes.length < 32 || bytes.length > 3.5 * 1024 * 1024) {
+      res.status(400).json({ error: "A imagem do cardápio precisa ter no máximo 3 MB (JPG ou PNG)." });
+      return;
+    }
+    try {
+      const store = await getStore();
+      patch.menuImageUrl = await saveStoreMenuImage(store.id, bytes, mime);
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Falha ao salvar a imagem do cardápio.",
+      });
+      return;
+    }
   }
 
   if (patch.autoAcceptOrders === true) {

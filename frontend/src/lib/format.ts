@@ -138,6 +138,8 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_contact_name: "Nome p/ contato",
   awaiting_order_code: "Consultando pedido",
   awaiting_new_order: "Novo pedido?",
+  awaiting_ai_order: "Digitando pedido",
+  awaiting_fee_confirm: "Confirmando taxa",
 };
 
 export function conversationStateLabel(state: string) {

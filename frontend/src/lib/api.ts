@@ -110,6 +110,9 @@ export const api = {
     autoAcceptOrders?: boolean;
     allowCustomerCancel?: boolean;
     batchCategoryIds?: string[];
+    botFlowVersion?: Store["botFlowVersion"];
+    menuImage?: { mime: string; data: string };
+    menuImageUrl?: null;
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",

@@ -262,6 +262,15 @@ export async function sendTypingIndicator(waMessageId: string) {
   return { ok: true as const };
 }
 
+/** Imagem por URL pública (ex.: cardápio no Storage do Supabase). */
+export async function sendImage(to: string, link: string, caption?: string) {
+  return send({
+    to,
+    type: "image",
+    image: { link, ...(caption?.trim() ? { caption: normalizeBody(caption) } : {}) },
+  });
+}
+
 export async function sendButtons(to: string, body: string, buttons: Button[]) {
   return send({
     to,

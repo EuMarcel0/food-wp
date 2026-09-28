@@ -1,13 +1,15 @@
 import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
 import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
-import { sendButtons, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
+import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
+import { appendAiTurn, interpretOrder } from "./aiOrder.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
   findLatestOrder,
   createOrder,
+  findLastContactName,
   findOrderByCode,
   getConversation,
   getProduct,
@@ -985,6 +987,10 @@ async function resumeCurrentStep(
       await askDrinksUpsell(to, Boolean(context.drinksOfferMore));
       return;
     case "cart":
+      if (isV2(store)) {
+        await showAiCartOptions(to, store, context, hint || "✅ Continue seu pedido");
+        return;
+      }
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_order_note":
@@ -996,8 +1002,18 @@ async function resumeCurrentStep(
       await askPayment(to, withHint("Como deseja pagar?"));
       return;
     case "awaiting_fulfillment":
+      if (isV2(store)) {
+        await showAiCartOptions(to, store, context, hint || "✅ Continue seu pedido");
+        return;
+      }
       // intro já inclui o título do carrinho em showCheckoutOptions — não duplicar.
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
+      return;
+    case "awaiting_ai_order":
+      await askAiOrder(to, opts?.afterHandoff ? undefined : "✍️ Para continuar, *digite seu pedido* aqui.");
+      return;
+    case "awaiting_fee_confirm":
+      await askFeeConfirm(to, store, context);
       return;
     case "awaiting_neighborhood":
     case "awaiting_address":
@@ -1021,6 +1037,10 @@ async function resumeCurrentStep(
       await askNewOrderAfterHandoff(to);
       return;
     default:
+      if (isV2(store)) {
+        await showWelcomeV2(to, store);
+        return;
+      }
       await showWelcome(to, store.name);
   }
 }
@@ -1262,6 +1282,88 @@ async function showWelcome(to: string, storeName: string) {
     [{ id: "menu", title: "Ver cardápio" }]
   );
 }
+
+function isV2(store: Pick<Store, "botFlowVersion">) {
+  return store.botFlowVersion === "v2";
+}
+
+const AI_ORDER_EXAMPLE = "Ex.: *uma família meia calabresa e meia frango com catupiry e uma coca zero 1L*";
+
+/** v2: saudação + imagem do cardápio + convite para digitar o pedido. */
+async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: boolean }) {
+  await sendText(
+    to,
+    [
+      `Olá! 👋 Sou a assistente virtual da *${store.name}* e vou te ajudar a montar seu pedido.`,
+      store.menuImageUrl ? "Olhe o cardápio na imagem abaixo 👇" : null,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+  if (store.menuImageUrl) {
+    await sendImage(to, store.menuImageUrl).catch(error => {
+      console.warn("[v2] falha ao enviar imagem do cardápio:", error instanceof Error ? error.message : error);
+    });
+  }
+  if (opts?.greetOnly) return;
+  await askAiOrder(to);
+}
+
+async function askAiOrder(to: string, intro = "✍️ *Digite seu pedido* aqui, do seu jeito, em uma mensagem.") {
+  await sendText(
+    to,
+    [intro, AI_ORDER_EXAMPLE, "Para encerrar sem pedir, digite *Sair*."].join("\n")
+  );
+}
+
+/** v2: carrinho montado pela IA + Entrega / Retirada / Corrigir pedido. */
+async function showAiCartOptions(
+  to: string,
+  store: Pick<Store, "deliveryEnabled" | "pickupEnabled">,
+  context: ConversationContext,
+  intro = "✅ Entendi seu pedido!"
+) {
+  const buttons: { id: string; title: string }[] = [];
+  if (store.deliveryEnabled) buttons.push({ id: "fulfillment:delivery", title: "Entrega" });
+  if (store.pickupEnabled) buttons.push({ id: "fulfillment:pickup", title: "Retirada" });
+  if (!buttons.length) buttons.push({ id: "checkout", title: "Fechar pedido" });
+  buttons.push({ id: "ai_fix", title: "Corrigir pedido" });
+  await sendButtons(
+    to,
+    [intro, "", "🛒 *Seu carrinho*", "", renderCart(context), "", "🛵 Como prefere receber?"].join("\n"),
+    buttons.slice(0, 3)
+  );
+}
+
+async function askFeeConfirm(to: string, store: Store, context: ConversationContext) {
+  const fee = resolveDeliveryFee(store, {
+    neighborhoodId: context.neighborhoodId,
+    address: context.addressText
+  });
+  const place = fee.neighborhood?.name ?? context.neighborhoodName;
+  const body = [
+    place ? `📍 Bairro *${place}* · taxa de entrega *${formatBRL(fee.cents)}*.` : `🛵 Taxa de entrega: *${formatBRL(fee.cents)}*.`,
+    `💰 Total com entrega: *${formatBRL(orderTotalCents(store, context))}*`,
+    "Podemos seguir?"
+  ].join("\n");
+  const buttons = [{ id: "fee_accept", title: "Aceitar" }];
+  if (store.pickupEnabled) buttons.push({ id: "switch_pickup", title: "Quero retirar" });
+  await sendButtons(to, body, buttons);
+}
+
+function isFeeAccept(incoming: string, normalized: string) {
+  return (
+    incoming === "fee_accept" ||
+    ["aceitar", "aceito", "sim", "ok", "pode", "pode seguir", "seguir", "confirmar", "confirmo"].includes(normalized)
+  );
+}
+
+function isAiFix(incoming: string, normalized: string) {
+  return incoming === "ai_fix" || ["corrigir", "corrigir pedido", "alterar pedido", "mudar pedido"].includes(normalized);
+}
+
+const GREETING_ONLY =
+  /^(oi+|ola|opa|eai|e ai|hello|hi|bom dia|boa tarde|boa noite|oi bom dia|oi boa tarde|oi boa noite|ola bom dia|ola boa tarde|ola boa noite|tudo bem|oi tudo bem)[\s!?.,]*$/;
 
 const WA_LIST_MAX_ROWS = 10;
 
@@ -2300,6 +2402,83 @@ export async function handleIncomingMessage(input: {
   const persist = (nextState: ConversationState, nextContext = context, options?: SaveConversationOptions) =>
     saveConversation(customer, nextState, nextContext, options);
 
+  /** v2: interpreta o texto do cliente com IA e monta (ou corrige) o carrinho inteiro. */
+  async function handleAiOrderText(ctx: ConversationContext, text: string) {
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
+    const outcome = await interpretOrder(ctx.aiTurns);
+
+    if (outcome.status === "error") {
+      await persist("awaiting_ai_order", ctx);
+      await sendText(input.from, "😕 Tive um probleminha para entender agora. Pode enviar seu pedido de novo?");
+      return;
+    }
+
+    const notFoundLine = outcome.notFound.length
+      ? `⚠️ Não encontrei no cardápio: *${outcome.notFound.join(", ")}*.`
+      : null;
+
+    if (outcome.status === "empty") {
+      const reply = [
+        notFoundLine ?? "😕 Não consegui identificar itens do cardápio nessa mensagem.",
+        "Confira o cardápio e me envie o pedido de novo.",
+        AI_ORDER_EXAMPLE
+      ].join("\n");
+      ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
+      await persist("awaiting_ai_order", ctx);
+      await sendText(input.from, reply);
+      return;
+    }
+
+    if (outcome.status === "question") {
+      const reply = [notFoundLine, outcome.question].filter(Boolean).join("\n");
+      ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
+      await persist("awaiting_ai_order", ctx);
+      await sendText(input.from, reply);
+      return;
+    }
+
+    ctx.cart = outcome.items;
+    ctx.fulfillment = undefined;
+    ctx.neighborhoodId = undefined;
+    ctx.neighborhoodName = undefined;
+    ctx.addressText = undefined;
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
+    await persist("awaiting_fulfillment", ctx);
+    await showAiCartOptions(
+      input.from,
+      store,
+      ctx,
+      notFoundLine ? `✅ Entendi seu pedido!\n${notFoundLine}` : undefined
+    );
+  }
+
+  /** v2: novo atendimento — saudação + cardápio; se a 1ª mensagem já for o pedido, interpreta direto. */
+  async function startConversationV2(firstText?: string) {
+    const next = emptyContext();
+    await persist("awaiting_ai_order", next, { reopen: true });
+    const text = firstText?.trim() ?? "";
+    const plain = normalize(text).replace(/[!?.,]+$/g, "").trim();
+    const looksLikeOrder = text.length >= 8 && !GREETING_ONLY.test(plain) && !isCustomerAck(text, plain);
+    if (!looksLikeOrder) {
+      await showWelcomeV2(input.from, store);
+      return;
+    }
+    await showWelcomeV2(input.from, store, { greetOnly: true });
+    await handleAiOrderText(next, text);
+  }
+
+  /** Nome para contato: se o cliente já informou em um pedido anterior, não pergunta de novo. */
+  async function askContactOrFinish() {
+    const known = context.contactName?.trim() || (await findLastContactName(customer.id));
+    if (known) {
+      context.contactName = known;
+      await finishOrder(input.from, store, customer, context, persist);
+      return;
+    }
+    await persist("awaiting_contact_name", context);
+    await askContactName(input.from);
+  }
+
   async function replyOpenOrderStatus(thanks = false) {
     const latest = await findLatestOrder(customer.id);
     if (!latest || !isOpenOrderStatus(latest.status)) return false;
@@ -2372,6 +2551,10 @@ export async function handleIncomingMessage(input: {
     // Agradecimento / emoji após ociosidade: não reinicia o cardápio.
     if (!input.replyId && isCustomerAck(input.text, command)) {
       await touchConversation(customer.id);
+      return;
+    }
+    if (isV2(store)) {
+      await startConversationV2(input.replyId ? undefined : input.text);
       return;
     }
     // Bem-vindo já conta como conversa ativa no painel.
@@ -2500,6 +2683,11 @@ export async function handleIncomingMessage(input: {
 
     if (yes) {
       const next = emptyContext();
+      if (isV2(store)) {
+        await persist("awaiting_ai_order", next, { reopen: true });
+        await askAiOrder(input.from, "🍕 Vamos lá! *Digite seu pedido* aqui, do seu jeito.");
+        return;
+      }
       resetMenuBrowse(next);
       await persist("awaiting_product", next);
       await showMenu(input.from, "🍕 Vamos montar seu pedido. Escolha o primeiro item:", next, persist, store);
@@ -2513,6 +2701,41 @@ export async function handleIncomingMessage(input: {
     }
     await persist("awaiting_new_order", context);
     await askNewOrderPrompt(input.from);
+    return;
+  }
+
+  if (state === "awaiting_ai_order") {
+    const text = input.text.trim();
+    if (!text || hasReply) {
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+    await handleAiOrderText(context, text);
+    return;
+  }
+
+  if (state === "awaiting_fee_confirm") {
+    if (isFeeAccept(incoming, normalized)) {
+      await persist("awaiting_payment", context);
+      await askPayment(input.from);
+      return;
+    }
+    if (wantsSwitchToPickup(incoming, normalized) && store.pickupEnabled) {
+      context.fulfillment = "pickup";
+      context.neighborhoodId = undefined;
+      context.neighborhoodName = undefined;
+      context.neighborhoodPage = null;
+      context.addressText = undefined;
+      await persist("awaiting_payment", context);
+      await askPayment(input.from);
+      return;
+    }
+    await resumeCurrentStep(input.from, store, state, context);
+    return;
+  }
+
+  if (isV2(store) && ["menu", "ver cardapio", "cardapio", "order", "fazer pedido", "pedir"].includes(normalized)) {
+    await startConversationV2();
     return;
   }
 
@@ -2561,6 +2784,10 @@ export async function handleIncomingMessage(input: {
 
   // Fora do pedido e sem pedido em aberto, texto livre volta ao menu inicial.
   if (state === "welcome" && !hasReply) {
+    if (isV2(store)) {
+      await startConversationV2(input.text);
+      return;
+    }
     await persist("welcome", context, { reopen: true });
     await showWelcome(input.from, store.name);
     return;
@@ -3239,6 +3466,24 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  if (isV2(store) && (state === "cart" || state === "awaiting_fulfillment")) {
+    if (isAiFix(incoming, normalized)) {
+      await persist("awaiting_ai_order", context);
+      await sendText(
+        input.from,
+        "✏️ O que você quer mudar? Escreva do seu jeito (ex.: *troca a coca por guaraná* ou *adiciona uma broto de chocolate*)."
+      );
+      return;
+    }
+    const raw = incoming.startsWith("fulfillment:") ? incoming.slice("fulfillment:".length) : normalized;
+    const isFulfillment = ["delivery", "entrega", "pickup", "retirada"].includes(raw);
+    // Texto livre no carrinho (ex.: "e mais uma coca") = ajuste do pedido pela IA.
+    if (!isFulfillment && !hasReply && input.text.trim() && incoming !== "checkout") {
+      await handleAiOrderText(context, input.text.trim());
+      return;
+    }
+  }
+
   if (state === "cart" || state === "awaiting_fulfillment") {
     if (!context.cart.length) {
       resetMenuBrowse(context);
@@ -3399,6 +3644,11 @@ export async function handleIncomingMessage(input: {
         await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
         return;
       }
+      if (isV2(store)) {
+        await persist("awaiting_fee_confirm", context);
+        await askFeeConfirm(input.from, store, context);
+        return;
+      }
       await sendText(
         input.from,
         `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`,
@@ -3425,6 +3675,11 @@ export async function handleIncomingMessage(input: {
       context.neighborhoodId = undefined;
       context.neighborhoodName = undefined;
       context.neighborhoodPage = null;
+      if (isV2(store) && store.deliveryFeeCents > 0) {
+        await persist("awaiting_fee_confirm", context);
+        await askFeeConfirm(input.from, store, context);
+        return;
+      }
       await persist("awaiting_payment", context);
       await askPayment(input.from);
       return;
@@ -3454,6 +3709,11 @@ export async function handleIncomingMessage(input: {
     context.neighborhoodId = zone.id;
     context.neighborhoodName = zone.name;
     context.neighborhoodPage = null;
+    if (isV2(store)) {
+      await persist("awaiting_fee_confirm", context);
+      await askFeeConfirm(input.from, store, context);
+      return;
+    }
     await sendText(
       input.from,
       `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`,
@@ -3480,8 +3740,7 @@ export async function handleIncomingMessage(input: {
     if (!context.paymentMethodLabel) {
       context.paymentMethodLabel = "Dinheiro";
     }
-    await persist("awaiting_contact_name", context);
-    await askContactName(input.from);
+    await askContactOrFinish();
     return;
   }
 
@@ -3524,8 +3783,7 @@ export async function handleIncomingMessage(input: {
     }
 
     context.changeForCents = undefined;
-    await persist("awaiting_contact_name", context);
-    await askContactName(input.from);
+    await askContactOrFinish();
     return;
   }
 
@@ -3584,6 +3842,10 @@ export async function handleIncomingMessage(input: {
     return;
   }
 
+  if (isV2(store)) {
+    await startConversationV2(hasReply ? undefined : input.text);
+    return;
+  }
   await persist("welcome", context, { reopen: true });
   await showWelcome(input.from, store.name);
 }

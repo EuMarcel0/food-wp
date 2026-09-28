@@ -6,6 +6,11 @@ export function prepareStorePhoto(file: File, max = 640): Promise<File> {
   return prepareImage(file, max, true);
 }
 
+/** Cardápio para o WhatsApp: mantém proporção e legibilidade (lado maior até 2048 px). */
+export function prepareMenuImage(file: File, max = 2048): Promise<File> {
+  return prepareImage(file, max, false);
+}
+
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

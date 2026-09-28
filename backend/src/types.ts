@@ -31,7 +31,11 @@ export type ConversationState =
   | "awaiting_change"
   | "awaiting_contact_name"
   | "awaiting_order_code"
-  | "awaiting_new_order";
+  | "awaiting_new_order"
+  /** v2: cliente digita o pedido em texto livre (interpretado por IA). */
+  | "awaiting_ai_order"
+  /** v2: confirmar a taxa do bairro (Aceitar / Quero retirar). */
+  | "awaiting_fee_confirm";
 
 /** Estados em que a conversa volta a aparecer em Ativas (pedido em montagem). */
 export const ORDER_FLOW_STATES = new Set<ConversationState>([
@@ -52,6 +56,8 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_payment",
   "awaiting_change",
   "awaiting_contact_name",
+  "awaiting_ai_order",
+  "awaiting_fee_confirm",
 ]);
 
 export function isOrderFlowState(state: ConversationState) {
@@ -151,6 +157,8 @@ export type ConversationContext = {
   batchCountPending?: number;
   /** `cart.length` no início do lote — ao abortar, remove pizzas já montadas nesta sessão. */
   batchCartStartLength?: number;
+  /** v2: conversa da montagem do pedido enviada à IA (mensagens do cliente e respostas do bot). */
+  aiTurns?: { role: "user" | "assistant"; content: string }[];
 };
 
 export type DeliveryNeighborhood = {
@@ -189,7 +197,13 @@ export type Store = {
   receiptFooter: string | null;
   businessHours: BusinessHoursDay[] | null;
   neighborhoods: DeliveryNeighborhood[];
+  /** v1 = fluxo completo com menus; v2 = simplificado (pedido em texto livre interpretado por IA). */
+  botFlowVersion: BotFlowVersion;
+  /** Imagem do cardápio enviada na saudação da v2. */
+  menuImageUrl: string | null;
 };
+
+export type BotFlowVersion = "v1" | "v2";
 
 export type StorePatch = {
   idleTimeoutMinutes?: number;
@@ -204,6 +218,8 @@ export type StorePatch = {
   autoAcceptOrders?: boolean;
   allowCustomerCancel?: boolean;
   batchCategoryIds?: string[];
+  botFlowVersion?: BotFlowVersion;
+  menuImageUrl?: string | null;
 };
 
 export type Addon = {

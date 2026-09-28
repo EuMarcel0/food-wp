@@ -223,6 +223,8 @@ function mapStore(row: Record<string, unknown>): Store {
       }
     })(),
     neighborhoods: [],
+    botFlowVersion: row.bot_flow_version === "v2" ? "v2" : "v1",
+    menuImageUrl: (row.menu_image_url as string | null) ?? null,
   };
 }
 
@@ -477,6 +479,12 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
   if (patch.allowCustomerCancel !== undefined) {
     payload.allow_customer_cancel = Boolean(patch.allowCustomerCancel);
   }
+  if (patch.botFlowVersion !== undefined) {
+    payload.bot_flow_version = patch.botFlowVersion === "v2" ? "v2" : "v1";
+  }
+  if (patch.menuImageUrl !== undefined) {
+    payload.menu_image_url = patch.menuImageUrl;
+  }
   if (patch.batchCategoryIds !== undefined) {
     payload.batch_category_ids = parseBatchCategoryIds(patch.batchCategoryIds);
   }
@@ -510,10 +518,52 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
           ? "Rode a migration 036_store_allow_customer_cancel.sql no Supabase."
         : error?.message?.includes("batch_category_ids")
           ? "Rode a migration 043_store_batch_category_ids.sql no Supabase."
+        : error?.message?.includes("bot_flow_version") || error?.message?.includes("menu_image_url")
+          ? "Rode a migration 053_store_bot_flow.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",
     );
   }
   return hydrateStore(data as Record<string, unknown>);
+}
+
+export async function saveStoreMenuImage(storeId: string, bytes: Buffer, mime: string) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  }
+  const ext = mime === "image/png" ? "png" : "jpg";
+  const path = `${storeId}/menu.${ext}`;
+  const { error } = await supabase.storage.from("store-branding").upload(path, bytes, {
+    upsert: true,
+    contentType: mime,
+  });
+  if (error) {
+    throw new Error(
+      error.message.includes("store-branding") || error.message.includes("Bucket")
+        ? "Rode a migration 022_store_branding.sql no Supabase."
+        : error.message,
+    );
+  }
+  const { data } = supabase.storage.from("store-branding").getPublicUrl(path);
+  return `${data.publicUrl}?t=${Date.now()}`;
+}
+
+/** Último nome de contato digitado pelo cliente em um pedido (não o nome do perfil do WhatsApp). */
+export async function findLastContactName(customerId: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.findLatestOrder(customerId)?.customerName?.trim() || null;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("contact_name")
+    .eq("customer_id", customerId)
+    .not("contact_name", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const name = String((data as Record<string, unknown>).contact_name ?? "").trim();
+  return name || null;
 }
 
 export async function saveStoreProfilePhoto(storeId: string, bytes: Buffer) {
