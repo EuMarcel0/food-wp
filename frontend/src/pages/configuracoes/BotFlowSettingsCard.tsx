@@ -93,7 +93,7 @@ export function BotFlowSettingsCard({ store }: { store?: Store }) {
           <Radio
             key={option.value}
             value={option.value}
-            className="!me-0 rounded-xl border border-food-border px-3.5 py-3 [&.ant-radio-wrapper-checked]:border-food-accent [&.ant-radio-wrapper-checked]:bg-food-accent-soft"
+            className="!me-0 rounded-xl border border-food-border !px-4 !py-3 [&>span:last-child]:!ps-3 [&.ant-radio-wrapper-checked]:border-food-accent [&.ant-radio-wrapper-checked]:bg-food-accent-soft"
           >
             <span className="block text-sm font-semibold text-food-text">{option.title}</span>
             <span className="block text-[13px] leading-snug text-food-muted">{option.description}</span>
