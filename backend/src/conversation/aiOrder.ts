@@ -408,6 +408,7 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
     result = await chatJson<AiResult>({
       schemaName: "pedido",
       schema: SCHEMA as unknown as Record<string, unknown>,
+      metadata: { flow: "v2-order" },
       messages: [{ role: "system", content: systemPrompt(catalog.text) }, ...turns],
     });
   } catch (error) {

@@ -247,7 +247,10 @@ function parseQuantity(raw: string): number | null {
   const text = normalize(stripped)
     .replace(/-/g, " ")
     .replace(/\s+e\s+/g, " ")
-    .replace(/\b(quero|queria|vou querer|pode ser|serao|sera|sao|de|unidades?|itens?|pizzas?|pedacos?|fatias?|vezes)\b/g, " ")
+    .replace(
+      /\b(quero|queria|vou querer|pode ser|serao|sera|sao|de|unidades?|itens?|pizzas?|pedacos?|fatias?|vezes)\b/g,
+      " "
+    )
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return null;
@@ -323,11 +326,7 @@ function clearBatch(context: ConversationContext) {
 
 /** Etapas do fluxo tamanho → quantas → montagem de cada pizza. */
 function isInBatchFlow(state: ConversationState, context: ConversationContext) {
-  return (
-    state === "awaiting_batch_size" ||
-    state === "awaiting_batch_count" ||
-    isBatchActive(context)
-  );
+  return state === "awaiting_batch_size" || state === "awaiting_batch_count" || isBatchActive(context);
 }
 
 function isBatchRestartCommand(command: string) {
@@ -814,10 +813,7 @@ export async function resumeAfterHumanHandoff(input: {
   context: ConversationContext;
 }) {
   const store = await getStore();
-  if (
-    !isStoreOpen(store.businessHours, store.timezone) &&
-    !isOrderInProgress(input.state)
-  ) {
+  if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(input.state)) {
     return;
   }
 
@@ -1109,7 +1105,7 @@ async function askCompleteAddress(to: string, opts?: { pickupEnabled?: boolean }
     "Informe *rua, número, bairro* e uma *referência*.",
     "Ex.: *Rua das Flores, 123 - Vila Nova - próximo ao mercado*",
     "Com o bairro no endereço calculamos a taxa de entrega.",
-    opts?.pickupEnabled ? "Caso queira, pode mudar para *retirada*." : null,
+    opts?.pickupEnabled ? "Caso queira, pode mudar para *retirada*." : null
   ]
     .filter(Boolean)
     .join("\n");
@@ -1154,13 +1150,13 @@ async function askPayment(to: string, intro = "💳 Como deseja pagar?") {
   if (!methods.length) {
     await sendText(
       to,
-      "Nenhuma forma de pagamento cadastrada. Avise a loja para configurar em Adicionais → Pagamentos.",
+      "Nenhuma forma de pagamento cadastrada. Avise a loja para configurar em Adicionais → Pagamentos."
     );
     return;
   }
-  const rows = methods.slice(0, WA_LIST_MAX_ROWS).map((method) => ({
+  const rows = methods.slice(0, WA_LIST_MAX_ROWS).map(method => ({
     id: `pay:${method.id}`,
-    title: method.name.slice(0, 24),
+    title: method.name.slice(0, 24)
   }));
   await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows }]);
 }
@@ -1187,18 +1183,18 @@ function paymentKindAliases(kind: StorePaymentMethod["kind"]): string[] {
 
 async function resolvePaymentMethod(
   incoming: string,
-  normalized: string,
+  normalized: string
 ): Promise<StorePaymentMethod | "card_ambiguous" | null> {
   const methods = await listPaymentMethods();
   if (!methods.length) return null;
 
   if (incoming.startsWith("pay:")) {
     const id = incoming.slice(4);
-    const byId = methods.find((item) => item.id === id);
+    const byId = methods.find(item => item.id === id);
     if (byId) return byId;
   }
 
-  const byName = methods.find((item) => normalize(item.name) === normalized);
+  const byName = methods.find(item => normalize(item.name) === normalized);
   if (byName) return byName;
 
   for (const method of methods) {
@@ -1207,9 +1203,7 @@ async function resolvePaymentMethod(
   }
 
   if (normalized === "card" || normalized === "cartao") {
-    const cardMethods = methods.filter(
-      (item) => item.kind === "credit" || item.kind === "debit",
-    );
+    const cardMethods = methods.filter(item => item.kind === "credit" || item.kind === "debit");
     if (cardMethods.length === 1) return cardMethods[0];
     if (cardMethods.length > 1) return "card_ambiguous";
   }
@@ -1217,10 +1211,7 @@ async function resolvePaymentMethod(
   return null;
 }
 
-function paymentDisplayLabel(
-  method: PaymentMethod,
-  label?: string | null,
-) {
+function paymentDisplayLabel(method: PaymentMethod, label?: string | null) {
   const custom = label?.trim();
   if (custom) return custom;
   if (method === "pix") return "Pix na Entrega/Retirada";
@@ -1287,7 +1278,7 @@ function isV2(store: Pick<Store, "botFlowVersion">) {
   return store.botFlowVersion === "v2";
 }
 
-const AI_ORDER_EXAMPLE = "Ex.: *uma família meia calabresa e meia frango com catupiry e uma coca zero 1L*";
+const AI_ORDER_EXAMPLE = "Ex.: *uma família meia calabresa e meia frango com catupiry borda de cheddar e uma coca 1L*";
 
 /** v2: saudação + imagem do cardápio + convite para digitar o pedido. */
 async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: boolean }) {
@@ -1295,7 +1286,7 @@ async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: bool
     to,
     [
       `Olá! 👋 Sou a assistente virtual da *${store.name}* e vou te ajudar a montar seu pedido.`,
-      store.menuImageUrl ? "Olhe o cardápio na imagem abaixo 👇" : null,
+      store.menuImageUrl ? "Olhe o cardápio na imagem abaixo 👇" : null
     ]
       .filter(Boolean)
       .join("\n")
@@ -1309,11 +1300,8 @@ async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: bool
   await askAiOrder(to);
 }
 
-async function askAiOrder(to: string, intro = "✍️ *Digite seu pedido* aqui, do seu jeito, em uma mensagem.") {
-  await sendText(
-    to,
-    [intro, AI_ORDER_EXAMPLE, "Para encerrar sem pedir, digite *Sair*."].join("\n")
-  );
+async function askAiOrder(to: string, intro = "✍️ *Digite seu pedido* aqui em uma mensagem.") {
+  await sendText(to, [intro, AI_ORDER_EXAMPLE, "Para encerrar sem pedir, digite *Sair*."].join("\n"));
 }
 
 /** v2: carrinho montado pela IA + Entrega / Retirada / Corrigir pedido. */
@@ -1342,7 +1330,9 @@ async function askFeeConfirm(to: string, store: Store, context: ConversationCont
   });
   const place = fee.neighborhood?.name ?? context.neighborhoodName;
   const body = [
-    place ? `📍 Bairro *${place}* · taxa de entrega *${formatBRL(fee.cents)}*.` : `🛵 Taxa de entrega: *${formatBRL(fee.cents)}*.`,
+    place
+      ? `📍 Bairro *${place}* · taxa de entrega *${formatBRL(fee.cents)}*.`
+      : `🛵 Taxa de entrega: *${formatBRL(fee.cents)}*.`,
     `💰 Total com entrega: *${formatBRL(orderTotalCents(store, context))}*`,
     "Podemos seguir?"
   ].join("\n");
@@ -1359,7 +1349,9 @@ function isFeeAccept(incoming: string, normalized: string) {
 }
 
 function isAiFix(incoming: string, normalized: string) {
-  return incoming === "ai_fix" || ["corrigir", "corrigir pedido", "alterar pedido", "mudar pedido"].includes(normalized);
+  return (
+    incoming === "ai_fix" || ["corrigir", "corrigir pedido", "alterar pedido", "mudar pedido"].includes(normalized)
+  );
 }
 
 const GREETING_ONLY =
@@ -1555,11 +1547,7 @@ async function showMenu(
       categoryName,
       offset,
       canGoBack: canGoBackToCategories(context, categories.length),
-      listButton: drinksMenu
-        ? "Escolher bebida"
-        : flavorMenu
-          ? "Escolher sabor"
-          : "Ver itens",
+      listButton: drinksMenu ? "Escolher bebida" : flavorMenu ? "Escolher sabor" : "Ver itens",
       batchAbort: isBatchActive(context)
     });
     return;
@@ -1750,22 +1738,15 @@ async function askGroupOptions(
   const rows = remaining.slice(0, pageSize).map(option => ({
     id: `opt:${option.id}`,
     title: option.name.slice(0, 24),
-    ...(group.maxSelect > 1 || group.exclusiveSet?.trim()
-      ? {}
-      : { description: optionDescription(option.extraPrice) })
+    ...(group.maxSelect > 1 || group.exclusiveSet?.trim() ? {} : { description: optionDescription(option.extraPrice) })
   }));
   if (batchAbort) rows.push(batchAbortListRow());
-  await sendList(
-    to,
-    withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort),
-    "Escolher",
-    [
-      {
-        title: group.name.slice(0, 24),
-        rows
-      }
-    ]
-  );
+  await sendList(to, withBatchAbortHint(groupPrompt(product, group, picked, pickedNames), batchAbort), "Escolher", [
+    {
+      title: group.name.slice(0, 24),
+      rows
+    }
+  ]);
   if (!group.required && picked.length === 0) {
     await sendButtons(
       to,
@@ -2457,7 +2438,9 @@ export async function handleIncomingMessage(input: {
     const next = emptyContext();
     await persist("awaiting_ai_order", next, { reopen: true });
     const text = firstText?.trim() ?? "";
-    const plain = normalize(text).replace(/[!?.,]+$/g, "").trim();
+    const plain = normalize(text)
+      .replace(/[!?.,]+$/g, "")
+      .trim();
     const looksLikeOrder = text.length >= 8 && !GREETING_ONLY.test(plain) && !isCustomerAck(text, plain);
     if (!looksLikeOrder) {
       await showWelcomeV2(input.from, store);
@@ -2509,7 +2492,7 @@ export async function handleIncomingMessage(input: {
         "cancelled",
         "Cliente WhatsApp",
         undefined,
-        "Cancelado pelo cliente no WhatsApp",
+        "Cancelado pelo cliente no WhatsApp"
       );
       await persist("welcome", emptyContext());
       await sendButtons(
@@ -2581,12 +2564,7 @@ export async function handleIncomingMessage(input: {
   }
 
   // Localização do celular não é aceita; na etapa de endereço tratamos com mensagem própria.
-  if (
-    orderActive &&
-    input.location &&
-    state !== "awaiting_address" &&
-    state !== "awaiting_neighborhood"
-  ) {
+  if (orderActive && input.location && state !== "awaiting_address" && state !== "awaiting_neighborhood") {
     await resumeCurrentStep(input.from, store, state, context);
     return;
   }
@@ -3124,11 +3102,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    if (
-      incoming === "choose_addon" ||
-      normalized === "adicionais" ||
-      normalized === "sim"
-    ) {
+    if (incoming === "choose_addon" || normalized === "adicionais" || normalized === "sim") {
       context.addonOffset = 0;
       await persist("awaiting_addon", context);
       const finished = await askAddons(input.from, product, drafts, 0, true, isBatchActive(context));
@@ -3141,14 +3115,7 @@ export async function handleIncomingMessage(input: {
       const offset = context.addonOffset ?? 0;
       context.addonOffset = offset + addonsPageSize(total, offset);
       await persist("awaiting_addon", context);
-      const finished = await askAddons(
-        input.from,
-        product,
-        drafts,
-        context.addonOffset,
-        false,
-        isBatchActive(context)
-      );
+      const finished = await askAddons(input.from, product, drafts, context.addonOffset, false, isBatchActive(context));
       if (finished) await finishAddons();
       return;
     }
@@ -3157,14 +3124,7 @@ export async function handleIncomingMessage(input: {
       const total = (await remainingAddons(product, drafts)).length;
       context.addonOffset = previousAddonsOffset(total, context.addonOffset ?? 0);
       await persist("awaiting_addon", context);
-      const finished = await askAddons(
-        input.from,
-        product,
-        drafts,
-        context.addonOffset,
-        true,
-        isBatchActive(context)
-      );
+      const finished = await askAddons(input.from, product, drafts, context.addonOffset, true, isBatchActive(context));
       if (finished) await finishAddons();
       return;
     }
@@ -3175,12 +3135,7 @@ export async function handleIncomingMessage(input: {
       return;
     }
 
-    if (
-      incoming === "skip_addon" ||
-      normalized === "pular" ||
-      normalized === "nao" ||
-      normalized === "não"
-    ) {
+    if (incoming === "skip_addon" || normalized === "pular" || normalized === "nao" || normalized === "não") {
       context.addonOffset = 0;
       context.draftSelections = skipDraftAddon(drafts);
       await askQuantityStage(input.from, product, context, persist);
@@ -3339,10 +3294,7 @@ export async function handleIncomingMessage(input: {
     const categoryName = categories.find(item => item.id === categoryId)?.name ?? "Categoria";
 
     const confirmNo =
-      incoming === "qtyconfirm:no" ||
-      normalized === "corrigir" ||
-      normalized === "nao" ||
-      normalized === "não";
+      incoming === "qtyconfirm:no" || normalized === "corrigir" || normalized === "nao" || normalized === "não";
     if (confirmNo) {
       context.batchCountPending = undefined;
       await persist("awaiting_batch_count", context);
@@ -3599,8 +3551,8 @@ export async function handleIncomingMessage(input: {
         [
           "😊 Obrigado pela localização!",
           "Para calcularmos a taxa certinho, *digite* o endereço completo (rua, número, bairro e referência).",
-          "Não usamos o pin do mapa nesta etapa.",
-        ].join("\n"),
+          "Não usamos o pin do mapa nesta etapa."
+        ].join("\n")
       );
       await persist("awaiting_address", context);
       await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
@@ -3629,7 +3581,7 @@ export async function handleIncomingMessage(input: {
     // Desambiguação: cliente escolheu um bairro da lista.
     if (incoming.startsWith("nbh:")) {
       const zoneId = incoming.slice(4);
-      const zone = zones.find((item) => item.id === zoneId);
+      const zone = zones.find(item => item.id === zoneId);
       if (!zone) {
         await sendText(input.from, "Não reconheci esse bairro. Envie o endereço completo de novo.");
         await persist("awaiting_address", context);
@@ -3649,10 +3601,7 @@ export async function handleIncomingMessage(input: {
         await askFeeConfirm(input.from, store, context);
         return;
       }
-      await sendText(
-        input.from,
-        `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`,
-      );
+      await sendText(input.from, `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`);
       await persist("awaiting_payment", context);
       await askPayment(input.from);
       return;
@@ -3662,7 +3611,7 @@ export async function handleIncomingMessage(input: {
     if (!address || address.trim().length < 5) {
       await sendText(
         input.from,
-        "Digite o *endereço completo* (rua, número, bairro e referência). Não envie localização do celular.",
+        "Digite o *endereço completo* (rua, número, bairro e referência). Não envie localização do celular."
       );
       await persist("awaiting_address", context);
       await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
@@ -3691,8 +3640,8 @@ export async function handleIncomingMessage(input: {
         input.from,
         [
           "😕 Não encontrei um *bairro* cadastrado nesse endereço.",
-          "Confira e envie de novo incluindo o nome do bairro (ex.: *Rua X, 10 - Vila Nova*).",
-        ].join("\n"),
+          "Confira e envie de novo incluindo o nome do bairro (ex.: *Rua X, 10 - Vila Nova*)."
+        ].join("\n")
       );
       await persist("awaiting_address", context);
       await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
@@ -3714,10 +3663,7 @@ export async function handleIncomingMessage(input: {
       await askFeeConfirm(input.from, store, context);
       return;
     }
-    await sendText(
-      input.from,
-      `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`,
-    );
+    await sendText(input.from, `📍 Bairro *${zone.name}* · taxa ${formatBRL(zone.feeCents)}.`);
     await persist("awaiting_payment", context);
     await askPayment(input.from);
     return;
@@ -3748,9 +3694,7 @@ export async function handleIncomingMessage(input: {
     const payment = await resolvePaymentMethod(incoming, normalized);
     if (payment === "card_ambiguous") {
       const methods = await listPaymentMethods();
-      const cardMethods = methods.filter(
-        (item) => item.kind === "credit" || item.kind === "debit",
-      );
+      const cardMethods = methods.filter(item => item.kind === "credit" || item.kind === "debit");
       if (!cardMethods.length) {
         await resumeCurrentStep(input.from, store, state, context);
         return;
@@ -3759,10 +3703,10 @@ export async function handleIncomingMessage(input: {
       await sendButtons(
         input.from,
         "Qual cartão?",
-        cardMethods.slice(0, 3).map((item) => ({
+        cardMethods.slice(0, 3).map(item => ({
           id: `pay:${item.id}`,
-          title: item.name.slice(0, 20),
-        })),
+          title: item.name.slice(0, 20)
+        }))
       );
       return;
     }

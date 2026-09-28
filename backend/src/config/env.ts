@@ -27,6 +27,8 @@ export const env = {
 
   openaiApiKey: read("OPENAI_API_KEY"),
   openaiModel: read("OPENAI_MODEL", "gpt-4.1-mini"),
+  /** Guarda as chamadas nos Logs da OpenAI (platform.openai.com/logs). Desligue com OPENAI_STORE_LOGS=false. */
+  openaiStoreLogs: read("OPENAI_STORE_LOGS", "true").toLowerCase() !== "false",
 
   defaultStoreId: read("DEFAULT_STORE_ID", "00000000-0000-0000-0000-000000000001"),
   frontendOrigins: read("FRONTEND_ORIGIN")

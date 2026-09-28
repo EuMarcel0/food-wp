@@ -18,6 +18,8 @@ export async function chatJson<T>(input: {
   schemaName: string;
   schema: Record<string, unknown>;
   temperature?: number;
+  /** Aparece nos Logs da OpenAI (platform.openai.com/logs) para filtrar as chamadas. */
+  metadata?: Record<string, string>;
 }): Promise<T> {
   if (!isOpenAiConfigured()) {
     throw new Error("OPENAI_API_KEY não configurada.");
@@ -25,6 +27,7 @@ export async function chatJson<T>(input: {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const startedAt = Date.now();
   try {
     const response = await fetch(OPENAI_URL, {
       method: "POST",
@@ -37,6 +40,7 @@ export async function chatJson<T>(input: {
         model: env.openaiModel,
         temperature: input.temperature ?? 0,
         messages: input.messages,
+        ...(env.openaiStoreLogs ? { store: true, metadata: { app: "food-wp-bot", ...input.metadata } } : {}),
         response_format: {
           type: "json_schema",
           json_schema: { name: input.schemaName, strict: true, schema: input.schema },
@@ -48,8 +52,16 @@ export async function chatJson<T>(input: {
       throw new Error(`OpenAI ${response.status}: ${text.slice(0, 300)}`);
     }
     const data = JSON.parse(text) as {
+      id?: string;
+      model?: string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       choices?: { message?: { content?: string | null; refusal?: string | null } }[];
     };
+    console.info(
+      `[openai] ${input.schemaName} id=${data.id ?? "?"} model=${data.model ?? env.openaiModel} ` +
+        `tokens=${data.usage?.prompt_tokens ?? 0}+${data.usage?.completion_tokens ?? 0}=${data.usage?.total_tokens ?? 0} ` +
+        `${Date.now() - startedAt}ms`,
+    );
     const message = data.choices?.[0]?.message;
     if (message?.refusal) throw new Error(`OpenAI recusou: ${message.refusal}`);
     if (!message?.content) throw new Error("OpenAI sem conteúdo na resposta.");
