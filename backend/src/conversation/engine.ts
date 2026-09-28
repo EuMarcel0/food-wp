@@ -1012,8 +1012,30 @@ async function resumeCurrentStep(
     case "awaiting_fee_confirm":
       await askFeeConfirm(to, store, context);
       return;
+    case "awaiting_ai_addon":
+    case "awaiting_ai_note": {
+      const item = context.cart[context.aiStepIndex ?? 0];
+      const product = item ? await getProduct(item.productId) : null;
+      if (!item || !product) {
+        await showAiCartOptions(to, store, context, hint || "✅ Continue seu pedido");
+        return;
+      }
+      if (state === "awaiting_ai_note") {
+        await askItemNote(to, item);
+        return;
+      }
+      await askAddons(to, { ...product, name: item.name }, item.extras, context.addonOffset ?? 0, false);
+      return;
+    }
     case "awaiting_neighborhood":
     case "awaiting_address":
+      if (context.addressDraft) {
+        await sendText(
+          to,
+          `📝 Endereço anotado: *${context.addressDraft}*\nMe diga só o *nome do bairro* (ex.: *Centro*).`
+        );
+        return;
+      }
       await sendHintIfNeeded();
       await askCompleteAddress(to, { pickupEnabled: store.pickupEnabled });
       return;
@@ -1139,6 +1161,13 @@ function wantsSwitchToPickup(incoming: string, normalized: string) {
     normalized === "quero retirada" ||
     normalized === "mudar para retirada"
   );
+}
+
+/** Texto parece um endereço novo (rua/avenida ou vários termos com número), não só o bairro. */
+function looksLikeFullAddress(text: string) {
+  const plain = normalize(text);
+  if (/^(rua|r|av|avenida|travessa|tv|alameda|al|rodovia|rod|estrada|est|praca|pca)\b/.test(plain)) return true;
+  return /\d/.test(plain) && plain.split(" ").length >= 4;
 }
 
 function resolveTypedAddress(input: { text: string }): string | null {
@@ -2578,12 +2607,74 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     ctx.neighborhoodId = undefined;
     ctx.neighborhoodName = undefined;
     ctx.addressText = undefined;
+    ctx.addressDraft = undefined;
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, {
       role: "assistant",
       content: [outcome.answer, `Pedido montado:\n${renderCart(ctx)}`].filter(Boolean).join("\n")
     });
     const intro = [outcome.answer, "✅ Entendi seu pedido!", notFoundLine].filter(Boolean).join("\n");
-    await continueAfterAiCart(ctx, intro);
+    ctx.aiExtraPhase = "addon";
+    ctx.aiStepIndex = 0;
+    await nextAiExtraStep(ctx, intro);
+  }
+
+  function refreshCartItem(item: CartItem, product: Product) {
+    const extras = item.extras ?? [];
+    item.name = extras.some(extra => extra.groupId !== ADDON_GROUP_ID) ? assembledName(product, extras) : product.name;
+    item.unitPriceCents = unitPriceCents(product, extras);
+  }
+
+  /**
+   * v2: depois do carrinho da IA, pergunta adicionais (itens que aceitam) e observação
+   * (itens com observação ligada), um item por vez; no fim segue para Entrega/Retirada.
+   */
+  async function nextAiExtraStep(ctx: ConversationContext, intro?: string) {
+    const showCart = async () => {
+      if (!intro) return;
+      await sendText(input.from, [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)].join("\n"));
+      intro = undefined;
+    };
+
+    if (!ctx.aiExtrasAsked) {
+      let index = ctx.aiStepIndex ?? 0;
+      if ((ctx.aiExtraPhase ?? "addon") === "addon") {
+        for (; index < ctx.cart.length; index += 1) {
+          const item = ctx.cart[index];
+          if (addonStepDone(item.extras)) continue;
+          const product = await getProduct(item.productId);
+          if (!product || !(await productHasAddons(product))) continue;
+          ctx.aiExtraPhase = "addon";
+          ctx.aiStepIndex = index;
+          ctx.addonOffset = 0;
+          await showCart();
+          await persist("awaiting_ai_addon", ctx);
+          await askAddons(input.from, { ...product, name: item.name }, item.extras, 0, false);
+          return;
+        }
+        index = 0;
+      }
+      for (; index < ctx.cart.length; index += 1) {
+        const item = ctx.cart[index];
+        if (item.notes) continue;
+        const product = await getProduct(item.productId);
+        if (!product?.notesEnabled) continue;
+        ctx.aiExtraPhase = "note";
+        ctx.aiStepIndex = index;
+        await showCart();
+        await persist("awaiting_ai_note", ctx);
+        await askItemNote(input.from, item);
+        return;
+      }
+      const asked = ctx.aiExtraPhase != null && intro == null;
+      ctx.aiExtrasAsked = true;
+      ctx.aiExtraPhase = undefined;
+      ctx.aiStepIndex = undefined;
+      ctx.addonOffset = 0;
+      if (asked) {
+        ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Carrinho atualizado:\n${renderCart(ctx)}` });
+      }
+    }
+    await continueAfterAiCart(ctx, intro ?? "✅ Pedido atualizado!");
   }
 
   /**
@@ -2605,11 +2696,16 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
   /** Endereço digitado → bairro/taxa (v2 confirma a taxa; v1 segue para pagamento). */
   async function applyTypedAddress(ctx: ConversationContext, typed: string) {
-    const address = typed
+    const cleaned = typed
       .split(/\n+/)
       .map(line => line.trim())
       .filter(Boolean)
       .join(", ");
+    // Bairro digitado depois de um endereço sem bairro: junta com a rua já informada.
+    const draft = ctx.addressDraft;
+    ctx.addressDraft = undefined;
+    const joinDraft = Boolean(draft) && !looksLikeFullAddress(cleaned);
+    const address = joinDraft ? `${draft} - ${cleaned}` : cleaned;
     ctx.addressText = address;
     const zones = store.neighborhoods ?? [];
 
@@ -2628,15 +2724,20 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
     const result = matchNeighborhoodQuery(address, zones);
     if (result.status === "none") {
-      await sendText(
-        input.from,
-        [
-          "😕 Não encontrei um *bairro* cadastrado nesse endereço.",
-          "Confira e envie de novo incluindo o nome do bairro (ex.: *Rua X, 10 - Vila Nova*)."
-        ].join("\n")
-      );
+      ctx.addressDraft = joinDraft ? draft : address;
+      ctx.addressText = undefined;
+      const body = [
+        "😕 Não encontrei o *bairro* nesse endereço.",
+        `📝 Anotei: *${ctx.addressDraft}*`,
+        "Agora me diga só o *nome do bairro* (ex.: *Centro*).",
+        "Se o endereço estiver errado, envie o endereço completo de novo."
+      ].join("\n");
       await persist("awaiting_address", ctx);
-      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      if (store.pickupEnabled) {
+        await sendButtons(input.from, body, [{ id: "switch_pickup", title: "Quero retirar" }]);
+      } else {
+        await sendText(input.from, body);
+      }
       return;
     }
 
@@ -2939,6 +3040,95 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     return;
   }
 
+  if (state === "awaiting_ai_addon") {
+    const index = context.aiStepIndex ?? 0;
+    const item = context.cart[index];
+    const product = item ? await getProduct(item.productId) : null;
+    if (!item || !product) {
+      context.aiExtraPhase = "addon";
+      context.aiStepIndex = index + 1;
+      await nextAiExtraStep(context);
+      return;
+    }
+    const label = { ...product, name: item.name };
+    const drafts = item.extras ?? [];
+    const nextItem = async () => {
+      if (!draftAddon(item.extras)?.options.length) item.extras = skipDraftAddon(item.extras ?? []);
+      refreshCartItem(item, product);
+      context.aiExtraPhase = "addon";
+      context.aiStepIndex = index + 1;
+      context.addonOffset = 0;
+      await nextAiExtraStep(context);
+    };
+
+    if (incoming === "choose_addon" || normalized === "sim" || normalized === "adicionais") {
+      context.addonOffset = 0;
+      await persist("awaiting_ai_addon", context);
+      if (await askAddons(input.from, label, drafts, 0, true)) await nextItem();
+      return;
+    }
+    if (incoming === "more_addons" || incoming === "prev_addons") {
+      const total = (await remainingAddons(product, drafts)).length;
+      const offset = context.addonOffset ?? 0;
+      context.addonOffset =
+        incoming === "more_addons" ? offset + addonsPageSize(total, offset) : previousAddonsOffset(total, offset);
+      await persist("awaiting_ai_addon", context);
+      if (await askAddons(input.from, label, drafts, context.addonOffset, incoming === "prev_addons")) await nextItem();
+      return;
+    }
+    if (
+      incoming === "done_addons" ||
+      incoming === "skip_addon" ||
+      ["nao", "não", "pular", "pronto", "sem adicional", "nenhum"].includes(normalized)
+    ) {
+      await nextItem();
+      return;
+    }
+
+    const remaining = await remainingAddons(product, drafts);
+    const typed = !hasReply && normalized.length >= 3 ? normalized : null;
+    const addon = incoming.startsWith("addon:")
+      ? remaining.find(entry => entry.id === incoming.slice("addon:".length))
+      : typed
+        ? remaining.find(entry => normalize(entry.name) === typed) ??
+          remaining.find(entry => normalize(entry.name).includes(typed))
+        : undefined;
+    if (!addon) {
+      await persist("awaiting_ai_addon", context);
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+    item.extras = addDraftAddon(drafts, addon);
+    refreshCartItem(item, product);
+    context.addonOffset = 0;
+    if (!(await remainingAddons(product, item.extras)).length) {
+      await nextItem();
+      return;
+    }
+    await persist("awaiting_ai_addon", context);
+    await askAddons(input.from, { ...product, name: item.name }, item.extras, 0, false);
+    return;
+  }
+
+  if (state === "awaiting_ai_note") {
+    const index = context.aiStepIndex ?? 0;
+    const item = context.cart[index];
+    if (item) {
+      const skip =
+        isSkipNote(incoming, normalized) || ["nao", "não", "sem", "nada", "nenhum", "sem obs"].includes(command);
+      const notes = skip ? null : clipNote(input.text);
+      if (!skip && !notes) {
+        await askItemNote(input.from, item);
+        return;
+      }
+      item.notes = notes;
+    }
+    context.aiExtraPhase = "note";
+    context.aiStepIndex = index + 1;
+    await nextAiExtraStep(context);
+    return;
+  }
+
   if (state === "awaiting_fee_confirm") {
     if (isFeeAccept(incoming, normalized)) {
       await goToPayment(context);
@@ -2950,6 +3140,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       context.neighborhoodName = undefined;
       context.neighborhoodPage = null;
       context.addressText = undefined;
+      context.addressDraft = undefined;
       if (context.aiHints) context.aiHints = { ...context.aiHints, fulfillment: "pickup", address: undefined };
       await goToPayment(context);
       return;
@@ -3766,6 +3957,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         context.neighborhoodName = undefined;
         context.neighborhoodPage = null;
         context.addressText = undefined;
+        context.addressDraft = undefined;
         await persist("awaiting_address", context);
         await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
         return;
@@ -3798,6 +3990,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       context.neighborhoodName = undefined;
       context.neighborhoodPage = null;
       context.addressText = undefined;
+      context.addressDraft = undefined;
       const knownAddress = isV2(store) ? context.aiHints?.address : undefined;
       if (knownAddress) {
         await applyTypedAddress(context, knownAddress);
@@ -3840,6 +4033,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       context.neighborhoodName = undefined;
       context.neighborhoodPage = null;
       context.addressText = undefined;
+      context.addressDraft = undefined;
       await persist("awaiting_payment", context);
       await askPayment(input.from);
       return;
@@ -3877,7 +4071,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
 
     const address = resolveTypedAddress(input);
-    if (!address || address.trim().length < 5) {
+    if (!address || address.trim().length < (context.addressDraft ? 3 : 5)) {
       await sendText(
         input.from,
         "Digite o *endereço completo* (rua, número, bairro e referência). Não envie localização do celular."

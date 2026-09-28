@@ -35,7 +35,11 @@ export type ConversationState =
   /** v2: cliente digita o pedido em texto livre (interpretado por IA). */
   | "awaiting_ai_order"
   /** v2: confirmar a taxa do bairro (Aceitar / Quero retirar). */
-  | "awaiting_fee_confirm";
+  | "awaiting_fee_confirm"
+  /** v2: adicionais de um item do carrinho montado pela IA. */
+  | "awaiting_ai_addon"
+  /** v2: observação de um item do carrinho montado pela IA. */
+  | "awaiting_ai_note";
 
 /** Estados em que a conversa volta a aparecer em Ativas (pedido em montagem). */
 export const ORDER_FLOW_STATES = new Set<ConversationState>([
@@ -58,6 +62,8 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_contact_name",
   "awaiting_ai_order",
   "awaiting_fee_confirm",
+  "awaiting_ai_addon",
+  "awaiting_ai_note",
 ]);
 
 export function isOrderFlowState(state: ConversationState) {
@@ -161,6 +167,13 @@ export type ConversationContext = {
   aiTurns?: { role: "user" | "assistant"; content: string }[];
   /** v2: entrega/endereço/pagamento que o cliente já informou junto com o pedido. */
   aiHints?: { fulfillment?: "delivery" | "pickup"; address?: string; payment?: string };
+  /** v2: etapa de adicionais/observação em andamento e o item do carrinho da vez. */
+  aiExtraPhase?: "addon" | "note";
+  aiStepIndex?: number;
+  /** v2: adicionais/observação já perguntados neste pedido (correções não perguntam de novo). */
+  aiExtrasAsked?: boolean;
+  /** Endereço sem bairro reconhecido: guardado para juntar com o bairro digitado depois. */
+  addressDraft?: string;
 };
 
 export type DeliveryNeighborhood = {
