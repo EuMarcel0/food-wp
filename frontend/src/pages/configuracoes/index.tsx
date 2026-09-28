@@ -18,6 +18,7 @@ import { PrinterSettingsCard } from "./PrinterSettingsCard";
 import { PrepSettingsCard } from "./PrepSettingsCard";
 import { BatchCategorySettingsCard } from "./BatchCategorySettingsCard";
 import { BotFlowSettingsCard } from "./BotFlowSettingsCard";
+import { OpenAiUsageCard } from "./OpenAiUsageCard";
 
 function formatIdleLabel(minutes: number) {
   if (!Number.isFinite(minutes) || minutes < 1) return "—";
@@ -72,6 +73,8 @@ export function SettingsPage() {
         <BrandingCard store={store} whatsappReady={health?.whatsapp} />
 
         <BotFlowSettingsCard store={store} />
+
+        <OpenAiUsageCard />
 
         <PrepSettingsCard store={store} />
 

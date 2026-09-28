@@ -1372,10 +1372,9 @@ async function askFeeConfirm(to: string, store: Store, context: ConversationCont
   ]
     .filter(Boolean)
     .join("\n");
-  const buttons = [{ id: "fee_accept", title: "Aceitar" }];
+  const buttons = [{ id: "fee_accept", title: "Sim" }];
   if (store.pickupEnabled) buttons.push({ id: "switch_pickup", title: "Quero retirar" });
-  buttons.push({ id: "ai_fix", title: "Corrigir pedido" });
-  await sendButtons(to, body, buttons.slice(0, 3));
+  await sendButtons(to, body, buttons);
 }
 
 function isFeeAccept(incoming: string, normalized: string) {

@@ -50,6 +50,7 @@ import {
 import { parseBusinessHours } from "../lib/businessHours.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { isOpenAiConfigured } from "../lib/openai.js";
+import { getOpenAiUsageReport } from "../lib/openaiUsage.js";
 import { updateWhatsAppBusinessProfile } from "../lib/whatsapp.js";
 import type { PizzaKind, ProductOptionGroup, StorePatch } from "../types.js";
 
@@ -120,6 +121,14 @@ function categoryPayload(body: Record<string, unknown>) {
 
 catalogRouter.get("/store", async (_req, res) => {
   res.json(await getStore());
+});
+
+catalogRouter.get("/openai/usage", async (req, res) => {
+  try {
+    res.json(await getOpenAiUsageReport(req.query.refresh === "1"));
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Falha ao consultar a OpenAI." });
+  }
 });
 
 catalogRouter.patch("/store", async (req, res) => {

@@ -289,6 +289,20 @@ export type Health = {
   whatsapp: boolean;
 };
 
+export type OpenAiUsageReport = {
+  configured: boolean;
+  projectId: string | null;
+  from: string;
+  to: string;
+  currency: string;
+  totalCost: number;
+  todayCost: number;
+  totals: { requests: number; inputTokens: number; outputTokens: number };
+  days: { date: string; cost: number; requests: number; inputTokens: number; outputTokens: number }[];
+  models: { model: string; requests: number; inputTokens: number; outputTokens: number }[];
+  fetchedAt: string;
+};
+
 export type OrderStats = {
   /** Dia filtrado (YYYY-MM-DD). */
   day?: string;

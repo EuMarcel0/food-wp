@@ -14,6 +14,7 @@ import type {
   Order,
   OrderLog,
   OrderStats,
+  OpenAiUsageReport,
   OrderStatus,
   Product,
   Size,
@@ -97,6 +98,8 @@ async function readError(response: Response) {
 export const api = {
   health: () => request<Health>("/health", { silent: true }),
   store: () => request<Store>("/api/store", { silent: true }),
+  openAiUsage: (refresh = false) =>
+    request<OpenAiUsageReport>(`/api/openai/usage${refresh ? "?refresh=1" : ""}`, { silent: true }),
   updateStore: (payload: {
     idleTimeoutMinutes?: number;
     deliveryFeeCents?: number;
