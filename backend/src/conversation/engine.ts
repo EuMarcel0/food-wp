@@ -2071,20 +2071,22 @@ function applyBatchSizeToProduct(product: Product, context: ConversationContext)
 }
 
 /** Itens por página na lista de adicionais (rodapé Pular/Pronto sempre reservado). */
-function addonsPageSize(total: number, offset: number) {
-  const navReserve = 1 + (offset > 0 ? 1 : 0);
-  const tentativeMore = offset + (WA_LIST_MAX_ROWS - navReserve - 1) < total ? 1 : 0;
-  return Math.max(1, WA_LIST_MAX_ROWS - navReserve - tentativeMore);
+/** `extraRows`: linhas fixas além do rodapé (ex.: "recomeçar" no lote). */
+function addonsPageSize(total: number, offset: number, extraRows = 0) {
+  const room = WA_LIST_MAX_ROWS - 1 - (offset > 0 ? 1 : 0) - extraRows;
+  // Tudo cabe: sem "Ver mais".
+  if (total - offset <= room) return Math.max(1, room);
+  return Math.max(1, room - 1);
 }
 
 /** Offset da página anterior de adicionais (mesmo critério do "Ver mais"). */
-function previousAddonsOffset(total: number, offset: number) {
+function previousAddonsOffset(total: number, offset: number, extraRows = 0) {
   if (offset <= 0) return 0;
   let cursor = 0;
   let previous = 0;
   while (cursor < offset) {
     previous = cursor;
-    cursor += addonsPageSize(total, cursor);
+    cursor += addonsPageSize(total, cursor, extraRows);
     if (cursor <= previous) break;
   }
   return previous;
@@ -2141,7 +2143,7 @@ async function askAddons(
         description: "Seguir sem mais adicionais"
       };
 
-  const pageSize = Math.max(1, addonsPageSize(remaining.length, offset) - (batchAbort ? 1 : 0));
+  const pageSize = addonsPageSize(remaining.length, offset, batchAbort ? 1 : 0);
   const page = remaining.slice(offset, offset + pageSize);
   const hasMore = offset + page.length < remaining.length;
 
@@ -3569,7 +3571,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     if (incoming === "more_addons" || incoming === "more_options") {
       const total = (await remainingAddons(product, drafts)).length;
       const offset = context.addonOffset ?? 0;
-      context.addonOffset = offset + addonsPageSize(total, offset);
+      context.addonOffset = offset + addonsPageSize(total, offset, isBatchActive(context) ? 1 : 0);
       await persist("awaiting_addon", context);
       const finished = await askAddons(input.from, product, drafts, context.addonOffset, false, isBatchActive(context));
       if (finished) await finishAddons();
@@ -3578,7 +3580,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
     if (incoming === "prev_addons" || incoming === "prev_options") {
       const total = (await remainingAddons(product, drafts)).length;
-      context.addonOffset = previousAddonsOffset(total, context.addonOffset ?? 0);
+      context.addonOffset = previousAddonsOffset(total, context.addonOffset ?? 0, isBatchActive(context) ? 1 : 0);
       await persist("awaiting_addon", context);
       const finished = await askAddons(input.from, product, drafts, context.addonOffset, true, isBatchActive(context));
       if (finished) await finishAddons();
