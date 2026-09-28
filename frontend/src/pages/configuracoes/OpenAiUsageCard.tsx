@@ -14,7 +14,7 @@ function formatMoney(value: number, currency: string) {
     style: "currency",
     currency: currency.toUpperCase(),
     minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
+    maximumFractionDigits: digits
   }).format(value);
 }
 
@@ -31,10 +31,10 @@ function shortDay(date: string) {
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="min-w-[130px] flex-1 rounded-xl border border-food-border bg-food-chip px-4 py-3">
-      <p className="m-0 text-xs font-medium uppercase tracking-wide text-food-muted">{label}</p>
-      <p className="m-0 mt-1 text-xl font-extrabold tabular-nums tracking-tight text-food-text">{value}</p>
-      {hint ? <p className="m-0 mt-0.5 text-xs text-food-muted">{hint}</p> : null}
+    <div className='min-w-[130px] flex-1 rounded-xl border border-food-border bg-food-chip px-4 py-3'>
+      <p className='m-0 text-xs font-medium uppercase tracking-wide text-food-muted'>{label}</p>
+      <p className='m-0 mt-1 text-xl font-extrabold tabular-nums tracking-tight text-food-text'>{value}</p>
+      {hint ? <p className='m-0 mt-0.5 text-xs text-food-muted'>{hint}</p> : null}
     </div>
   );
 }
@@ -46,7 +46,7 @@ export function OpenAiUsageCard() {
     queryKey: queryKeys.openAiUsage,
     queryFn: () => api.openAiUsage(),
     staleTime: 5 * 60 * 1000,
-    retry: false,
+    retry: false
   });
 
   const refresh = async () => {
@@ -61,16 +61,16 @@ export function OpenAiUsageCard() {
   };
 
   const report = usageQuery.data;
-  const maxCost = Math.max(0, ...(report?.days ?? []).map((day) => day.cost));
-  const maxRequests = Math.max(0, ...(report?.days ?? []).map((day) => day.requests));
+  const maxCost = Math.max(0, ...(report?.days ?? []).map(day => day.cost));
+  const maxRequests = Math.max(0, ...(report?.days ?? []).map(day => day.requests));
 
   return (
     <Card
-      className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-3xl"
-      title="Consumo da OpenAI (bot v2)"
+      className='overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-3xl'
+      title='Consumo da OpenAI (bot v2)'
       extra={
         report?.configured ? (
-          <Button size="small" icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
+          <Button size='small' icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
             Atualizar
           </Button>
         ) : null
@@ -80,37 +80,37 @@ export function OpenAiUsageCard() {
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : usageQuery.isError ? (
         <Alert
-          type="error"
+          type='error'
           showIcon
-          message="Não foi possível consultar a OpenAI."
+          message='Não foi possível consultar a OpenAI.'
           description={usageQuery.error instanceof Error ? usageQuery.error.message : undefined}
         />
       ) : !report?.configured ? (
         <Alert
-          type="info"
+          type='info'
           showIcon
-          message="Configure a Admin Key da OpenAI para ver o consumo aqui."
+          message='Configure a Admin Key da OpenAI para ver o consumo aqui.'
           description={
             <span>
-              Crie uma chave em <b>platform.openai.com → Settings → Organization → Admin keys</b> e
-              cadastre no Railway como <code>OPENAI_ADMIN_KEY</code>. Opcional: <code>OPENAI_PROJECT_ID</code>{" "}
-              (proj_...) para mostrar só o projeto do bot.
+              Crie uma chave em <b>platform.openai.com → Settings → Organization → Admin keys</b> e cadastre no Railway
+              como <code>OPENAI_ADMIN_KEY</code>. Opcional: <code>OPENAI_PROJECT_ID</code> (proj_...) para mostrar só o
+              projeto do bot.
             </span>
           }
         />
       ) : (
         <>
-          <p className="mb-4 text-sm leading-normal text-food-muted">
+          <p className='mb-4 text-sm leading-normal text-food-muted'>
             Mês atual ({shortDay(report.from)} a {shortDay(report.to)}, horário UTC, igual ao painel da OpenAI)
-            {report.projectId ? " · só o projeto do bot" : " · toda a organização"}. Os valores podem levar
-            alguns minutos para aparecer.
+            {report.projectId ? " · só o projeto do bot" : " · toda a organização"}. Os valores podem levar alguns
+            minutos para aparecer.
           </p>
 
-          <div className="mb-5 flex flex-wrap gap-3">
-            <Stat label="Gasto no mês" value={formatMoney(report.totalCost, report.currency)} />
-            <Stat label="Hoje" value={formatMoney(report.todayCost, report.currency)} />
+          <div className='mb-5 flex flex-wrap gap-3'>
+            <Stat label='Gasto no mês' value={formatMoney(report.totalCost, report.currency)} />
+            <Stat label='Hoje' value={formatMoney(report.todayCost, report.currency)} />
             <Stat
-              label="Requisições"
+              label='Requisições'
               value={formatCount(report.totals.requests)}
               hint={
                 report.totals.requests
@@ -119,7 +119,7 @@ export function OpenAiUsageCard() {
               }
             />
             <Stat
-              label="Tokens"
+              label='Tokens'
               value={formatCount(report.totals.inputTokens + report.totals.outputTokens)}
               hint={`${formatCount(report.totals.inputTokens)} entrada · ${formatCount(report.totals.outputTokens)} saída`}
             />
@@ -127,21 +127,24 @@ export function OpenAiUsageCard() {
 
           {report.days.length ? (
             <>
-              <h3 className="m-0 mb-2 text-sm font-bold text-food-text">Por dia</h3>
-              <div className="mb-5 flex h-28 items-end gap-1 overflow-x-auto rounded-xl border border-food-border px-3 pb-2 pt-3">
-                {report.days.map((day) => {
+              <h3 className='m-0 mb-2 text-sm font-bold text-food-text'>Por dia</h3>
+              <div className='mb-5 flex h-28 items-end gap-1 overflow-x-auto rounded-xl border border-food-border px-3 pb-2 pt-3'>
+                {report.days.map(day => {
                   const ratio = maxCost > 0 ? day.cost / maxCost : maxRequests > 0 ? day.requests / maxRequests : 0;
                   return (
                     <Tooltip
                       key={day.date}
                       title={`${shortDay(day.date)} · ${formatMoney(day.cost, report.currency)} · ${day.requests} req.`}
                     >
-                      <div className="flex h-full min-w-[14px] flex-1 flex-col items-center justify-end gap-1">
+                      <div className='flex h-full min-w-[14px] flex-1 flex-col items-center justify-end gap-1'>
                         <div
-                          className="w-full rounded-t bg-food-accent"
-                          style={{ height: `${Math.max(ratio * 100, day.requests || day.cost ? 4 : 1)}%`, opacity: day.requests || day.cost ? 1 : 0.25 }}
+                          className='w-full rounded-t bg-food-accent'
+                          style={{
+                            height: `${Math.max(ratio * 100, day.requests || day.cost ? 4 : 1)}%`,
+                            opacity: day.requests || day.cost ? 1 : 0.25
+                          }}
                         />
-                        <span className="text-[10px] tabular-nums text-food-muted">{day.date.slice(8)}</span>
+                        <span className='text-[10px] tabular-nums text-food-muted'>{day.date.slice(8)}</span>
                       </div>
                     </Tooltip>
                   );
@@ -152,42 +155,44 @@ export function OpenAiUsageCard() {
 
           {report.models.length ? (
             <>
-              <h3 className="m-0 mb-2 text-sm font-bold text-food-text">Por modelo</h3>
-              <div className="mb-5 overflow-hidden rounded-xl border border-food-border">
+              <h3 className='m-0 mb-2 text-sm font-bold text-food-text'>Por modelo</h3>
+              <div className='mb-5 overflow-hidden rounded-xl border border-food-border'>
                 {report.models.map((model, index) => (
                   <div
                     key={model.model}
                     className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm ${index ? "border-t border-food-border" : ""}`}
                   >
-                    <span className="font-semibold text-food-text">{model.model}</span>
-                    <span className="tabular-nums text-food-muted">
-                      {model.requests.toLocaleString("pt-BR")} req. · {formatCount(model.inputTokens + model.outputTokens)} tokens
+                    <span className='font-semibold text-food-text'>{model.model}</span>
+                    <span className='tabular-nums text-food-muted'>
+                      {model.requests.toLocaleString("pt-BR")} req. ·{" "}
+                      {formatCount(model.inputTokens + model.outputTokens)} tokens
                     </span>
                   </div>
                 ))}
               </div>
             </>
           ) : (
-            <p className="mb-5 text-sm text-food-muted">Nenhuma chamada registrada neste mês ainda.</p>
+            <p className='mb-5 text-sm text-food-muted'>Nenhuma chamada registrada neste mês ainda.</p>
           )}
 
           <Alert
-            type="info"
+            type='info'
             showIcon
-            className="mb-3"
-            message="Saldo de créditos e recarga não são disponibilizados pela API da OpenAI."
-            description="Créditos pré-pagos não renovam (vencem 1 ano após a compra). Confira o saldo e a recarga automática no painel de Billing."
+            className='mb-3'
+            message='Saldo de créditos e recarga não são disponibilizados pela API da OpenAI.'
+            description='Créditos pré-pagos não renovam (vencem 1 ano após a compra). Confira o saldo e a recarga automática no painel de Billing.'
           />
-          <div className="flex flex-wrap gap-2">
-            <Button icon={<ExportOutlined />} href={BILLING_URL} target="_blank" rel="noreferrer">
+          <div className='flex flex-wrap gap-2 mt-3'>
+            <Button icon={<ExportOutlined />} href={BILLING_URL} target='_blank' rel='noreferrer'>
               Saldo e recarga
             </Button>
-            <Button icon={<ExportOutlined />} href={USAGE_URL} target="_blank" rel="noreferrer">
+            <Button icon={<ExportOutlined />} href={USAGE_URL} target='_blank' rel='noreferrer'>
               Painel de uso
             </Button>
           </div>
-          <p className="m-0 mt-3 text-xs text-food-muted">
-            Atualizado às {new Date(report.fetchedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          <p className='m-0 mt-3 text-xs text-food-muted'>
+            Atualizado às{" "}
+            {new Date(report.fetchedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </p>
         </>
       )}
