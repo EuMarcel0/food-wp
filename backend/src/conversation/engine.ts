@@ -1026,19 +1026,29 @@ async function resumeCurrentStep(
     case "awaiting_fee_confirm":
       await askFeeConfirm(to, store, context);
       return;
-    case "awaiting_ai_addon":
-    case "awaiting_ai_note": {
+    case "awaiting_ai_note":
+      await sendHintIfNeeded();
+      await askAiOrderNote(to);
+      return;
+    case "awaiting_ai_addon": {
+      const phase = context.aiExtraPhase ?? "addon_ask";
+      if (phase === "addon_ask" || phase === "addon_more") {
+        await sendHintIfNeeded();
+        await askAiAddonQuestion(to, context, phase === "addon_more");
+        return;
+      }
+      if (phase === "addon_pick") {
+        await sendHintIfNeeded();
+        await askAiAddonItemPick(to, context);
+        return;
+      }
       const item = context.cart[context.aiStepIndex ?? 0];
       const product = item ? await getProduct(item.productId) : null;
       if (!item || !product) {
         await showAiCartOptions(to, store, context, hint || "✅ Continue seu pedido");
         return;
       }
-      if (state === "awaiting_ai_note") {
-        await askItemNote(to, item);
-        return;
-      }
-      await askAddons(to, { ...product, name: item.name }, item.extras, context.addonOffset ?? 0, false);
+      await askAddons(to, { ...product, name: item.name }, item.extras, context.addonOffset ?? 0, true);
       return;
     }
     case "awaiting_neighborhood":
@@ -1131,6 +1141,56 @@ async function askItemNote(to: string, item: CartItem) {
     ["📝 Observação deste item?", ...lines, "*Digite* por ex.: sem cebola. Ou pode *Pular*."]
       .filter(Boolean)
       .join("\n"),
+    [{ id: "skip_note", title: "Pular" }]
+  );
+}
+
+/** v2: itens do carrinho da IA que aceitam adicionais. */
+async function aiAddonItems(context: ConversationContext) {
+  const found: { index: number; item: CartItem; product: Product }[] = [];
+  for (const [index, item] of context.cart.entries()) {
+    const product = await getProduct(item.productId);
+    if (product && (await productHasAddons(product))) found.push({ index, item, product });
+  }
+  return found;
+}
+
+/** v2: pergunta única de adicionais (ou "em outro item?" depois de escolher um). */
+async function askAiAddonQuestion(to: string, context: ConversationContext, more = false) {
+  const eligible = await aiAddonItems(context);
+  const body = more
+    ? "🧀 Quer colocar adicional em *outro item*?"
+    : eligible.length === 1
+      ? `🧀 Deseja colocar algum *adicional* na *${eligible[0].item.name}*?`
+      : "🧀 Deseja colocar algum *adicional* no pedido?";
+  await sendButtons(to, body, [
+    { id: "choose_addon", title: "Sim" },
+    { id: "skip_addon", title: "Não" }
+  ]);
+}
+
+async function askAiAddonItemPick(to: string, context: ConversationContext) {
+  const eligible = await aiAddonItems(context);
+  await sendList(to, "Em qual item você quer o adicional?", "Itens", [
+    {
+      title: "Itens do pedido",
+      rows: [
+        ...eligible.slice(0, 9).map(({ index, item }) => ({
+          id: `aiitem:${index}`,
+          title: `${index + 1}. ${item.name}`,
+          description: `${item.quantity}x ${item.name}`
+        })),
+        { id: "skip_addon", title: "Nenhum", description: "Seguir sem adicional" }
+      ]
+    }
+  ]);
+}
+
+/** v2: observação única para o pedido inteiro. */
+async function askAiOrderNote(to: string) {
+  await sendButtons(
+    to,
+    "📝 Alguma *observação* para o pedido?\n*Digite* por ex.: calabresa sem cebola. Ou toque em *Pular*.",
     [{ id: "skip_note", title: "Pular" }]
   );
 }
@@ -2683,8 +2743,8 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       content: [outcome.answer, `Pedido montado:\n${renderCart(ctx)}`].filter(Boolean).join("\n")
     });
     const intro = [outcome.answer, "✅ Entendi seu pedido!", notFoundLine].filter(Boolean).join("\n");
-    ctx.aiExtraPhase = "addon";
-    ctx.aiStepIndex = 0;
+    ctx.aiExtraPhase = "addon_ask";
+    ctx.aiStepIndex = undefined;
     await nextAiExtraStep(ctx, intro);
   }
 
@@ -2695,8 +2755,8 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   }
 
   /**
-   * v2: depois do carrinho da IA, pergunta adicionais (itens que aceitam) e observação
-   * (itens com observação ligada), um item por vez; no fim segue para Entrega/Retirada.
+   * v2: depois do carrinho da IA, pergunta adicionais uma única vez (e em qual item, se houver vários)
+   * e a observação uma única vez para o pedido inteiro; no fim segue para Entrega/Retirada.
    */
   async function nextAiExtraStep(ctx: ConversationContext, intro?: string) {
     const showCart = async () => {
@@ -2706,36 +2766,28 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     };
 
     if (!ctx.aiExtrasAsked) {
-      let index = ctx.aiStepIndex ?? 0;
-      if ((ctx.aiExtraPhase ?? "addon") === "addon") {
-        for (; index < ctx.cart.length; index += 1) {
-          const item = ctx.cart[index];
-          if (addonStepDone(item.extras)) continue;
-          const product = await getProduct(item.productId);
-          if (!product || !(await productHasAddons(product))) continue;
-          ctx.aiExtraPhase = "addon";
-          ctx.aiStepIndex = index;
+      const asked = intro == null;
+      if ((ctx.aiExtraPhase ?? "addon_ask") === "addon_ask") {
+        if ((await aiAddonItems(ctx)).length) {
+          ctx.aiExtraPhase = "addon_ask";
+          ctx.aiStepIndex = undefined;
           ctx.addonOffset = 0;
           await showCart();
           await persist("awaiting_ai_addon", ctx);
-          await askAddons(input.from, { ...product, name: item.name }, item.extras, 0, false);
+          await askAiAddonQuestion(input.from, ctx);
           return;
         }
-        index = 0;
-      }
-      for (; index < ctx.cart.length; index += 1) {
-        const item = ctx.cart[index];
-        if (item.notes) continue;
-        const product = await getProduct(item.productId);
-        if (!product?.notesEnabled) continue;
         ctx.aiExtraPhase = "note";
-        ctx.aiStepIndex = index;
-        await showCart();
-        await persist("awaiting_ai_note", ctx);
-        await askItemNote(input.from, item);
-        return;
       }
-      const asked = ctx.aiExtraPhase != null && intro == null;
+      if (ctx.aiExtraPhase === "note") {
+        const products = await Promise.all(ctx.cart.map(item => getProduct(item.productId)));
+        if (products.some(product => product?.notesEnabled)) {
+          await showCart();
+          await persist("awaiting_ai_note", ctx);
+          await askAiOrderNote(input.from);
+          return;
+        }
+      }
       ctx.aiExtrasAsked = true;
       ctx.aiExtraPhase = undefined;
       ctx.aiStepIndex = undefined;
@@ -3164,24 +3216,95 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   }
 
   if (state === "awaiting_ai_addon") {
+    const phase = context.aiExtraPhase ?? "addon_ask";
+    const eligible = await aiAddonItems(context);
+    const goToNote = async () => {
+      context.aiExtraPhase = "note";
+      context.aiStepIndex = undefined;
+      context.addonOffset = 0;
+      await nextAiExtraStep(context);
+    };
+    const openItem = async (index: number) => {
+      const target = eligible.find(entry => entry.index === index);
+      if (!target) {
+        await goToNote();
+        return;
+      }
+      context.aiExtraPhase = "addon";
+      context.aiStepIndex = index;
+      context.addonOffset = 0;
+      await persist("awaiting_ai_addon", context);
+      const label = { ...target.product, name: target.item.name };
+      if (await askAddons(input.from, label, target.item.extras, 0, true)) await goToNote();
+    };
+
+    if (!eligible.length) {
+      await goToNote();
+      return;
+    }
+
+    if (phase === "addon_ask" || phase === "addon_more") {
+      const plain = normalize(input.text)
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const yes =
+        incoming === "choose_addon" ||
+        (!hasReply && /^(s|sim|ss|quero|quero sim|pode|pode ser|adicional|adicionais|coloca|bota)$/.test(plain));
+      if (incoming === "skip_addon" || (!hasReply && isAddonsDoneText(input.text))) {
+        await goToNote();
+        return;
+      }
+      if (!yes) {
+        await persist("awaiting_ai_addon", context);
+        await resumeCurrentStep(input.from, store, state, context);
+        return;
+      }
+      if (eligible.length === 1) {
+        await openItem(eligible[0].index);
+        return;
+      }
+      context.aiExtraPhase = "addon_pick";
+      await persist("awaiting_ai_addon", context);
+      await askAiAddonItemPick(input.from, context);
+      return;
+    }
+
+    if (phase === "addon_pick") {
+      if (incoming.startsWith("aiitem:")) {
+        await openItem(Number(incoming.slice("aiitem:".length)));
+        return;
+      }
+      if (incoming === "skip_addon" || (!hasReply && isAddonsDoneText(input.text))) {
+        await goToNote();
+        return;
+      }
+      await persist("awaiting_ai_addon", context);
+      await askAiAddonItemPick(input.from, context);
+      return;
+    }
+
     const index = context.aiStepIndex ?? 0;
     const item = context.cart[index];
     const product = item ? await getProduct(item.productId) : null;
     if (!item || !product) {
-      context.aiExtraPhase = "addon";
-      context.aiStepIndex = index + 1;
-      await nextAiExtraStep(context);
+      await goToNote();
       return;
     }
     const label = { ...product, name: item.name };
     const drafts = item.extras ?? [];
+    // Terminou este item: com vários itens, oferece adicional em outro; senão vai para a observação.
     const nextItem = async () => {
-      if (!draftAddon(item.extras)?.options.length) item.extras = skipDraftAddon(item.extras ?? []);
       refreshCartItem(item, product);
-      context.aiExtraPhase = "addon";
-      context.aiStepIndex = index + 1;
       context.addonOffset = 0;
-      await nextAiExtraStep(context);
+      context.aiStepIndex = undefined;
+      if (eligible.length > 1) {
+        context.aiExtraPhase = "addon_more";
+        await persist("awaiting_ai_addon", context);
+        await askAiAddonQuestion(input.from, context, true);
+        return;
+      }
+      await goToNote();
     };
 
     if (incoming === "choose_addon" || normalized === "sim" || normalized === "adicionais") {
@@ -3230,20 +3353,16 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   }
 
   if (state === "awaiting_ai_note") {
-    const index = context.aiStepIndex ?? 0;
-    const item = context.cart[index];
-    if (item) {
-      const skip =
-        isSkipNote(incoming, normalized) || ["nao", "não", "sem", "nada", "nenhum", "sem obs"].includes(command);
-      const notes = skip ? null : clipNote(input.text);
-      if (!skip && !notes) {
-        await askItemNote(input.from, item);
-        return;
-      }
-      item.notes = notes;
+    const skip =
+      isSkipNote(incoming, normalized) || ["nao", "não", "sem", "nada", "nenhum", "sem obs"].includes(command);
+    const notes = skip ? null : clipNote(input.text);
+    if (!skip && !notes) {
+      await askAiOrderNote(input.from);
+      return;
     }
-    context.aiExtraPhase = "note";
-    context.aiStepIndex = index + 1;
+    context.orderNotes = notes;
+    context.aiExtraPhase = "done";
+    context.aiStepIndex = undefined;
     await nextAiExtraStep(context);
     return;
   }

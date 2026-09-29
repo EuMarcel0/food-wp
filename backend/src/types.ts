@@ -170,7 +170,11 @@ export type ConversationContext = {
   /** v2: entrega/endereço/pagamento que o cliente já informou junto com o pedido. */
   aiHints?: { fulfillment?: "delivery" | "pickup"; address?: string; payment?: string };
   /** v2: etapa de adicionais/observação em andamento e o item do carrinho da vez. */
-  aiExtraPhase?: "addon" | "note";
+  /**
+   * v2, após o carrinho da IA: addon_ask = "algum adicional?" (uma vez) · addon_pick = em qual item ·
+   * addon = lista do item aiStepIndex · addon_more = "adicional em outro item?" · note = observação do pedido · done.
+   */
+  aiExtraPhase?: "addon_ask" | "addon_pick" | "addon" | "addon_more" | "note" | "done";
   aiStepIndex?: number;
   /** v2: adicionais/observação já perguntados neste pedido (correções não perguntam de novo). */
   aiExtrasAsked?: boolean;
