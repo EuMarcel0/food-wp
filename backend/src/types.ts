@@ -37,6 +37,8 @@ export type ConversationState =
   | "awaiting_ai_order"
   /** v2: confirmar a taxa do bairro (Aceitar / Quero retirar). */
   | "awaiting_fee_confirm"
+  /** v2: "Deseja uma bebida?" (texto interpretado por IA) quando o pedido veio sem bebida. */
+  | "awaiting_ai_drink"
   /** v2: adicionais de um item do carrinho montado pela IA. */
   | "awaiting_ai_addon"
   /** v2: observação de um item do carrinho montado pela IA. */
@@ -64,6 +66,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_contact_name",
   "awaiting_ai_order",
   "awaiting_fee_confirm",
+  "awaiting_ai_drink",
   "awaiting_ai_addon",
   "awaiting_ai_note",
 ]);
@@ -178,6 +181,8 @@ export type ConversationContext = {
   aiStepIndex?: number;
   /** v2: adicionais/observação já perguntados neste pedido (correções não perguntam de novo). */
   aiExtrasAsked?: boolean;
+  /** v2: "Deseja uma bebida?" já perguntado (ou o pedido já veio com bebida). */
+  aiDrinkAsked?: boolean;
   /** Endereço sem bairro reconhecido: guardado para juntar com o bairro digitado depois. */
   addressDraft?: string;
 };

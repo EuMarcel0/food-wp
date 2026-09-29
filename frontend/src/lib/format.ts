@@ -139,6 +139,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_new_order: "Novo pedido?",
   awaiting_ai_order: "Digitando pedido",
   awaiting_fee_confirm: "Confirmando taxa",
+  awaiting_ai_drink: "Escolhendo bebida",
   awaiting_ai_addon: "Escolhendo adicionais",
   awaiting_ai_note: "Observação do item",
 };

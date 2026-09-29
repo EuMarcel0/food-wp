@@ -71,15 +71,17 @@ function isPizzaFlavor(product: Product) {
   return Boolean(product.customizable && activeGroups(product).some(group => isSizeGroup(group)));
 }
 
-async function buildCatalog(): Promise<Catalog> {
+/** `onlyProducts`: catálogo reduzido a esses produtos (sem pizzas, adicionais e pagamentos). */
+async function buildCatalog(opts?: { onlyProducts?: (product: Product) => boolean }): Promise<Catalog> {
+  const only = opts?.onlyProducts;
   const [allProducts, allCrusts, allAddons, catalogSizes, paymentMethods] = await Promise.all([
     listProducts(),
-    listCrusts(),
-    listAddons(),
-    listSizes(),
-    listPaymentMethods().catch(() => []),
+    only ? Promise.resolve([] as Crust[]) : listCrusts(),
+    only ? Promise.resolve([] as Addon[]) : listAddons(),
+    only ? Promise.resolve([]) : listSizes(),
+    only ? Promise.resolve([]) : listPaymentMethods().catch(() => []),
   ]);
-  const products = allProducts.filter(item => item.active);
+  const products = allProducts.filter(item => item.active && (!only || only(item)));
 
   const pizzas = new Map<string, Product>();
   const others = new Map<string, Product>();
@@ -88,8 +90,8 @@ async function buildCatalog(): Promise<Catalog> {
   const addons = new Map<string, Addon>();
   const options = new Map<string, OptionRef>();
 
-  const pizzaProducts = products.filter(isPizzaFlavor);
-  const otherProducts = products.filter(item => !isPizzaFlavor(item));
+  const pizzaProducts = only ? [] : products.filter(isPizzaFlavor);
+  const otherProducts = only ? products : products.filter(item => !isPizzaFlavor(item));
 
   // Tamanhos: união por nome entre as pizzas, preferindo o cadastro global de tamanhos.
   const sizeByName = new Map<string, Omit<PizzaSize, "key">>();
@@ -517,6 +519,64 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
       payment: result.payment?.trim() || undefined,
     },
   };
+
+  if (question) return { status: "question", question, items, ...extras };
+  if (!items.length) return { status: "empty", ...extras };
+  return { status: "ok", items, ...extras };
+}
+
+function drinksSystemPrompt(catalogText: string) {
+  return [
+    "Você identifica BEBIDAS pedidas numa mensagem de WhatsApp em português, respondendo à pergunta 'Deseja uma bebida?'.",
+    "Use SOMENTE os códigos do cardápio abaixo. Nunca invente itens, códigos ou preços.",
+    "Regras:",
+    "- Cada bebida: kind=product, product=código iN, com options quando houver opções obrigatórias ditas pelo cliente. size=null, flavors=[], crust=null, addons=[].",
+    "- Pode haver várias bebidas. quantity >= 1 ('duas cocas' = quantity 2; '2x guaraná lata' = quantity 2).",
+    "- Aceite erros de digitação e nomes aproximados ('coca 2l', 'coca zero 1l', 'guarana lata', 'agua com gas', 'suco de laranja').",
+    "- Se o cliente pedir algo vago ('um refri', 'uma coca') e houver várias opções, pergunte qual em 'question' (curta, simpática, sem códigos).",
+    "- Bebidas que não existem no cardápio vão em not_found (texto curto como o cliente escreveu).",
+    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null.",
+    "",
+    "CARDÁPIO DE BEBIDAS:",
+    catalogText,
+  ].join("\n");
+}
+
+/** v2: interpreta a resposta de "Deseja uma bebida?" usando só os produtos de bebida. */
+export async function interpretDrinks(
+  text: string,
+  isDrink: (product: Product) => boolean,
+): Promise<AiOrderOutcome> {
+  let catalog: Catalog;
+  try {
+    catalog = await buildCatalog({ onlyProducts: isDrink });
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Falha ao carregar o cardápio." };
+  }
+
+  let result: AiResult;
+  try {
+    result = await chatJson<AiResult>({
+      schemaName: "bebidas",
+      schema: SCHEMA as unknown as Record<string, unknown>,
+      metadata: { flow: "v2-drinks" },
+      messages: [
+        { role: "system", content: drinksSystemPrompt(catalog.text) },
+        { role: "user", content: text.slice(0, 1200) },
+      ],
+    });
+  } catch (error) {
+    console.error("[ai-drinks] falha na OpenAI:", error instanceof Error ? error.message : error);
+    return { status: "error", message: error instanceof Error ? error.message : "Falha na IA." };
+  }
+
+  const { items, problems } = toCartItems(
+    { ...result, items: result.items.filter(item => item.kind === "product") },
+    catalog,
+  );
+  const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
+  const question = problems[0] ?? (result.question?.trim() || undefined);
+  const extras: AiOutcomeExtras = { notFound, menuRequested: false, hints: {} };
 
   if (question) return { status: "question", question, items, ...extras };
   if (!items.length) return { status: "empty", ...extras };

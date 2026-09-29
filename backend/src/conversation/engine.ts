@@ -2,7 +2,7 @@ import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
 import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
-import { appendAiTurn, interpretOrder, mergeAiHints } from "./aiOrder.js";
+import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints } from "./aiOrder.js";
 import { enqueueWaitByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
@@ -1030,6 +1030,10 @@ async function resumeCurrentStep(
       await sendHintIfNeeded();
       await askAiOrderNote(to);
       return;
+    case "awaiting_ai_drink":
+      await sendHintIfNeeded();
+      await askAiDrink(to);
+      return;
     case "awaiting_ai_addon": {
       const phase = context.aiExtraPhase ?? "addon_ask";
       if (phase === "addon_ask" || phase === "addon_more") {
@@ -1184,6 +1188,30 @@ async function askAiAddonItemPick(to: string, context: ConversationContext) {
       ]
     }
   ]);
+}
+
+/** v2: produtos ativos da categoria Bebidas (vazio = não pergunta bebida). */
+async function activeDrinkCategoryId() {
+  const drinks = await findDrinksCategory();
+  if (!drinks) return null;
+  const products = await listProducts();
+  return products.some(item => item.active && item.categoryId === drinks.id) ? drinks.id : null;
+}
+
+async function cartHasDrink(context: ConversationContext, drinksCategoryId: string) {
+  for (const item of context.cart) {
+    const product = await getProduct(item.productId);
+    if (product?.categoryId === drinksCategoryId) return true;
+  }
+  return false;
+}
+
+async function askAiDrink(to: string) {
+  await sendButtons(
+    to,
+    "🥤 *Deseja uma bebida?*\n*Digite* qual (ex.: *Coca-Cola 2L* ou *2 Guaraná lata*).\nSe não quiser, toque em *Não*.",
+    [{ id: "skip_drinks", title: "Não" }]
+  );
 }
 
 /** v2: observação única para o pedido inteiro. */
@@ -2563,7 +2591,8 @@ const AI_TEXT_STATES = new Set<ConversationState>([
   "awaiting_fulfillment",
   "cart",
   "awaiting_fee_confirm",
-  "awaiting_address"
+  "awaiting_address",
+  "awaiting_ai_drink"
 ]);
 /** Espera o cliente parar de digitar antes de chamar a IA (mensagens picadas viram uma só). */
 const AI_BURST_QUIET_MS = 3500;
@@ -2745,6 +2774,59 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     const intro = [outcome.answer, "✅ Entendi seu pedido!", notFoundLine].filter(Boolean).join("\n");
     ctx.aiExtraPhase = "addon_ask";
     ctx.aiStepIndex = undefined;
+    if (!ctx.aiDrinkAsked) {
+      const drinksCategoryId = await activeDrinkCategoryId();
+      if (drinksCategoryId && !(await cartHasDrink(ctx, drinksCategoryId))) {
+        await sendText(input.from, [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)].join("\n"));
+        await persist("awaiting_ai_drink", ctx);
+        await askAiDrink(input.from);
+        return;
+      }
+      ctx.aiDrinkAsked = true;
+    }
+    await nextAiExtraStep(ctx, intro);
+  }
+
+  /** v2: resposta de "Deseja uma bebida?" — IA acha as bebidas e soma ao carrinho. */
+  async function handleAiDrinkText(ctx: ConversationContext, text: string) {
+    const drinksCategoryId = await activeDrinkCategoryId();
+    if (!drinksCategoryId) {
+      ctx.aiDrinkAsked = true;
+      await nextAiExtraStep(ctx);
+      return;
+    }
+    const outcome = await interpretDrinks(text, product => product.categoryId === drinksCategoryId);
+
+    if (outcome.status === "error") {
+      await persist("awaiting_ai_drink", ctx);
+      await sendText(input.from, "😕 Tive um probleminha para entender agora. Pode digitar a bebida de novo?");
+      return;
+    }
+
+    const notFoundLine = outcome.notFound.length
+      ? `⚠️ Não encontrei no cardápio: *${outcome.notFound.join(", ")}*.`
+      : null;
+
+    if (outcome.status === "question") {
+      await persist("awaiting_ai_drink", ctx);
+      await sendText(input.from, [notFoundLine, outcome.question].filter(Boolean).join("\n"));
+      return;
+    }
+
+    if (outcome.status === "empty") {
+      await persist("awaiting_ai_drink", ctx);
+      await sendText(input.from, notFoundLine ?? "😕 Não encontrei essa bebida no cardápio.");
+      await askAiDrink(input.from);
+      return;
+    }
+
+    ctx.cart = [...ctx.cart, ...outcome.items];
+    ctx.aiDrinkAsked = true;
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: `Bebidas: ${text}` });
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
+    ctx.aiExtraPhase = "addon_ask";
+    ctx.aiStepIndex = undefined;
+    const intro = ["🥤 Bebida adicionada!", notFoundLine].filter(Boolean).join("\n");
     await nextAiExtraStep(ctx, intro);
   }
 
@@ -3212,6 +3294,23 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
     await handleAiOrderText(context, text);
+    return;
+  }
+
+  if (state === "awaiting_ai_drink") {
+    const text = input.text.trim();
+    if (incoming === "skip_drinks" || (!hasReply && text && (isSkipDrinks(incoming, normalized) || isAddonsDoneText(text)))) {
+      context.aiDrinkAsked = true;
+      context.aiExtraPhase = "addon_ask";
+      context.aiStepIndex = undefined;
+      await nextAiExtraStep(context);
+      return;
+    }
+    if (!text || hasReply) {
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+    await handleAiDrinkText(context, text);
     return;
   }
 
