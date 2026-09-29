@@ -566,6 +566,55 @@ export async function findLastContactName(customerId: string): Promise<string | 
   return name || null;
 }
 
+export type SavedDeliveryAddress = {
+  addressText: string;
+  neighborhoodId: string | null;
+  neighborhoodName: string | null;
+};
+
+/** Endereço do último pedido de entrega do cliente (ignora cancelados). */
+export async function findLastDeliveryAddress(customerId: string): Promise<SavedDeliveryAddress | null> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    const order = memoryStore
+      .listOrders()
+      .find(
+        (item) =>
+          item.customerId === customerId &&
+          item.fulfillment === "delivery" &&
+          item.status !== "cancelled" &&
+          item.addressText?.trim(),
+      );
+    return order?.addressText
+      ? {
+          addressText: order.addressText.trim(),
+          neighborhoodId: order.neighborhoodId ?? null,
+          neighborhoodName: order.neighborhoodName ?? null,
+        }
+      : null;
+  }
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("address_text, neighborhood_id, neighborhood_name")
+    .eq("customer_id", customerId)
+    .eq("fulfillment", "delivery")
+    .neq("status", "cancelled")
+    .not("address_text", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as Record<string, unknown>;
+  const addressText = String(row.address_text ?? "").trim();
+  if (!addressText) return null;
+  return {
+    addressText,
+    neighborhoodId: row.neighborhood_id != null ? String(row.neighborhood_id) : null,
+    neighborhoodName: row.neighborhood_name != null ? String(row.neighborhood_name) : null,
+  };
+}
+
 export async function saveStoreProfilePhoto(storeId: string, bytes: Buffer) {
   const supabase = getSupabase();
   if (!supabase) {

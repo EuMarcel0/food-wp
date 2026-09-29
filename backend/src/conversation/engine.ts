@@ -11,6 +11,7 @@ import {
   findLatestOrder,
   createOrder,
   findLastContactName,
+  findLastDeliveryAddress,
   findOrderByCode,
   getConversation,
   getProduct,
@@ -1052,6 +1053,11 @@ async function resumeCurrentStep(
       await sendHintIfNeeded();
       await askCompleteAddress(to, { pickupEnabled: store.pickupEnabled });
       return;
+    case "awaiting_saved_address":
+      await sendHintIfNeeded();
+      if (context.addressText) await askSavedAddress(to, store, context);
+      else await askCompleteAddress(to, { pickupEnabled: store.pickupEnabled });
+      return;
     case "awaiting_payment":
       await askPayment(to, withHint("Como deseja pagar?"));
       return;
@@ -1421,6 +1427,35 @@ async function askFeeConfirm(to: string, store: Store, context: ConversationCont
   if (store.pickupEnabled) buttons.push({ id: "switch_pickup", title: "Quero retirar" });
   await sendButtons(to, body, buttons);
 }
+
+const SAVED_ADDRESS_YES = "saved_address:yes";
+const SAVED_ADDRESS_NO = "saved_address:no";
+
+/** Endereço do último pedido de entrega: confirma com Sim / Outro endereço (já com taxa e total). */
+async function askSavedAddress(to: string, store: Store, context: ConversationContext) {
+  const fee = resolveDeliveryFee(store, {
+    neighborhoodId: context.neighborhoodId,
+    address: context.addressText
+  });
+  const place = fee.neighborhood?.name ?? context.neighborhoodName;
+  const total = formatBRL(orderTotalCents(store, context));
+  const body = [
+    "📍 Entregar no mesmo endereço do último pedido?",
+    `*${context.addressText}*`,
+    place
+      ? `Bairro ${place} · taxa ${formatBRL(fee.cents)} · total *${total}*`
+      : `Taxa ${formatBRL(fee.cents)} · total *${total}*`
+  ].join("\n");
+  await sendButtons(to, body, [
+    { id: SAVED_ADDRESS_YES, title: "Sim" },
+    { id: SAVED_ADDRESS_NO, title: "Outro endereço" }
+  ]);
+}
+
+const SAVED_ADDRESS_YES_WORDS =
+  /^(s|sim|ss|isso|isso mesmo|esse|esse mesmo|este|mesmo|o mesmo|mesmo endereco|pode|pode ser|pode sim|confirmo|correto|certo|ok|okay|beleza|blz|yes)$/;
+const SAVED_ADDRESS_NO_WORDS =
+  /^(n|nao|no|outro|outro endereco|outra|mudou|mudei|endereco novo|novo endereco|nao e esse|nao e mais esse)$/;
 
 function isFeeAccept(incoming: string, normalized: string) {
   return (
@@ -2732,6 +2767,33 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     await applyTypedAddress(ctx, address);
   }
 
+  /** Entrega: oferece o endereço do último pedido (Sim / Outro endereço); sem histórico, pede o endereço. */
+  async function askDeliveryAddress(ctx: ConversationContext) {
+    const saved = await findLastDeliveryAddress(customer.id);
+    const zones = store.neighborhoods ?? [];
+    let zone: DeliveryNeighborhood | undefined;
+    if (saved && zones.length) {
+      zone = zones.find(item => item.id === saved.neighborhoodId);
+      if (!zone) {
+        // Bairro renomeado/removido no painel: tenta achar de novo pelo texto do endereço.
+        const result = matchNeighborhoodQuery(saved.addressText, zones);
+        if (result.status !== "none" && result.status !== "ambiguous") zone = result.match.zone;
+      }
+    }
+    if (!saved || (zones.length && !zone)) {
+      await persist("awaiting_address", ctx);
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      return;
+    }
+    ctx.addressText = saved.addressText;
+    ctx.addressDraft = undefined;
+    ctx.neighborhoodId = zone?.id;
+    ctx.neighborhoodName = zone?.name;
+    ctx.neighborhoodPage = null;
+    await persist("awaiting_saved_address", ctx);
+    await askSavedAddress(input.from, store, ctx);
+  }
+
   /** Endereço digitado → bairro/taxa (v2 confirma a taxa; v1 segue para pagamento). */
   async function applyTypedAddress(ctx: ConversationContext, typed: string) {
     const cleaned = typed
@@ -4024,8 +4086,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         context.neighborhoodPage = null;
         context.addressText = undefined;
         context.addressDraft = undefined;
-        await persist("awaiting_address", context);
-        await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+        await askDeliveryAddress(context);
         return;
       }
       await persist("awaiting_payment", context);
@@ -4062,12 +4123,56 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         await applyTypedAddress(context, knownAddress);
         return;
       }
-      await persist("awaiting_address", context);
-      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      await askDeliveryAddress(context);
       return;
     }
 
     await goToPayment(context);
+    return;
+  }
+
+  if (state === "awaiting_saved_address") {
+    const plain = normalize(input.text)
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const useOther = () => {
+      context.addressText = undefined;
+      context.addressDraft = undefined;
+      context.neighborhoodId = undefined;
+      context.neighborhoodName = undefined;
+      context.neighborhoodPage = null;
+    };
+
+    if (incoming === SAVED_ADDRESS_YES || (!hasReply && SAVED_ADDRESS_YES_WORDS.test(plain))) {
+      if (!context.addressText) {
+        await persist("awaiting_address", context);
+        await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+        return;
+      }
+      await goToPayment(context);
+      return;
+    }
+    if (incoming === SAVED_ADDRESS_NO || (!hasReply && SAVED_ADDRESS_NO_WORDS.test(plain))) {
+      useOther();
+      await persist("awaiting_address", context);
+      await askCompleteAddress(input.from, { pickupEnabled: store.pickupEnabled });
+      return;
+    }
+    if (store.pickupEnabled && wantsSwitchToPickup(incoming, normalized)) {
+      useOther();
+      context.fulfillment = "pickup";
+      await goToPayment(context);
+      return;
+    }
+    // Digitou um endereço novo direto, sem tocar em "Outro endereço".
+    const typed = !hasReply ? resolveTypedAddress(input) : null;
+    if (typed && looksLikeFullAddress(typed)) {
+      useOther();
+      await applyTypedAddress(context, typed);
+      return;
+    }
+    await askSavedAddress(input.from, store, context);
     return;
   }
 

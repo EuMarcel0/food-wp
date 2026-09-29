@@ -26,6 +26,8 @@ export type ConversationState =
   | "awaiting_fulfillment"
   | "awaiting_neighborhood"
   | "awaiting_address"
+  /** Confirmar o endereço do último pedido de entrega (Sim / Outro endereço). */
+  | "awaiting_saved_address"
   | "awaiting_payment"
   | "awaiting_change"
   | "awaiting_contact_name"
@@ -56,6 +58,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_fulfillment",
   "awaiting_neighborhood",
   "awaiting_address",
+  "awaiting_saved_address",
   "awaiting_payment",
   "awaiting_change",
   "awaiting_contact_name",

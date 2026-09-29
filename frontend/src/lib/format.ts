@@ -131,6 +131,7 @@ const CONVERSATION_STATE_LABEL: Record<string, string> = {
   awaiting_fulfillment: "Entrega ou retirada",
   awaiting_neighborhood: "Endereço",
   awaiting_address: "Endereço",
+  awaiting_saved_address: "Confirmando endereço",
   awaiting_payment: "Pagamento",
   awaiting_change: "Troco",
   awaiting_contact_name: "Nome p/ contato",
