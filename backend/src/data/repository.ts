@@ -572,7 +572,7 @@ export type SavedDeliveryAddress = {
   neighborhoodName: string | null;
 };
 
-/** Endereço do último pedido de entrega do cliente (ignora cancelados). */
+/** Endereço do último pedido de entrega do cliente (inclui cancelados: o endereço segue válido). */
 export async function findLastDeliveryAddress(customerId: string): Promise<SavedDeliveryAddress | null> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -582,7 +582,6 @@ export async function findLastDeliveryAddress(customerId: string): Promise<Saved
         (item) =>
           item.customerId === customerId &&
           item.fulfillment === "delivery" &&
-          item.status !== "cancelled" &&
           item.addressText?.trim(),
       );
     return order?.addressText
@@ -599,7 +598,6 @@ export async function findLastDeliveryAddress(customerId: string): Promise<Saved
     .select("address_text, neighborhood_id, neighborhood_name")
     .eq("customer_id", customerId)
     .eq("fulfillment", "delivery")
-    .neq("status", "cancelled")
     .not("address_text", "is", null)
     .order("created_at", { ascending: false })
     .limit(1)
