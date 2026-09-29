@@ -12,6 +12,11 @@ import { toast } from "./toast";
 import { playKitchenPrintSound } from "./notifySound";
 
 const AUTO_ACTOR = "Aceite automático";
+/**
+ * O painel é só reserva: dá esse tempo para o print-agent (que polla a fila a cada 10 s)
+ * reservar o cupom antes; senão um navegador em outro PC "imprime" no lugar da cozinha.
+ */
+const PANEL_PRINT_GRACE_MS = 30_000;
 
 let draining = false;
 const watchingPrint = new Set<string>();
@@ -131,7 +136,10 @@ export async function drainAutoPrintQueue() {
     if (health.queuePolling) return;
 
     const { items } = await api.orderPrintQueue(true);
+    const now = Date.now();
     for (const item of items) {
+      const requestedAt = Date.parse(item.requestedAt);
+      if (Number.isFinite(requestedAt) && now - requestedAt < PANEL_PRINT_GRACE_MS) continue;
       await printAfterAutoAccept(item.id, item.code);
     }
   } catch {

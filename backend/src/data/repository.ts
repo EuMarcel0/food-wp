@@ -4043,6 +4043,8 @@ export async function updateOrderStatus(
     }
     return null;
   }
+  // De novo após gravar: uma consulta da fila em andamento durante o update pode ter zerado a flag.
+  if (previous !== status && status === "accepted") markAutoPrintQueuePending();
   const order = mapOrder(data as Record<string, unknown>);
   if (previous !== status) {
     const summary = normalizedCancelReason
@@ -4823,6 +4825,7 @@ export async function failAutoPrint(id: string, claimedBy: string) {
     }
     throw new Error(error.message);
   }
+  markAutoPrintQueuePending();
   return Boolean(data);
 }
 
