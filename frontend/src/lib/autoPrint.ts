@@ -95,7 +95,6 @@ export async function printAfterAutoAccept(orderId: string, orderCode?: string) 
       },
     });
     await api.completeOrderPrint(orderId, claimedBy, true);
-    playKitchenPrintSound();
     toast.success(`Pedido #${order.code} enviado à impressora.`);
   } catch (error) {
     if (claimed) {

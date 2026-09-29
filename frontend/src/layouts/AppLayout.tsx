@@ -16,8 +16,10 @@ import { Badge, Button, Drawer, Grid, Layout, Menu, Tooltip, Typography, theme }
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { ConnectionStatus } from "./ConnectionStatus";
-import { NotificationBell } from "../notifications/NotificationBell";
-import { NotificationProvider } from "../notifications/NotificationProvider";
+// Notificações desativadas por enquanto.
+// import { NotificationBell } from "../notifications/NotificationBell";
+// import { NotificationProvider } from "../notifications/NotificationProvider";
+import { OrderAlerts } from "../notifications/OrderAlerts";
 import { UserMenu } from "./UserMenu";
 import { api } from "../lib/api";
 import {
@@ -224,7 +226,9 @@ export function AppLayout() {
   );
 
   return (
-    <NotificationProvider>
+    <>
+      {/* <NotificationProvider> */}
+      <OrderAlerts />
       <ConversationAlertsProvider conversations={liveConversations}>
       <Layout
         className='relative min-h-0 flex-1 overflow-hidden bg-food-bg'
@@ -289,7 +293,7 @@ export function AppLayout() {
             </div>
             <div className='flex items-center gap-1'>
               <ConnectionStatus />
-              <NotificationBell />
+              {/* <NotificationBell /> */}
               <UserMenu />
             </div>
           </Layout.Header>
@@ -329,6 +333,7 @@ export function AppLayout() {
         </Layout>
       </Layout>
       </ConversationAlertsProvider>
-    </NotificationProvider>
+      {/* </NotificationProvider> */}
+    </>
   );
 }

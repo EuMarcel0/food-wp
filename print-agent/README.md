@@ -2,7 +2,7 @@
 
 Serviço local para o **PC da cozinha**. Imprime cupons ESC/POS sem diálogo do navegador e **sem Node** na loja.
 
-Depois de conectar no painel e salvar a impressora, o agente **consulta sozinho** a fila de pedidos aceitos na API (a cada 4s). **Não precisa** deixar o painel nem a tela Pedidos aberta.
+Depois de conectar no painel e salvar a impressora, o agente **consulta sozinho** a fila de pedidos aceitos na API (a cada 10s). **Não precisa** deixar o painel nem a tela Pedidos aberta.
 
 ## Produção (loja)
 
