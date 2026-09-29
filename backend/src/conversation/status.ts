@@ -44,6 +44,15 @@ function formatPrepMinutesPhrase(minutes: number) {
   return `${hourPart} e ${minPart}`;
 }
 
+/** Faixa do tempo estimado: metade do prazo configurado até o prazo cheio. */
+function formatPrepRangePhrase(minutes: number) {
+  const max = Math.max(1, Math.round(minutes));
+  const min = Math.max(1, Math.round(max / 2));
+  if (min === max) return formatPrepMinutesPhrase(max);
+  if (max < 60) return `de ${min} a ${max} minutos`;
+  return `de ${formatPrepMinutesPhrase(min)} a ${formatPrepMinutesPhrase(max)}`;
+}
+
 export function isOpenOrderStatus(status: OrderStatus) {
   return status !== "delivered" && status !== "cancelled";
 }
@@ -96,7 +105,7 @@ function statusMessageLines(
         "Já estamos cuidando do seu pedido. Avisaremos você por aqui quando houver uma nova atualização. 😊",
       ];
       if (order.prepMinutes && order.prepMinutes > 0) {
-        lines.push(`Tempo estimado: ${formatPrepMinutesPhrase(order.prepMinutes)}`);
+        lines.push(`Tempo estimado: ${formatPrepRangePhrase(order.prepMinutes)}`);
       }
       return lines;
     }
