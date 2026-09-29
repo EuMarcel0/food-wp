@@ -3,7 +3,6 @@ import type { Fulfillment, Order, OrderStatus } from "../types.js";
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   received: "Recebido",
   accepted: "Aceito",
-  preparing: "Em preparo",
   ready: "Pronto p/ retirada",
   out_for_delivery: "Saiu para entrega",
   delivered: "Entregue",
@@ -14,7 +13,6 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 export const CUSTOMER_CANCEL_STATUSES: OrderStatus[] = [
   "received",
   "accepted",
-  "preparing",
   "ready",
 ];
 
@@ -92,21 +90,14 @@ function statusMessageLines(
         "",
         "Avisaremos você por aqui quando houver uma nova atualização. 😊",
       ];
-    case "accepted":
-      return [
+    case "accepted": {
+      const lines = [
         `👍 Pedido ${code} foi aceito!`,
-        "",
         "Já estamos cuidando do seu pedido. Avisaremos você por aqui quando houver uma nova atualização. 😊",
       ];
-    case "preparing": {
-      const lines = [`👨‍🍳 Pedido ${code} em preparo!`, ""];
       if (order.prepMinutes && order.prepMinutes > 0) {
-        lines.push(
-          `⏱️ Previsão: aproximadamente ${formatPrepMinutesPhrase(order.prepMinutes)}.`,
-          "",
-        );
+        lines.push(`Tempo estimado: ${formatPrepMinutesPhrase(order.prepMinutes)}`);
       }
-      lines.push("Avisaremos você por aqui quando houver uma nova atualização. 😊");
       return lines;
     }
     case "ready":

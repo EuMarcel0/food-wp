@@ -75,10 +75,9 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
             ) : null}
 
             <p className="mb-4 text-sm leading-normal text-food-muted">
-              Tempo médio informado ao cliente quando o pedido é aceito. Com o
-              aceite automático, todo pedido novo vai para Aceito com esse prazo
-              — sem precisar confirmar no painel. O status Em preparo continua
-              manual, com o diálogo de tempo.
+              Tempo estimado enviado ao cliente na mensagem de pedido aceito. Com
+              o aceite automático, todo pedido novo vai para Aceito com esse
+              prazo — sem precisar confirmar no painel.
             </p>
 
             <div className="mb-2 flex flex-wrap items-end gap-x-5 gap-y-3">
@@ -126,8 +125,7 @@ export function PrepSettingsCard({ store }: { store?: Store }) {
               <div>
                 <strong>Permitir cancelamento pelo cliente</strong>
                 <p>
-                  Nas mensagens de pedido confirmado, aceito, em preparo e
-                  pronto, o bot ensina a digitar *Cancelar pedido*. O status
+                  Nas mensagens de pedido confirmado, aceito e pronto, o bot ensina a digitar *Cancelar pedido*. O status
                   vira Cancelado e o atendimento é encerrado.
                 </p>
               </div>

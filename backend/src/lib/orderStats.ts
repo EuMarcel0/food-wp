@@ -3,7 +3,6 @@ import type { OrderStatus } from "../types.js";
 const STATUSES: OrderStatus[] = [
   "received",
   "accepted",
-  "preparing",
   "ready",
   "out_for_delivery",
   "delivered",
@@ -13,7 +12,6 @@ const STATUSES: OrderStatus[] = [
 const OPEN_STATUSES = new Set<OrderStatus>([
   "received",
   "accepted",
-  "preparing",
   "ready",
   "out_for_delivery",
 ]);
@@ -50,7 +48,6 @@ function emptyByStatus(): Record<OrderStatus, number> {
   return {
     received: 0,
     accepted: 0,
-    preparing: 0,
     ready: 0,
     out_for_delivery: 0,
     delivered: 0,
@@ -105,8 +102,9 @@ export function buildOrderStats(
         : "";
     if (createdDay !== resolvedDay) continue;
 
+    const raw = row.status === "preparing" ? "accepted" : row.status;
     const status = (
-      STATUSES.includes(row.status as OrderStatus) ? row.status : "received"
+      STATUSES.includes(raw as OrderStatus) ? raw : "received"
     ) as OrderStatus;
     byStatus[status] += 1;
     dayCreated += 1;

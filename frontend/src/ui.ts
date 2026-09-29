@@ -23,7 +23,6 @@ export const entityCard =
 export const entityTone: Record<string, string> = {
   received: "before:bg-food-accent",
   accepted: "before:bg-blue-500",
-  preparing: "before:bg-amber-500",
   ready: "before:bg-green-500",
   out_for_delivery: "before:bg-sky-500",
   delivered: "before:bg-green-600",

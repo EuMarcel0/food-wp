@@ -1,7 +1,6 @@
 export type OrderStatus =
   | "received"
   | "accepted"
-  | "preparing"
   | "ready"
   | "out_for_delivery"
   | "delivered"

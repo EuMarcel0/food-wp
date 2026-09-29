@@ -19,7 +19,6 @@ import { OrderEditItemsModal } from "./OrderEditItemsModal";
 import { OrderFulfillmentModal } from "./OrderFulfillmentModal";
 import { OrderItemsLeaders } from "./OrderItemsLeaders";
 import { OrderLogsModal } from "./OrderLogsModal";
-import { PrepTimeModal } from "./PrepTimeModal";
 import { ReceiptPreviewModal } from "./ReceiptPreviewModal";
 import { OrderPaymentSelect } from "./OrderPaymentSelect";
 import { api } from "../../lib/api";
@@ -164,7 +163,6 @@ export function OrdersPage() {
     };
   }, [queryClient]);
 
-  const [prepOrder, setPrepOrder] = useState<Order | null>(null);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [logsOrder, setLogsOrder] = useState<Order | null>(null);
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
@@ -174,24 +172,21 @@ export function OrdersPage() {
     mutationFn: ({
       order,
       next,
-      prepMinutes,
       cancelReason,
     }: {
       order: Order;
       next: OrderStatus;
-      prepMinutes?: number;
       cancelReason?: string;
     }) =>
       api.updateOrderStatus(
         order.id,
         next,
         displayName(user),
-        prepMinutes,
+        undefined,
         cancelReason,
       ),
     onSuccess: async (updated) => {
       toast.success(`Pedido #${updated.code} → ${STATUS_LABEL[updated.status]}`);
-      setPrepOrder(null);
       setCancelOrder(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
@@ -277,10 +272,6 @@ export function OrdersPage() {
   });
 
   function changeStatus(order: Order, next: OrderStatus) {
-    if (next === "preparing") {
-      setPrepOrder(order);
-      return;
-    }
     if (next === "cancelled") {
       setCancelOrder(order);
       return;
@@ -676,23 +667,6 @@ export function OrdersPage() {
         order={logsOrder}
         open={Boolean(logsOrder)}
         onClose={() => setLogsOrder(null)}
-      />
-      <PrepTimeModal
-        order={prepOrder}
-        open={Boolean(prepOrder)}
-        submitting={statusMutation.isPending && Boolean(prepOrder)}
-        defaultMinutes={storeQuery.data?.defaultAcceptMinutes}
-        onCancel={() => {
-          if (!statusMutation.isPending) setPrepOrder(null);
-        }}
-        onConfirm={(minutes) => {
-          if (!prepOrder) return;
-          statusMutation.mutate({
-            order: prepOrder,
-            next: "preparing",
-            prepMinutes: minutes,
-          });
-        }}
       />
       <CancelOrderModal
         order={cancelOrder}

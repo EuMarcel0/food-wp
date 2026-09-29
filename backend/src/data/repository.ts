@@ -3946,14 +3946,6 @@ export async function updateOrderStatus(
     }
   }
 
-  if (status === "preparing") {
-    const minutes = Math.round(Number(prepMinutes));
-    if (!Number.isFinite(minutes) || minutes < 1) {
-      throw new Error("Informe o tempo de preparo em minutos.");
-    }
-    prepMinutes = minutes;
-  }
-
   if (status === "accepted") {
     let minutes = Math.round(Number(prepMinutes));
     if (!Number.isFinite(minutes) || minutes < 1) {
@@ -3971,10 +3963,7 @@ export async function updateOrderStatus(
     status,
     updated_at: new Date().toISOString(),
   };
-  if (
-    (status === "preparing" || status === "accepted") &&
-    prepMinutes != null
-  ) {
+  if (status === "accepted" && prepMinutes != null) {
     payload.prep_minutes = prepMinutes;
   }
   if (previous !== status && status === "accepted") {
@@ -4171,8 +4160,8 @@ function remapStatusForFulfillment(
   fulfillment: Fulfillment,
 ): OrderStatus {
   if (!isAllowedOrderStatus(fulfillment, status)) {
-    // Status incompatível com o novo tipo → volta para preparo.
-    return "preparing";
+    // Status incompatível com o novo tipo → volta para aceito.
+    return "accepted";
   }
   return status;
 }

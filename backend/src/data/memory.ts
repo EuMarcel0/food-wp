@@ -1900,13 +1900,6 @@ export const memoryStore = {
         normalizedCancelReason = reason.slice(0, 240);
       }
     }
-    if (status === "preparing") {
-      const minutes = Math.round(Number(prepMinutes));
-      if (!Number.isFinite(minutes) || minutes < 1) {
-        throw new Error("Informe o tempo de preparo em minutos.");
-      }
-      order.prepMinutes = minutes;
-    }
     if (status === "accepted") {
       let minutes = Math.round(Number(prepMinutes));
       if (!Number.isFinite(minutes) || minutes < 1) {
@@ -2072,7 +2065,7 @@ export const memoryStore = {
     const actorName = input.actorName?.trim() || "Equipe";
     let nextStatus = order.status;
     if (!isAllowedOrderStatus(fulfillment, nextStatus)) {
-      nextStatus = "preparing";
+      nextStatus = "accepted";
     }
 
     if (fulfillment === "pickup") {

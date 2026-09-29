@@ -5,7 +5,6 @@ export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "mixed" | 
 export type OrderStatus =
   | "received"
   | "accepted"
-  | "preparing"
   | "ready"
   | "out_for_delivery"
   | "delivered"

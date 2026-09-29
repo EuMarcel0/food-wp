@@ -26,7 +26,6 @@ import type { OrderStatus, PaymentMethod, Fulfillment } from "../types.js";
 const STATUSES = new Set<OrderStatus>([
   "received",
   "accepted",
-  "preparing",
   "ready",
   "out_for_delivery",
   "delivered",
@@ -233,13 +232,6 @@ ordersRouter.patch("/:id/status", async (req, res) => {
           .slice(0, 240)
       : undefined;
 
-  if (status === "preparing") {
-    if (!Number.isFinite(prepMinutes) || Number(prepMinutes) < 1) {
-      res.status(400).json({ error: "Informe o tempo de preparo em minutos." });
-      return;
-    }
-  }
-
   if (status === "cancelled" && (!cancelReason || cancelReason.length < 3)) {
     res.status(400).json({
       error: "Informe o motivo do cancelamento (mín. 3 caracteres).",
@@ -250,7 +242,7 @@ ordersRouter.patch("/:id/status", async (req, res) => {
   let order;
   try {
     const minutesForStatus =
-      status === "preparing" || status === "accepted"
+      status === "accepted"
         ? prepMinutes !== undefined && Number.isFinite(prepMinutes)
           ? Math.round(Number(prepMinutes))
           : undefined

@@ -30,7 +30,6 @@ const SUBTITLE_SUFFIX =
 const EMPTY_BY_STATUS: Record<OrderStatus, number> = {
   received: 0,
   accepted: 0,
-  preparing: 0,
   ready: 0,
   out_for_delivery: 0,
   delivered: 0,
@@ -83,7 +82,6 @@ function formatDayLabel(day: string, isToday: boolean) {
 const PIPELINE = [
   "received",
   "accepted",
-  "preparing",
   "ready",
   "out_for_delivery",
 ] as const satisfies readonly OrderStatus[];
@@ -103,11 +101,6 @@ const PIPELINE_META: Record<
     bar: "bg-blue-500",
     glow: "from-blue-500/25 via-blue-500/5 to-transparent",
     ink: "text-blue-500",
-  },
-  preparing: {
-    bar: "bg-amber-500",
-    glow: "from-amber-500/25 via-amber-500/5 to-transparent",
-    ink: "text-amber-500",
   },
   ready: {
     bar: "bg-emerald-500",
@@ -476,7 +469,7 @@ export function DashboardPage() {
             <span aria-hidden>→</span>
           </Link>
         </div>
-        <div className="grid grid-cols-5 max-lg:grid-cols-2 max-sm:grid-cols-1">
+        <div className="grid grid-cols-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
           {PIPELINE.map((status, index) => {
             const count = stats.byStatus[status] ?? 0;
             const meta = PIPELINE_META[status];
