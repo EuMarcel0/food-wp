@@ -27,7 +27,7 @@ export function ConnectionStatus() {
   const { data, isError } = useQuery({
     queryKey: queryKeys.health,
     queryFn: api.health,
-    refetchInterval: 20_000,
+    refetchInterval: 60_000,
   });
 
   const whatsapp = isError ? false : data?.whatsapp;

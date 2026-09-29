@@ -12,6 +12,8 @@ import { buildReceiptEscPos } from "./receipt.js";
  * }} PrintQueueItem
  */
 
+const POLL_MS = 10_000;
+
 let pollTimer = null;
 let polling = false;
 
@@ -59,8 +61,8 @@ export function startPrintQueuePoller(enqueuePrint) {
     });
   };
   tick();
-  pollTimer = setInterval(tick, 4000);
-  console.log("  Fila API: ativa (poll 4s)");
+  pollTimer = setInterval(tick, POLL_MS);
+  console.log(`  Fila API: ativa (poll ${POLL_MS / 1000}s)`);
 }
 
 export function stopPrintQueuePoller() {

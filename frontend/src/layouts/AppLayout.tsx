@@ -131,7 +131,7 @@ export function AppLayout() {
       lastPage.hasMore && lastPage.nextOffset != null
         ? lastPage.nextOffset
         : undefined,
-    refetchInterval: 12_000,
+    refetchInterval: 30_000,
     networkMode: "always",
   });
   const liveConversations = useMemo(

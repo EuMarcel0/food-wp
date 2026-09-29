@@ -4017,6 +4017,7 @@ export async function updateOrderStatus(
   }
   if (previous !== status && status === "accepted") {
     const now = new Date().toISOString();
+    markAutoPrintQueuePending();
     payload.auto_print_requested_at = now;
     payload.auto_print_claimed_at = null;
     payload.auto_print_claimed_by = null;
@@ -4676,10 +4677,27 @@ function isAutoPrintClaimStale(claimedAt: string | null | undefined) {
   return Date.now() - ms >= AUTO_PRINT_CLAIM_TTL_MS;
 }
 
+/**
+ * O agente consulta a fila a cada poucos segundos; sem pedido pendente, responde vazio sem ir ao
+ * Supabase (cada consulta gera log cobrado). Aceite/falha marcam a fila; a cada 60 s confere mesmo assim
+ * (claim expirado, alteração direta no banco).
+ */
+const AUTO_PRINT_RECHECK_MS = 60_000;
+let autoPrintQueuePending = true;
+let autoPrintQueueCheckedAt = 0;
+
+export function markAutoPrintQueuePending() {
+  autoPrintQueuePending = true;
+}
+
 /** Pedidos aceitos ainda sem cupom impresso (claim livre ou expirado). */
 export async function listAutoPrintQueue(limit = 20) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.listAutoPrintQueue(limit);
+
+  if (!autoPrintQueuePending && Date.now() - autoPrintQueueCheckedAt < AUTO_PRINT_RECHECK_MS) {
+    return [];
+  }
 
   const { data, error } = await supabase
     .from("orders")
@@ -4695,6 +4713,10 @@ export async function listAutoPrintQueue(limit = 20) {
     }
     throw new Error(error.message);
   }
+
+  autoPrintQueueCheckedAt = Date.now();
+  // Enquanto houver cupom não impresso (mesmo reservado), segue consultando até concluir.
+  autoPrintQueuePending = (data ?? []).length > 0;
 
   const staleBefore = Date.now() - AUTO_PRINT_CLAIM_TTL_MS;
   return (data ?? [])
@@ -4782,6 +4804,7 @@ export async function failAutoPrint(id: string, claimedBy: string) {
   const by = claimedBy.trim();
   const supabase = getSupabase();
   if (!supabase) return memoryStore.failAutoPrint(id, by);
+  markAutoPrintQueuePending();
 
   const { data, error } = await supabase
     .from("orders")
