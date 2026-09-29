@@ -1,14 +1,16 @@
 import {
+  getConversation,
   getStore,
   saveConversation,
   upsertCustomer,
 } from "../data/repository.js";
 import {
   formatDeliveredNewOrderPrompt,
+  formatDeliveredThanks,
   formatOrderStatusMessage,
 } from "../conversation/status.js";
 import { sendButtons, sendText } from "./whatsapp.js";
-import type { Order } from "../types.js";
+import { isOrderFlowState, type Order } from "../types.js";
 
 export const NEW_ORDER_YES = "new_order:yes";
 export const NEW_ORDER_NO = "new_order:no";
@@ -22,6 +24,12 @@ const NEW_ORDER_BUTTONS = [
 export async function offerNewOrderAfterDelivered(order: Order) {
   if (!order.customerPhone) return;
   const customer = await upsertCustomer(order.customerPhone, order.customerName);
+  const current = await getConversation(customer.id);
+  if (current && isOrderFlowState(current.state)) {
+    // Já está montando outro pedido: só agradece, sem apagar o carrinho em andamento.
+    await sendText(order.customerPhone, formatDeliveredThanks(order));
+    return;
+  }
   await saveConversation(customer, "awaiting_new_order", { cart: [] }, { reopen: true });
   await sendButtons(
     order.customerPhone,

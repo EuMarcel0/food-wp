@@ -150,6 +150,11 @@ export function formatDeliveredNewOrderPrompt(order: Order) {
   return statusMessageLines({ ...order, status: "delivered" }).join("\n");
 }
 
+/** Pós-entrega sem a pergunta de novo pedido (cliente já está montando outro). */
+export function formatDeliveredThanks(order: Order) {
+  return statusMessageLines({ ...order, status: "delivered" }).slice(0, -1).join("\n");
+}
+
 export function isAllowedOrderStatus(
   fulfillment: Fulfillment,
   status: OrderStatus,

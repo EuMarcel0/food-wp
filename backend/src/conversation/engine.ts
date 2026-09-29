@@ -1438,6 +1438,23 @@ function isAiFix(incoming: string, normalized: string) {
 const GREETING_ONLY =
   /^(oi+|ola|opa|eai|e ai|hello|hi|bom dia|boa tarde|boa noite|oi bom dia|oi boa tarde|oi boa noite|ola bom dia|ola boa tarde|ola boa noite|tudo bem|oi tudo bem)[\s!?.,]*$/;
 
+/** Cliente com pedido em andamento pedindo outro ("quero outra pizza", "outro pedido", "quero pedir"...). */
+function wantsAnotherOrder(text: string) {
+  const plain = normalize(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return false;
+  return [
+    /\b(outr[oa]s?|nov[oa]s?)\s+(pedido|pedidos|pizza|pizzas|lanche|compra)\b/,
+    /\bmais\s+(uma?\s+)?(pizza|pizzas|pedido|refri|refrigerante|coca|bebida|suco)\b/,
+    /\b(fazer|faco|faz|fazendo)\s+(outro|outra|mais um|mais uma|novo|nova)\b/,
+    /\b(pedir|pedido)\s+(de novo|novamente|outra vez|mais)\b/,
+    /\b(quero|queria|gostaria de|vou|posso)\s+pedir\b/,
+    /\besqueci\s+de\s+pedir\b/
+  ].some(pattern => pattern.test(plain));
+}
+
 const WA_LIST_MAX_ROWS = 10;
 
 function resetMenuBrowse(context: ConversationContext) {
@@ -2836,14 +2853,33 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     if (!latest || !isOpenOrderStatus(latest.status)) return false;
     // Não reabre Ativas: só responde o status do pedido em andamento.
     await persist("welcome", emptyContext());
-    await sendText(
-      input.from,
-      formatOrderStatusMessage(latest, {
-        thanks,
-        allowCustomerCancel: store.allowCustomerCancel
-      })
-    );
+    const status = formatOrderStatusMessage(latest, {
+      thanks,
+      allowCustomerCancel: store.allowCustomerCancel
+    });
+    await sendButtons(input.from, `${status}\n\nQuer fazer *outro pedido*? Toque em *Novo pedido*.`, [
+      { id: "order", title: "Novo pedido" }
+    ]);
     return true;
+  }
+
+  /** Novo pedido com outro ainda em andamento (Recebido/Aceito/Saiu…). */
+  async function startAnotherOrder(text?: string) {
+    const latest = await findLatestOrder(customer.id);
+    if (latest && isOpenOrderStatus(latest.status)) {
+      await sendText(
+        input.from,
+        `Claro! 😊 Seu pedido *#${latest.code}* continua em andamento. Vamos fazer um *novo pedido*.`
+      );
+    }
+    if (isV2(store)) {
+      await startConversationV2(text);
+      return;
+    }
+    const next = emptyContext();
+    resetMenuBrowse(next);
+    await persist("awaiting_product", next, { reopen: true });
+    await showMenu(input.from, "🍕 Escolha o primeiro item do novo pedido:", next, persist, store);
   }
 
   // Loja fechada: bloqueia novos fluxos; pedido já em andamento continua.
@@ -2898,7 +2934,11 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
-    // Pedido em aberto (Aceito/Preparo/…): não reinicia o menu — só informa o status.
+    if (incoming === "order" || (!input.replyId && wantsAnotherOrder(input.text))) {
+      await startAnotherOrder(input.replyId ? undefined : input.text);
+      return;
+    }
+    // Pedido em aberto (Aceito/Saiu…): não reinicia o menu — só informa o status.
     if (await replyOpenOrderStatus(isCustomerAck(input.text, command))) return;
     // Agradecimento / emoji após ociosidade: não reinicia o cardápio.
     if (!input.replyId && isCustomerAck(input.text, command)) {
@@ -3097,11 +3137,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       if (await askAddons(input.from, label, drafts, context.addonOffset, incoming === "prev_addons")) await nextItem();
       return;
     }
-    if (
-      incoming === "done_addons" ||
-      incoming === "skip_addon" ||
-      (!hasReply && isAddonsDoneText(input.text))
-    ) {
+    if (incoming === "done_addons" || incoming === "skip_addon" || (!hasReply && isAddonsDoneText(input.text))) {
       await nextItem();
       return;
     }
@@ -3228,6 +3264,11 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
     await persist("awaiting_order_code", context);
     await sendText(input.from, "🔎 Me envie o código do pedido (ex.: A7K2).");
+    return;
+  }
+
+  if (!orderActive && !hasReply && wantsAnotherOrder(input.text)) {
+    await startAnotherOrder(input.text);
     return;
   }
 
@@ -3904,7 +3945,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       await persist("awaiting_ai_order", context);
       await sendText(
         input.from,
-        "✏️ O que você quer mudar? Escreva do seu jeito (ex.: *troca a coca por guaraná* ou *adiciona uma broto de chocolate*)."
+        "✏️ O que você quer mudar? Escreva do seu jeito (ex.: *troca a coca por guaraná* ou *adiciona uma pizza pequena de chocolate*)."
       );
       return;
     }
