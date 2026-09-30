@@ -27,8 +27,12 @@ const PIZZA = /\b(pizzas?|sabor|sabores|metade|meia|broto|familia|grande|media|p
 
 const ADD =
   /\b(adiciona\w*|adicion\w*|acrescent\w*|inclui\w*|incluir|coloca mais|coloque mais|colocar mais|poe mais|bota mais|manda mais|mais (um|uma|dois|duas|tres|\d+)|faltou|esqueci|tambem quero|quero tambem|manda tambem|traz tambem|traga tambem|junto com)\b/;
-/** "outra coca", "outro refri", "e um guaraná" — só com produto do cardápio. */
-const ADD_WITH_PRODUCT = /\b(outr[oa]s?|e (um|uma|dois|duas|\d+)|e mais)\b/;
+/**
+ * Só com produto do cardápio: "outra coca", "e um guaraná", "coloca um suco", "manda 2 cocas",
+ * "quero uma coca". Exige quantidade/artigo indefinido para não pegar "quero a pizza bem passada".
+ */
+const ADD_WITH_PRODUCT =
+  /\b(outr[oa]s?|e (um|uma|dois|duas|\d+)|e mais|(coloca|coloque|colocar|coloquem|poe|por|bota|botar|manda|mande|mandar|traz|traga|trazer|quero|queria|gostaria de|me ve|ve|inclui|pode ser|vai) (mais )?(um|uma|uns|umas|dois|duas|tres|\d+|outr[oa]s?))\b/;
 const REMOVE =
   /\b(tira|tirar|tire|tirem|retira|retirar|retire|remove|remover|remova|exclui|excluir|exclua|apaga|apagar|cancela (a|o|as|os)|nao quero mais|desisti|desisto)\b/;
 const REMOVE_WITH_PRODUCT = /\bsem (a|o|as|os)\b/;
