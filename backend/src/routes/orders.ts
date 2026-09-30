@@ -417,7 +417,11 @@ ordersRouter.patch("/:id/items", async (req, res) => {
 
   let order;
   try {
-    order = await updateOrderItems(String(req.params.id), { items, actorName });
+    order = await updateOrderItems(String(req.params.id), {
+      items,
+      actorName,
+      customerName: req.body?.customerName != null ? String(req.body.customerName) : undefined,
+    });
   } catch (error) {
     res.status(400).json({
       error:

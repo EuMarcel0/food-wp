@@ -514,6 +514,7 @@ export const api = {
         notes?: string | null;
       }[];
       actorName?: string;
+      customerName?: string;
     },
   ) =>
     request<Order>(`/api/orders/${id}/items`, {

@@ -221,8 +221,10 @@ export function OrdersPage() {
     mutationFn: ({
       order,
       items,
+      customerName,
     }: {
       order: Order;
+      customerName?: string;
       items: {
         id?: string;
         productId?: string | null;
@@ -234,10 +236,11 @@ export function OrdersPage() {
     }) =>
       api.updateOrderItems(order.id, {
         items,
+        customerName: customerName || undefined,
         actorName: displayName(user),
       }),
     onSuccess: async (updated) => {
-      toast.success(`Pedido #${updated.code}: itens atualizados`);
+      toast.success(`Pedido #${updated.code}: atualizado`);
       setEditOrder(null);
       await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
     },
@@ -648,10 +651,11 @@ export function OrdersPage() {
         onCancel={() => {
           if (!itemsMutation.isPending) setEditOrder(null);
         }}
-        onSave={(items) => {
+        onSave={(items, customerName) => {
           if (!editOrder) return;
           itemsMutation.mutate({
             order: editOrder,
+            customerName,
             items: items.map((item) => ({
               id: item.id,
               productId: item.productId,

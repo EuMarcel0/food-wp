@@ -2181,10 +2181,13 @@ export const memoryStore = {
         notes?: string | null;
       }[];
       actorName?: string;
+      customerName?: string | null;
     },
   ) {
     const order = orders.get(id);
     if (!order) return null;
+    const nextCustomerName = input.customerName?.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (nextCustomerName) order.customerName = nextCustomerName;
     if (order.status === "delivered") {
       throw new Error("Pedido entregue não pode ter os itens alterados.");
     }

@@ -52,10 +52,11 @@ export function OrderEditItemsModal({
   open: boolean;
   submitting: boolean;
   onCancel: () => void;
-  onSave: (items: DraftItem[]) => void;
+  onSave: (items: DraftItem[], customerName: string) => void;
 }) {
   const dialog = useDialog();
   const [draft, setDraft] = useState<DraftItem[]>([]);
+  const [customerName, setCustomerName] = useState("");
   const [productId, setProductId] = useState<string | undefined>();
   const [addQty, setAddQty] = useState(1);
 
@@ -69,6 +70,7 @@ export function OrderEditItemsModal({
   useEffect(() => {
     if (open && order) {
       setDraft(toDraft(order.items));
+      setCustomerName(order.customerName ?? "");
       setProductId(undefined);
       setAddQty(1);
     }
@@ -116,11 +118,11 @@ export function OrderEditItemsModal({
 
   return (
     <Modal
-      title={order ? `Editar itens · #${order.code}` : "Editar itens"}
+      title={order ? `Editar pedido · #${order.code}` : "Editar pedido"}
       open={open}
       onCancel={onCancel}
-      onOk={() => onSave(draft)}
-      okText="Salvar itens"
+      onOk={() => onSave(draft, customerName.trim())}
+      okText="Salvar"
       cancelText="Cancelar"
       confirmLoading={submitting}
       okButtonProps={{ disabled: submitting || draft.length === 0 }}
@@ -140,9 +142,19 @@ export function OrderEditItemsModal({
       }}
     >
       <p className="mb-3 shrink-0 text-sm text-food-muted">
-        Adicione ou remova itens. O total do pedido é recalculado (taxa de entrega
-        mantida).
+        Ajuste o nome do cliente e adicione ou remova itens. O total do pedido é
+        recalculado (taxa de entrega mantida).
       </p>
+
+      <div className="mb-3 shrink-0">
+        <div className="mb-1 text-xs font-medium text-food-muted">Nome do cliente</div>
+        <Input
+          value={customerName}
+          maxLength={80}
+          placeholder="Nome para o pedido e o cupom"
+          onChange={(event) => setCustomerName(event.target.value)}
+        />
+      </div>
 
       <div className="mb-3 flex shrink-0 flex-wrap items-end gap-2 rounded-lg border border-food-border bg-food-surface p-3">
         <div className="min-w-0 flex-1 basis-[12rem]">

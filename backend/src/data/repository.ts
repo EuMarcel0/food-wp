@@ -4543,12 +4543,17 @@ export async function updateOrderItems(
       notes?: string | null;
     }[];
     actorName?: string;
+    customerName?: string | null;
   },
 ) {
   const supabase = getSupabase();
   if (!supabase) {
     return memoryStore.updateOrderItems(id, input);
   }
+  const nextCustomerName =
+    input.customerName != null
+      ? String(input.customerName).replace(/\s+/g, " ").trim().slice(0, 80)
+      : "";
 
   if (!input.items.length) {
     throw new Error("O pedido precisa ter pelo menos 1 item.");
@@ -4629,6 +4634,11 @@ export async function updateOrderItems(
   if (before.paymentMethod === "cash" && nextChangeForCents != null) {
     orderUpdate.change_for_cents = nextChangeForCents;
   }
+  const beforeCustomerName = String(currentRow.contact_name ?? "").trim();
+  const customerNameChanged = Boolean(nextCustomerName) && nextCustomerName !== beforeCustomerName;
+  if (customerNameChanged) {
+    orderUpdate.contact_name = nextCustomerName;
+  }
 
   const { data: updated, error: updateError } = await supabase
     .from("orders")
@@ -4644,7 +4654,13 @@ export async function updateOrderItems(
   const order = mapOrder(updated as Record<string, unknown>);
   const afterSnap = orderMoneySnapshot(order);
   const actorName = input.actorName?.trim() || "Equipe";
-  const summary = summarizeItemsChange(beforeSnap.items, afterSnap.items);
+  const itemsChanged = JSON.stringify(beforeSnap.items) !== JSON.stringify(afterSnap.items);
+  const summary = [
+    customerNameChanged ? `Cliente: ${beforeCustomerName || "—"} → ${nextCustomerName}` : null,
+    itemsChanged || !customerNameChanged ? summarizeItemsChange(beforeSnap.items, afterSnap.items) : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
 
   await createNotification({
     storeId: order.storeId,
