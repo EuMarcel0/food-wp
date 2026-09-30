@@ -5,6 +5,7 @@ import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from 
 import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints } from "./aiOrder.js";
 import { enqueueWaitByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
+import { looksLikeOrderChange, type OrderChangeContext } from "./orderChange.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
@@ -1033,6 +1034,9 @@ async function resumeCurrentStep(
     case "awaiting_ai_drink":
       await sendHintIfNeeded();
       await askAiDrink(to);
+      return;
+    case "awaiting_ai_change":
+      await sendText(to, `${AI_CHANGE_PROMPT}\nSe preferir manter como está, digite *seguir*.`);
       return;
     case "awaiting_ai_addon": {
       const phase = context.aiExtraPhase ?? "addon_ask";
@@ -2592,8 +2596,35 @@ const AI_TEXT_STATES = new Set<ConversationState>([
   "cart",
   "awaiting_fee_confirm",
   "awaiting_address",
-  "awaiting_ai_drink"
+  "awaiting_ai_drink",
+  "awaiting_ai_change"
 ]);
+
+/** v2: etapas após o carrinho em que "quero adicionar/tirar/trocar…" modifica o pedido pela IA. */
+const ORDER_CHANGE_STATES: Partial<Record<ConversationState, OrderChangeContext>> = {
+  awaiting_ai_drink: "drink",
+  awaiting_ai_addon: "note",
+  awaiting_ai_note: "note",
+  awaiting_saved_address: "checkout",
+  awaiting_address: "checkout",
+  awaiting_neighborhood: "checkout",
+  awaiting_payment: "checkout",
+  awaiting_change: "checkout",
+  awaiting_contact_name: "checkout"
+};
+
+const AI_CHANGE_PROMPT =
+  "✏️ Claro! O que você quer *adicionar*, *remover* ou *trocar* no pedido?\nEscreva do seu jeito (ex.: *mais uma Coca 2L* ou *tira a borda*).";
+
+function isKeepOrderText(text: string) {
+  const plain = normalize(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(nao|n|nada|nenhum|nenhuma|deixa|deixa assim|deixa como esta|esquece|esquece isso|pode seguir|seguir|segue|continuar|ta bom|ta bom assim|nao precisa|mantem|manter|mantenha)$/.test(
+    plain
+  );
+}
 /** Espera o cliente parar de digitar antes de chamar a IA (mensagens picadas viram uma só). */
 const AI_BURST_QUIET_MS = 3500;
 const AI_BURST_MAX_WAIT_MS = 12_000;
@@ -2785,6 +2816,86 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       ctx.aiDrinkAsked = true;
     }
     await nextAiExtraStep(ctx, intro);
+  }
+
+  /**
+   * v2: "quero adicionar/tirar/trocar…" no meio do checkout. A IA refaz o carrinho com o histórico;
+   * entrega/endereço/pagamento já escolhidos são mantidos e o cliente volta à etapa em que estava.
+   */
+  async function handleAiOrderChange(ctx: ConversationContext, text: string, resumeState: ConversationState) {
+    ctx.aiResumeState = resumeState;
+    const cartKey = (items: CartItem[]) =>
+      JSON.stringify(items.map(item => [item.productId, item.name, item.quantity, item.unitPriceCents]));
+    const before = cartKey(ctx.cart);
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
+    const outcome = await interpretOrder(ctx.aiTurns);
+
+    if (outcome.status === "error") {
+      await persist("awaiting_ai_change", ctx);
+      await sendText(input.from, "😕 Tive um probleminha para entender a alteração. Pode escrever de novo o que quer mudar?");
+      return;
+    }
+
+    const notFoundLine = outcome.notFound.length
+      ? `⚠️ Não encontrei no cardápio: *${outcome.notFound.join(", ")}*.`
+      : null;
+
+    if (outcome.status !== "ok" || cartKey(outcome.items) === before) {
+      const reply = [
+        outcome.answer,
+        notFoundLine,
+        outcome.status === "question" ? outcome.question : AI_CHANGE_PROMPT
+      ]
+        .filter(Boolean)
+        .join("\n");
+      ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
+      await persist("awaiting_ai_change", ctx);
+      await sendText(input.from, reply);
+      return;
+    }
+
+    ctx.cart = outcome.items;
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
+    await resumeAfterAiChange(ctx, ["✏️ *Pedido atualizado!*", notFoundLine].filter(Boolean).join("\n"));
+  }
+
+  async function resumeAfterAiChange(ctx: ConversationContext, intro: string) {
+    let target: ConversationState = ctx.aiResumeState ?? "awaiting_fulfillment";
+    ctx.aiResumeState = undefined;
+
+    if (target === "awaiting_ai_drink") {
+      const drinksCategoryId = await activeDrinkCategoryId();
+      if (!drinksCategoryId || (await cartHasDrink(ctx, drinksCategoryId))) {
+        ctx.aiDrinkAsked = true;
+        ctx.aiExtraPhase = "addon_ask";
+        ctx.aiStepIndex = undefined;
+        await nextAiExtraStep(ctx, intro);
+        return;
+      }
+    }
+    if (target === "awaiting_ai_addon" || target === "awaiting_ai_note") {
+      // Índices do carrinho podem ter mudado: refaz a pergunta da etapa.
+      ctx.aiExtraPhase = target === "awaiting_ai_addon" ? "addon_ask" : "note";
+      ctx.aiStepIndex = undefined;
+      ctx.addonOffset = 0;
+      await nextAiExtraStep(ctx, intro);
+      return;
+    }
+
+    const totalCents = orderTotalCents(store, ctx);
+    if (ctx.paymentMethod === "cash" && ctx.changeForCents && ctx.changeForCents < totalCents && target !== "awaiting_payment") {
+      ctx.changeForCents = undefined;
+      target = "awaiting_change";
+    }
+
+    const lines = [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)];
+    if (ctx.fulfillment === "delivery" && (ctx.neighborhoodId || ctx.addressText)) {
+      const fee = resolveDeliveryFee(store, { neighborhoodId: ctx.neighborhoodId, address: ctx.addressText }).cents;
+      lines.push(`Entrega: ${formatBRL(fee)}`, `*Total: ${formatBRL(totalCents)}*`);
+    }
+    await sendText(input.from, lines.join("\n"));
+    await persist(target, ctx);
+    await resumeCurrentStep(input.from, store, target, ctx, { afterHandoff: true });
   }
 
   /** v2: resposta de "Deseja uma bebida?" — IA acha as bebidas e soma ao carrinho. */
@@ -3284,6 +3395,35 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
     await persist("awaiting_new_order", context);
     await askNewOrderPrompt(input.from);
+    return;
+  }
+
+  // v2: pedido de alteração no meio do checkout — IA ajusta o carrinho e volta à mesma etapa.
+  const changeContext = ORDER_CHANGE_STATES[state];
+  if (
+    isV2(store) &&
+    changeContext &&
+    context.cart.length &&
+    !hasReply &&
+    !input.location &&
+    input.text.trim() &&
+    looksLikeOrderChange(input.text, changeContext)
+  ) {
+    await handleAiOrderChange(context, input.text.trim(), state);
+    return;
+  }
+
+  if (state === "awaiting_ai_change") {
+    const text = input.text.trim();
+    if (!hasReply && text && isKeepOrderText(text)) {
+      await resumeAfterAiChange(context, "👍 Ok, seu pedido continua igual.");
+      return;
+    }
+    if (!text || hasReply) {
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+    await handleAiOrderChange(context, text, context.aiResumeState ?? "awaiting_fulfillment");
     return;
   }
 

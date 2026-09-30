@@ -20,7 +20,7 @@ import {
   parseSearch,
 } from "../lib/filters.js";
 import { parsePageQuery } from "../lib/pagination.js";
-import { notifyCustomerOrderStatus } from "../lib/orderNotify.js";
+import { notifyCustomerOrderItemsChanged, notifyCustomerOrderStatus } from "../lib/orderNotify.js";
 import type { OrderStatus, PaymentMethod, Fulfillment } from "../types.js";
 
 const STATUSES = new Set<OrderStatus>([
@@ -415,6 +415,8 @@ ordersRouter.patch("/:id/items", async (req, res) => {
     notes: item.notes != null ? String(item.notes) : null,
   }));
 
+  const found = await getOrder(String(req.params.id)).catch(() => null);
+  const before = found ? structuredClone(found) : null;
   let order;
   try {
     order = await updateOrderItems(String(req.params.id), {
@@ -436,5 +438,10 @@ ordersRouter.patch("/:id/items", async (req, res) => {
     return;
   }
 
+  if (before) {
+    await notifyCustomerOrderItemsChanged(before, order).catch((error) => {
+      console.error("Falha ao avisar cliente sobre itens alterados", error);
+    });
+  }
   res.json(order);
 });

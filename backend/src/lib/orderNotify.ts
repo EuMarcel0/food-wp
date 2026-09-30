@@ -10,6 +10,7 @@ import {
   formatOrderStatusMessage,
 } from "../conversation/status.js";
 import { isStoreOpen } from "./businessHours.js";
+import { formatBRL } from "./money.js";
 import { sendButtons, sendText } from "./whatsapp.js";
 import { isOrderFlowState, type Order } from "../types.js";
 
@@ -45,6 +46,47 @@ export async function offerNewOrderAfterDelivered(order: Order) {
     formatDeliveredNewOrderPrompt(order),
     NEW_ORDER_BUTTONS,
   );
+}
+
+function itemsByName(order: Order) {
+  const map = new Map<string, { quantity: number; unitPriceCents: number }>();
+  for (const item of order.items ?? []) {
+    const current = map.get(item.name);
+    map.set(item.name, {
+      quantity: (current?.quantity ?? 0) + item.quantity,
+      unitPriceCents: item.unitPriceCents,
+    });
+  }
+  return map;
+}
+
+/** Itens alterados no painel: avisa o cliente o que entrou/saiu e o total anterior e novo. */
+export async function notifyCustomerOrderItemsChanged(before: Order, after: Order) {
+  if (!after.customerPhone) return;
+  const previous = itemsByName(before);
+  const next = itemsByName(after);
+  const added: string[] = [];
+  const removed: string[] = [];
+  const repriced: string[] = [];
+
+  for (const [name, item] of next) {
+    const old = previous.get(name);
+    const delta = item.quantity - (old?.quantity ?? 0);
+    if (delta > 0) added.push(`${delta}x ${name}`);
+    else if (delta < 0) removed.push(`${-delta}x ${name}`);
+    else if (old && old.unitPriceCents !== item.unitPriceCents) repriced.push(name);
+  }
+  for (const [name, item] of previous) {
+    if (!next.has(name)) removed.push(`${item.quantity}x ${name}`);
+  }
+  if (!added.length && !removed.length && !repriced.length) return;
+
+  const lines = [`✏️ *Pedido #${after.code} alterado:*`];
+  for (const item of added) lines.push(`➕ Adicionado: ${item}`);
+  for (const item of removed) lines.push(`➖ Removido: ${item}`);
+  for (const item of repriced) lines.push(`💲 Valor ajustado: ${item}`);
+  lines.push("", `Total anterior: ${formatBRL(before.totalCents)}`, `*Total novo: ${formatBRL(after.totalCents)}*`);
+  await sendText(after.customerPhone, lines.join("\n"));
 }
 
 /** Mesma mensagem enviada ao mudar status manualmente no painel. */

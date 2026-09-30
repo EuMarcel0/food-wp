@@ -39,6 +39,8 @@ export type ConversationState =
   | "awaiting_fee_confirm"
   /** v2: "Deseja uma bebida?" (texto interpretado por IA) quando o pedido veio sem bebida. */
   | "awaiting_ai_drink"
+  /** v2: cliente pediu para modificar o pedido no checkout; aguardando o que adicionar/remover/trocar. */
+  | "awaiting_ai_change"
   /** v2: adicionais de um item do carrinho montado pela IA. */
   | "awaiting_ai_addon"
   /** v2: observação de um item do carrinho montado pela IA. */
@@ -67,6 +69,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_ai_order",
   "awaiting_fee_confirm",
   "awaiting_ai_drink",
+  "awaiting_ai_change",
   "awaiting_ai_addon",
   "awaiting_ai_note",
 ]);
@@ -183,6 +186,8 @@ export type ConversationContext = {
   aiExtrasAsked?: boolean;
   /** v2: "Deseja uma bebida?" já perguntado (ou o pedido já veio com bebida). */
   aiDrinkAsked?: boolean;
+  /** v2: etapa do checkout para onde voltar depois de modificar o pedido pela IA. */
+  aiResumeState?: ConversationState;
   /** Endereço sem bairro reconhecido: guardado para juntar com o bairro digitado depois. */
   addressDraft?: string;
 };
