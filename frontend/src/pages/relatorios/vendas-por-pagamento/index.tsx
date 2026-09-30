@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
   DatePicker,
+  Empty,
   Modal,
+  Pagination,
   Radio,
   Select,
+  Spin,
   Table,
   Tag,
   Typography,
@@ -16,6 +19,8 @@ import dayjs from "dayjs";
 import { ListFilters } from "../../../components/ListFilters";
 import { PageHeader } from "../../../components/PageHeader";
 import { api } from "../../../lib/api";
+import { cn } from "../../../lib/cn";
+import { useMediaQuery } from "../../../lib/hooks";
 import {
   formatBRL,
   formatDate,
@@ -42,6 +47,125 @@ function PaymentTag({ label, method }: { label: string; method: string | null | 
         Misto
       </span>
     </span>
+  );
+}
+
+const MOBILE_PAGE_SIZE = 20;
+const LOCKED_VIEWPORT =
+  "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+
+/**
+ * O manifest do PWA não controla zoom: trava o viewport só enquanto esta tela está aberta
+ * (evita o zoom automático/“encolher” em alguns aparelhos) e restaura ao sair.
+ */
+function useLockedViewport() {
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!meta) return;
+    const previous = meta.getAttribute("content");
+    meta.setAttribute("content", LOCKED_VIEWPORT);
+    return () => {
+      if (previous) meta.setAttribute("content", previous);
+    };
+  }, []);
+}
+
+type ReportOrder = SalesByPaymentReport["orders"][number];
+
+function MobileSummaryList({
+  rows,
+  loading,
+}: {
+  rows: SalesByPaymentReport["summary"];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Spin />
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return <Empty description="Sem vendas no período." image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+  return (
+    <ul className="m-0 flex list-none flex-col divide-y divide-food-border overflow-hidden rounded-xl border border-food-border bg-food-surface p-0">
+      {rows.map((row) => (
+        <li
+          key={`${row.paymentMethod ?? "none"}-${row.paymentMethodLabel}`}
+          className={cn(
+            "flex items-center justify-between gap-3 px-3.5 py-3",
+            isMixed(row.paymentMethod) && "bg-violet-500/8",
+          )}
+        >
+          <div className="min-w-0">
+            <PaymentTag label={row.paymentMethodLabel} method={row.paymentMethod} />
+            <p className="m-0 mt-1 text-xs text-food-muted">
+              {row.orderCount} {row.orderCount === 1 ? "pedido" : "pedidos"}
+            </p>
+          </div>
+          <strong className="shrink-0 tabular-nums text-food-text">{formatBRL(row.totalCents)}</strong>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function MobileOrdersList({ rows, loading }: { rows: ReportOrder[]; loading: boolean }) {
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [rows]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Spin />
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return <Empty description="Nenhum pedido neste período." image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+  const visible = rows.slice((page - 1) * MOBILE_PAGE_SIZE, page * MOBILE_PAGE_SIZE);
+  return (
+    <>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {visible.map((row) => (
+          <li
+            key={row.id}
+            className={cn(
+              "rounded-xl border border-food-border bg-food-surface px-3.5 py-3",
+              isMixed(row.paymentMethod) && "border-violet-500/30 bg-violet-500/8",
+            )}
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <strong className="text-sm text-food-text">#{row.code}</strong>
+              <strong className="shrink-0 tabular-nums text-food-text">{formatBRL(row.totalCents)}</strong>
+            </div>
+            <p className="m-0 mt-0.5 truncate text-sm text-food-text">{row.customerName || "—"}</p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-food-muted">{formatDate(row.createdAt)}</span>
+              {isMixed(row.paymentMethod) ? (
+                <PaymentTag label={row.displayPaymentLabel} method={row.paymentMethod} />
+              ) : (
+                <span className="text-xs font-medium text-food-muted">{row.displayPaymentLabel}</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {rows.length > MOBILE_PAGE_SIZE ? (
+        <div className="mt-3 flex justify-center">
+          <Pagination
+            simple
+            current={page}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={rows.length}
+            onChange={setPage}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -194,6 +318,8 @@ const PAYMENT_FILTER_OPTIONS = (
   .map(([value, label]) => ({ value, label }));
 
 export function SalesByPaymentPage() {
+  useLockedViewport();
+  const isMobile = useMediaQuery("(max-width: 991px)");
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
     () => todayRange(),
   );
@@ -280,7 +406,7 @@ export function SalesByPaymentPage() {
   }
 
   return (
-    <div className={listPage}>
+    <div className={cn(listPage, "min-w-0 max-w-full")}>
       <PageHeader
         kicker="Relatórios"
         title="Vendas por forma de pagamento"
@@ -312,7 +438,7 @@ export function SalesByPaymentPage() {
           value={dateRange}
           format="DD/MM/YYYY"
           onChange={(value) => setDateRange(value)}
-          className="!w-full max-w-[260px] sm:!w-[260px]"
+          className="!w-full lg:!w-[260px] lg:max-w-[260px]"
           inputReadOnly
           placement="bottomLeft"
           getPopupContainer={() => document.body}
@@ -321,7 +447,7 @@ export function SalesByPaymentPage() {
           mode="multiple"
           allowClear
           maxTagCount="responsive"
-          className="!min-w-[240px] !w-[280px] shrink-0"
+          className="!w-full lg:!min-w-[240px] lg:!w-[280px] lg:shrink-0"
           value={paymentMethods}
           options={PAYMENT_FILTER_OPTIONS}
           onChange={setPaymentMethods}
@@ -329,28 +455,28 @@ export function SalesByPaymentPage() {
         />
       </ListFilters>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-food-border bg-food-surface px-4 py-3">
+      <div className="mb-4 grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-3">
+        <div className="min-w-0 rounded-xl border border-food-border bg-food-surface px-4 py-3 max-lg:px-3">
           <Typography.Text type="secondary" className="text-xs uppercase tracking-wide">
             Pedidos
           </Typography.Text>
-          <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-text">
+          <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-text max-lg:text-xl">
             {report?.totals.orderCount ?? "—"}
           </p>
         </div>
-        <div className="rounded-xl border border-food-border bg-food-surface px-4 py-3">
+        <div className="min-w-0 rounded-xl border border-food-border bg-food-surface px-4 py-3 max-lg:px-3">
           <Typography.Text type="secondary" className="text-xs uppercase tracking-wide">
             Total vendido
           </Typography.Text>
-          <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-accent">
+          <p className="m-0 mt-1 truncate text-2xl font-extrabold tabular-nums text-food-accent max-lg:text-xl">
             {report ? formatBRL(report.totals.totalCents) : "—"}
           </p>
         </div>
-        <div className="rounded-xl border border-violet-500/30 bg-violet-500/8 px-4 py-3">
+        <div className="col-span-2 min-w-0 rounded-xl border border-violet-500/30 bg-violet-500/8 px-4 py-3 max-lg:px-3 lg:col-span-1">
           <Typography.Text className="text-xs font-semibold uppercase tracking-wide !text-violet-500">
             Pagamentos mistos
           </Typography.Text>
-          <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-text">
+          <p className="m-0 mt-1 text-2xl font-extrabold tabular-nums text-food-text max-lg:text-xl">
             {report ? formatBRL(mixedTotals.totalCents) : "—"}
           </p>
           <p className="m-0 mt-0.5 text-xs text-food-muted">
@@ -364,6 +490,9 @@ export function SalesByPaymentPage() {
       <Typography.Title level={5} className="!mt-0 !mb-2">
         Resumo por forma
       </Typography.Title>
+      {isMobile ? (
+        <MobileSummaryList rows={report?.summary ?? []} loading={reportQuery.isLoading} />
+      ) : (
       <Table
         className={tableClass}
         size="middle"
@@ -396,10 +525,14 @@ export function SalesByPaymentPage() {
           },
         ]}
       />
+      )}
 
       <Typography.Title level={5} className="!mt-6 !mb-2">
         Pedidos do período
       </Typography.Title>
+      {isMobile ? (
+        <MobileOrdersList rows={report?.orders ?? []} loading={reportQuery.isLoading} />
+      ) : (
       <Table
         className={tableClass}
         size="middle"
@@ -446,6 +579,7 @@ export function SalesByPaymentPage() {
           },
         ]}
       />
+      )}
 
       <Modal
         title="Imprimir relatório"
