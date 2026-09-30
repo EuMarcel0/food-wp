@@ -9,6 +9,7 @@ import {
   formatDeliveredThanks,
   formatOrderStatusMessage,
 } from "../conversation/status.js";
+import { isStoreOpen } from "./businessHours.js";
 import { sendButtons, sendText } from "./whatsapp.js";
 import { isOrderFlowState, type Order } from "../types.js";
 
@@ -20,9 +21,17 @@ const NEW_ORDER_BUTTONS = [
   { id: NEW_ORDER_NO, title: "❌ Não" },
 ];
 
-/** Após entregue/retirado: pergunta se quer novo pedido e deixa a conversa nessa etapa. */
+/**
+ * Após entregue/retirado: pergunta se quer novo pedido e deixa a conversa nessa etapa.
+ * Com a loja fechada só agradece (não faz sentido oferecer novo pedido).
+ */
 export async function offerNewOrderAfterDelivered(order: Order) {
   if (!order.customerPhone) return;
+  const store = await getStore().catch(() => null);
+  if (store && !isStoreOpen(store.businessHours, store.timezone)) {
+    await sendText(order.customerPhone, formatDeliveredThanks(order));
+    return;
+  }
   const customer = await upsertCustomer(order.customerPhone, order.customerName);
   const current = await getConversation(customer.id);
   if (current && isOrderFlowState(current.state)) {
