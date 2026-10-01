@@ -160,7 +160,11 @@ function buildThreadItems(messages: ConversationMessage[]): ThreadItem[] {
 
 function DayDivider({ label }: { label: string }) {
   return (
-    <div className="flex justify-center py-2" role="separator" aria-label={label}>
+    <div
+      className="pointer-events-none sticky top-0 z-10 flex justify-center py-1"
+      role="separator"
+      aria-label={label}
+    >
       <span className="rounded-lg bg-[#e1f2fb] px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-sm dark:bg-[#182229] dark:text-[#8696a0]">
         {label}
       </span>
