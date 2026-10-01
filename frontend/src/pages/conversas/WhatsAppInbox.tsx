@@ -140,22 +140,21 @@ function dayDividerLabel(iso: string) {
   });
 }
 
-type ThreadItem =
-  | { type: "day"; key: string; label: string }
-  | { type: "message"; message: ConversationMessage };
+/** Mensagens agrupadas por dia: o divisor fixo só vale dentro do próprio grupo. */
+type ThreadDayGroup = { key: string; label: string | null; messages: ConversationMessage[] };
 
-function buildThreadItems(messages: ConversationMessage[]): ThreadItem[] {
-  const items: ThreadItem[] = [];
-  let lastDay = "";
+function buildThreadGroups(messages: ConversationMessage[]): ThreadDayGroup[] {
+  const groups: ThreadDayGroup[] = [];
   for (const message of messages) {
     const key = dayKey(message.createdAt);
-    if (key && key !== lastDay) {
-      items.push({ type: "day", key, label: dayDividerLabel(message.createdAt) });
-      lastDay = key;
+    const current = groups[groups.length - 1];
+    if (current && (!key || key === current.key)) {
+      current.messages.push(message);
+    } else {
+      groups.push({ key: key || `sem-data-${groups.length}`, label: key ? dayDividerLabel(message.createdAt) : null, messages: [message] });
     }
-    items.push({ type: "message", message });
   }
-  return items;
+  return groups;
 }
 
 function DayDivider({ label }: { label: string }) {
@@ -417,7 +416,7 @@ export function WhatsAppInbox({
       .flatMap(page => page.items);
   }, [messagesQuery.data]);
 
-  const threadItems = useMemo(() => buildThreadItems(messages), [messages]);
+  const threadGroups = useMemo(() => buildThreadGroups(messages), [messages]);
 
   useEffect(() => {
     const client = supabase;
@@ -979,13 +978,14 @@ export function WhatsAppInbox({
               {!messagesQuery.isLoading && !messages.length ? (
                 <Empty className='py-10' description='Ainda sem mensagens neste chat. Novas mensagens aparecem aqui.' />
               ) : null}
-              {threadItems.map(item =>
-                item.type === "day" ? (
-                  <DayDivider key={`day-${item.key}`} label={item.label} />
-                ) : (
-                  <MessageBubble key={item.message.id} message={item.message} />
-                )
-              )}
+              {threadGroups.map(group => (
+                <div key={`day-${group.key}`} className='space-y-2'>
+                  {group.label ? <DayDivider label={group.label} /> : null}
+                  {group.messages.map(message => (
+                    <MessageBubble key={message.id} message={message} />
+                  ))}
+                </div>
+              ))}
             </div>
 
             {!readOnly ? (
