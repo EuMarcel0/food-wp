@@ -126,7 +126,7 @@ export function OpenAiUsageCard() {
       ) : (
         <>
           <p className='mb-4 text-sm leading-normal text-food-muted'>
-            Mês atual ({shortDay(report.from)} a {shortDay(report.to)}, horário UTC, igual ao painel da OpenAI)
+            Mês atual ({shortDay(report.from)} a {shortDay(report.to)}, no fuso da loja)
             {report.projectId ? " · só o projeto do bot" : " · toda a organização"}. Os valores podem levar alguns
             minutos para aparecer.
           </p>

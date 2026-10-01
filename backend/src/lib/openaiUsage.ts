@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { currentUsageMonth } from "./usageMonth.js";
 
 const BASE_URL = "https://api.openai.com/v1/organization";
 const CACHE_MS = 5 * 60 * 1000;
@@ -77,20 +78,17 @@ async function fetchBuckets<T>(path: string, params: Record<string, string | str
   return buckets;
 }
 
-function dayKey(unixSeconds: number) {
-  return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
-}
-
-/** Consumo do mês corrente (UTC, igual ao painel da OpenAI). */
+/** Consumo do mês corrente no fuso da loja. */
 export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageReport> {
   const now = new Date();
-  const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
+  const month = await currentUsageMonth(now);
+  const monthStart = month.startSeconds;
   const projectId = env.openaiProjectId || null;
   const empty: OpenAiUsageReport = {
     configured: false,
     projectId,
-    from: dayKey(monthStart),
-    to: now.toISOString().slice(0, 10),
+    from: month.from,
+    to: month.today,
     currency: "usd",
     totalCost: 0,
     todayCost: 0,
@@ -116,8 +114,8 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
   ]);
 
   const days = new Map<string, OpenAiUsageDay>();
-  const dayOf = (start: number) => {
-    const date = dayKey(start);
+  const dayOf = (start: number, end: number) => {
+    const date = month.dayKey(start, end);
     const current = days.get(date) ?? { date, cost: 0, requests: 0, inputTokens: 0, outputTokens: 0 };
     days.set(date, current);
     return current;
@@ -125,7 +123,7 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
 
   let currency = "usd";
   for (const bucket of costBuckets) {
-    const day = dayOf(bucket.start_time);
+    const day = dayOf(bucket.start_time, bucket.end_time);
     for (const result of bucket.results ?? []) {
       day.cost += Number(result.amount?.value ?? 0);
       if (result.amount?.currency) currency = result.amount.currency;
@@ -134,7 +132,7 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
 
   const models = new Map<string, OpenAiUsageModel>();
   for (const bucket of usageBuckets) {
-    const day = dayOf(bucket.start_time);
+    const day = dayOf(bucket.start_time, bucket.end_time);
     for (const result of bucket.results ?? []) {
       const requests = result.num_model_requests ?? 0;
       const input = result.input_tokens ?? 0;
@@ -152,7 +150,7 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
   }
 
   const dayList = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
-  const today = now.toISOString().slice(0, 10);
+  const today = month.today;
   const report: OpenAiUsageReport = {
     ...empty,
     configured: true,

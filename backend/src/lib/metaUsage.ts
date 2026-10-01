@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { currentUsageMonth } from "./usageMonth.js";
 
 const CACHE_MS = 5 * 60 * 1000;
 const MAX_PAGES = 5;
@@ -53,7 +54,7 @@ type PricingAnalytics = {
 };
 
 type MessagingAnalytics = {
-  analytics?: { data_points?: { start: number; sent?: number; delivered?: number }[] };
+  analytics?: { data_points?: { start: number; end?: number; sent?: number; delivered?: number }[] };
 };
 
 /** product_types da Meta: 0 = template, 2 = mensagem comum (enviadas), 100 = recebidas do cliente. */
@@ -65,10 +66,6 @@ let cache: { key: string; at: number; report: MetaUsageReport } | null = null;
 function isConfigured() {
   const token = env.whatsappToken;
   return Boolean(token && !token.startsWith("your-") && env.whatsappWabaId);
-}
-
-function dayKey(unixSeconds: number) {
-  return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
 
 async function graphGet<T>(url: string): Promise<T> {
@@ -95,12 +92,14 @@ async function graphGet<T>(url: string): Promise<T> {
 /** Consumo do mês corrente na WhatsApp Business Platform (valores aproximados da Meta). */
 export async function getMetaUsageReport(force = false): Promise<MetaUsageReport> {
   const now = new Date();
-  const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
+  const month = await currentUsageMonth(now);
+  const monthStart = month.startSeconds;
+  const dayKey = month.dayKey;
   const nowSeconds = Math.floor(now.getTime() / 1000);
   const empty: MetaUsageReport = {
     configured: false,
-    from: dayKey(monthStart),
-    to: now.toISOString().slice(0, 10),
+    from: month.from,
+    to: month.today,
     currency: "BRL",
     totalCost: 0,
     totals: { volume: 0, freeVolume: 0, paidVolume: 0 },
@@ -143,8 +142,8 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
   }
 
   const days = new Map<string, MetaUsageDay>();
-  const dayOf = (start: number) => {
-    const date = dayKey(start);
+  const dayOf = (start: number, end?: number) => {
+    const date = dayKey(start, end);
     const day = days.get(date) ?? { date, volume: 0, paidVolume: 0, cost: 0, sent: 0, received: 0 };
     days.set(date, day);
     return day;
@@ -157,12 +156,12 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
       const sent = Number(point.sent ?? 0);
       messages.sent += sent;
       messages.delivered += Number(point.delivered ?? 0);
-      dayOf(point.start).sent += sent;
+      dayOf(point.start, point.end).sent += sent;
     }
     for (const point of inbound?.analytics?.data_points ?? []) {
       const received = Number(point.sent ?? point.delivered ?? 0);
       messages.received += received;
-      dayOf(point.start).received += received;
+      dayOf(point.start, point.end).received += received;
     }
   }
 
@@ -171,7 +170,7 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
     const volume = Number(point.volume ?? 0);
     const cost = Number(point.cost ?? 0);
     const free = (point.pricing_type ?? "").startsWith("FREE");
-    const day = dayOf(point.start);
+    const day = dayOf(point.start, point.end);
     day.volume += volume;
     day.cost += cost;
     if (!free) day.paidVolume += volume;
