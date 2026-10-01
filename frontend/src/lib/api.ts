@@ -96,13 +96,20 @@ async function readError(response: Response) {
   return body || `Erro ${response.status}`;
 }
 
+/** Período dos relatórios de consumo (YYYY-MM-DD no fuso da loja). */
+export type UsageRangeParams = { from?: string; to?: string; period?: "previous-month" };
+
+function usageUrl(path: string, range: UsageRangeParams, refresh: boolean) {
+  return withQuery(path, { ...range, refresh: refresh ? 1 : undefined });
+}
+
 export const api = {
   health: () => request<Health>("/health", { silent: true }),
   store: () => request<Store>("/api/store", { silent: true }),
-  openAiUsage: (refresh = false) =>
-    request<OpenAiUsageReport>(`/api/openai/usage${refresh ? "?refresh=1" : ""}`, { silent: true }),
-  metaUsage: (refresh = false) =>
-    request<MetaUsageReport>(`/api/meta/usage${refresh ? "?refresh=1" : ""}`, { silent: true }),
+  openAiUsage: (range: UsageRangeParams = {}, refresh = false) =>
+    request<OpenAiUsageReport>(usageUrl("/api/openai/usage", range, refresh), { silent: true }),
+  metaUsage: (range: UsageRangeParams = {}, refresh = false) =>
+    request<MetaUsageReport>(usageUrl("/api/meta/usage", range, refresh), { silent: true }),
   usdBrlRate: () => request<{ rate: number; updatedAt: string; source: string }>("/api/fx/usd-brl", { silent: true }),
   updateStore: (payload: {
     idleTimeoutMinutes?: number;

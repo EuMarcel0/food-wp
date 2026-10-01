@@ -1,5 +1,5 @@
 import { env } from "../config/env.js";
-import { currentUsageMonth } from "./usageMonth.js";
+import { rememberReport, resolveUsageRange } from "./usageMonth.js";
 
 const BASE_URL = "https://api.openai.com/v1/organization";
 const CACHE_MS = 5 * 60 * 1000;
@@ -45,7 +45,7 @@ type CompletionResult = {
   num_model_requests?: number;
 };
 
-let cache: { key: string; at: number; report: OpenAiUsageReport } | null = null;
+const cache = new Map<string, { at: number; report: OpenAiUsageReport }>();
 
 export function isOpenAiAdminConfigured() {
   return Boolean(env.openaiAdminKey && !env.openaiAdminKey.startsWith("your-"));
@@ -78,17 +78,20 @@ async function fetchBuckets<T>(path: string, params: Record<string, string | str
   return buckets;
 }
 
-/** Consumo do mês corrente no fuso da loja. */
-export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageReport> {
+/** Consumo no período (fuso da loja); padrão: mês corrente. */
+export async function getOpenAiUsageReport(
+  range: { from?: unknown; to?: unknown; previousMonth?: boolean } = {},
+  force = false,
+): Promise<OpenAiUsageReport> {
   const now = new Date();
-  const month = await currentUsageMonth(now);
+  const month = await resolveUsageRange(range, now);
   const monthStart = month.startSeconds;
   const projectId = env.openaiProjectId || null;
   const empty: OpenAiUsageReport = {
     configured: false,
     projectId,
     from: month.from,
-    to: month.today,
+    to: month.to,
     currency: "usd",
     totalCost: 0,
     todayCost: 0,
@@ -99,11 +102,13 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
   };
   if (!isOpenAiAdminConfigured()) return empty;
 
-  const cacheKey = `${monthStart}:${projectId ?? ""}`;
-  if (!force && cache && cache.key === cacheKey && Date.now() - cache.at < CACHE_MS) return cache.report;
+  const cacheKey = `${month.from}:${month.to}:${projectId ?? ""}`;
+  const cached = cache.get(cacheKey);
+  if (!force && cached && Date.now() - cached.at < CACHE_MS) return cached.report;
 
   const common: Record<string, string | string[]> = {
     start_time: String(monthStart),
+    end_time: String(month.endSeconds),
     bucket_width: "1d",
     limit: "31",
     ...(projectId ? { project_ids: [projectId] } : {}),
@@ -149,7 +154,9 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
     }
   }
 
-  const dayList = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const dayList = [...days.values()]
+    .filter(day => day.date >= month.from && day.date <= month.to)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const today = month.today;
   const report: OpenAiUsageReport = {
     ...empty,
@@ -165,6 +172,6 @@ export async function getOpenAiUsageReport(force = false): Promise<OpenAiUsageRe
     days: dayList,
     models: [...models.values()].sort((a, b) => b.requests - a.requests),
   };
-  cache = { key: cacheKey, at: Date.now(), report };
+  rememberReport(cache, cacheKey, report);
   return report;
 }

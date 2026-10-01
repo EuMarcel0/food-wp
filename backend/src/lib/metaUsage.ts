@@ -1,5 +1,5 @@
 import { env } from "../config/env.js";
-import { currentUsageMonth } from "./usageMonth.js";
+import { rememberReport, resolveUsageRange } from "./usageMonth.js";
 
 const CACHE_MS = 5 * 60 * 1000;
 const MAX_PAGES = 5;
@@ -61,7 +61,7 @@ type MessagingAnalytics = {
 const OUTBOUND_TYPES = "[0,2]";
 const INBOUND_TYPES = "[100]";
 
-let cache: { key: string; at: number; report: MetaUsageReport } | null = null;
+const cache = new Map<string, { at: number; report: MetaUsageReport }>();
 
 function isConfigured() {
   const token = env.whatsappToken;
@@ -89,17 +89,20 @@ async function graphGet<T>(url: string): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-/** Consumo do mês corrente na WhatsApp Business Platform (valores aproximados da Meta). */
-export async function getMetaUsageReport(force = false): Promise<MetaUsageReport> {
+/** Consumo no período na WhatsApp Business Platform (valores aproximados da Meta); padrão: mês corrente. */
+export async function getMetaUsageReport(
+  range: { from?: unknown; to?: unknown; previousMonth?: boolean } = {},
+  force = false,
+): Promise<MetaUsageReport> {
   const now = new Date();
-  const month = await currentUsageMonth(now);
+  const month = await resolveUsageRange(range, now);
   const monthStart = month.startSeconds;
   const dayKey = month.dayKey;
-  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const nowSeconds = month.endSeconds;
   const empty: MetaUsageReport = {
     configured: false,
     from: month.from,
-    to: month.today,
+    to: month.to,
     currency: "BRL",
     totalCost: 0,
     totals: { volume: 0, freeVolume: 0, paidVolume: 0 },
@@ -110,8 +113,9 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
   };
   if (!isConfigured()) return empty;
 
-  const cacheKey = `${monthStart}:${env.whatsappWabaId}`;
-  if (!force && cache && cache.key === cacheKey && Date.now() - cache.at < CACHE_MS) return cache.report;
+  const cacheKey = `${month.from}:${month.to}:${env.whatsappWabaId}`;
+  const cached = cache.get(cacheKey);
+  if (!force && cached && Date.now() - cached.at < CACHE_MS) return cached.report;
 
   const field =
     `pricing_analytics.start(${monthStart}).end(${nowSeconds}).granularity(DAILY)` +
@@ -200,6 +204,6 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
     days: dayList,
     categories: categoryList,
   };
-  cache = { key: cacheKey, at: Date.now(), report };
+  rememberReport(cache, cacheKey, report);
   return report;
 }

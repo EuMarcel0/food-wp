@@ -1,9 +1,10 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExportOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Segmented, Skeleton, Tooltip } from "antd";
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
+import { UsageRangePicker, previousMonthLabel, useUsageRange } from "./UsageRangePicker";
 
 const BILLING_URL = "https://platform.openai.com/settings/organization/billing/overview";
 const USAGE_URL = "https://platform.openai.com/usage";
@@ -42,17 +43,26 @@ export function Stat({ label, value, hint }: { label: string; value: string; hin
 export function OpenAiUsageCard() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const period = useUsageRange();
   const usageQuery = useQuery({
-    queryKey: queryKeys.openAiUsage,
-    queryFn: () => api.openAiUsage(),
+    queryKey: queryKeys.openAiUsage(period.key),
+    queryFn: () => api.openAiUsage(period.params),
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
+    retry: false
+  });
+  const previousQuery = useQuery({
+    queryKey: queryKeys.openAiUsage("previous-month"),
+    queryFn: () => api.openAiUsage({ period: "previous-month" }),
+    enabled: Boolean(usageQuery.data?.configured),
+    staleTime: 30 * 60 * 1000,
     retry: false
   });
 
   const refresh = async () => {
     setRefreshing(true);
     try {
-      queryClient.setQueryData(queryKeys.openAiUsage, await api.openAiUsage(true));
+      queryClient.setQueryData(queryKeys.openAiUsage(period.key), await api.openAiUsage(period.params, true));
     } catch {
       await usageQuery.refetch();
     } finally {
@@ -125,11 +135,14 @@ export function OpenAiUsageCard() {
         />
       ) : (
         <>
-          <p className='mb-4 text-sm leading-normal text-food-muted'>
-            Mês atual ({shortDay(report.from)} a {shortDay(report.to)}, no fuso da loja)
-            {report.projectId ? " · só o projeto do bot" : " · toda a organização"}. Os valores podem levar alguns
-            minutos para aparecer.
-          </p>
+          <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+            <p className='m-0 text-sm leading-normal text-food-muted'>
+              {shortDay(report.from)} a {shortDay(report.to)}, no fuso da loja
+              {report.projectId ? " · só o projeto do bot" : " · toda a organização"}. Pode levar alguns minutos
+              para aparecer.
+            </p>
+            <UsageRangePicker value={period.range} onChange={period.setRange} />
+          </div>
 
           {displayCurrency === "BRL" ? (
             <p className='-mt-2 mb-4 text-xs text-food-muted'>
@@ -142,8 +155,13 @@ export function OpenAiUsageCard() {
           ) : null}
 
           <div className='mb-5 flex flex-wrap gap-3'>
-            <Stat label='Gasto no mês' value={money(report.totalCost)} />
-            <Stat label='Hoje' value={money(report.todayCost)} />
+            <Stat label='Gasto no período' value={money(report.totalCost)} />
+            {period.includesToday ? <Stat label='Hoje' value={money(report.todayCost)} /> : null}
+            <Stat
+              label='Mês anterior'
+              value={previousQuery.data ? money(previousQuery.data.totalCost) : previousQuery.isError ? "—" : "…"}
+              hint={previousMonthLabel()}
+            />
             <Stat
               label='Requisições'
               value={formatCount(report.totals.requests)}
@@ -207,7 +225,7 @@ export function OpenAiUsageCard() {
               </div>
             </>
           ) : (
-            <p className='mb-5 text-sm text-food-muted'>Nenhuma chamada registrada neste mês ainda.</p>
+            <p className='mb-5 text-sm text-food-muted'>Nenhuma chamada registrada neste período.</p>
           )}
 
           <Alert

@@ -125,9 +125,18 @@ catalogRouter.get("/store", async (_req, res) => {
   res.json(await getStore());
 });
 
+/** ?from=YYYY-MM-DD&to=YYYY-MM-DD ou ?period=previous-month (fuso da loja). */
+function usageRangeQuery(query: Record<string, unknown>) {
+  return {
+    from: query.from,
+    to: query.to,
+    previousMonth: query.period === "previous-month",
+  };
+}
+
 catalogRouter.get("/openai/usage", async (req, res) => {
   try {
-    res.json(await getOpenAiUsageReport(req.query.refresh === "1"));
+    res.json(await getOpenAiUsageReport(usageRangeQuery(req.query), req.query.refresh === "1"));
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : "Falha ao consultar a OpenAI." });
   }
@@ -135,7 +144,7 @@ catalogRouter.get("/openai/usage", async (req, res) => {
 
 catalogRouter.get("/meta/usage", async (req, res) => {
   try {
-    res.json(await getMetaUsageReport(req.query.refresh === "1"));
+    res.json(await getMetaUsageReport(usageRangeQuery(req.query), req.query.refresh === "1"));
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : "Falha ao consultar a Meta." });
   }

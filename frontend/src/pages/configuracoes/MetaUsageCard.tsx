@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExportOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Skeleton, Tooltip } from "antd";
 import { useState } from "react";
@@ -6,6 +6,7 @@ import { api } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
 import type { MetaUsageReport } from "../../types";
 import { Stat, formatCount, formatMoney, shortDay } from "./OpenAiUsageCard";
+import { UsageRangePicker, previousMonthLabel, useUsageRange } from "./UsageRangePicker";
 
 const INSIGHTS_URL = "https://business.facebook.com/wa/manage/phone-numbers/";
 const BILLING_URL = "https://business.facebook.com/billing_hub/accounts";
@@ -23,17 +24,26 @@ const CATEGORY_LABEL: Record<string, string> = {
 export function MetaUsageCard() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const period = useUsageRange();
   const usageQuery = useQuery({
-    queryKey: queryKeys.metaUsage,
-    queryFn: () => api.metaUsage(),
+    queryKey: queryKeys.metaUsage(period.key),
+    queryFn: () => api.metaUsage(period.params),
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
+    retry: false
+  });
+  const previousQuery = useQuery({
+    queryKey: queryKeys.metaUsage("previous-month"),
+    queryFn: () => api.metaUsage({ period: "previous-month" }),
+    enabled: Boolean(usageQuery.data?.configured),
+    staleTime: 30 * 60 * 1000,
     retry: false
   });
 
   const refresh = async () => {
     setRefreshing(true);
     try {
-      queryClient.setQueryData(queryKeys.metaUsage, await api.metaUsage(true));
+      queryClient.setQueryData(queryKeys.metaUsage(period.key), await api.metaUsage(period.params, true));
     } catch {
       await usageQuery.refetch();
     } finally {
@@ -81,10 +91,13 @@ export function MetaUsageCard() {
         />
       ) : (
         <>
-          <p className='mb-4 text-sm leading-normal text-food-muted'>
-            Mês atual ({shortDay(report.from)} a {shortDay(report.to)}). Mensagens <b>entregues</b> pelo número e custo
-            aproximado informado pela Meta; o valor oficial é o da fatura.
-          </p>
+          <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+            <p className='m-0 text-sm leading-normal text-food-muted'>
+              {shortDay(report.from)} a {shortDay(report.to)}. Custo aproximado informado pela Meta; o valor oficial é o
+              da fatura.
+            </p>
+            <UsageRangePicker value={period.range} onChange={period.setRange} />
+          </div>
 
           {report.messages ? (
             <>
@@ -107,9 +120,18 @@ export function MetaUsageCard() {
 
           <h3 className='m-0 mb-2 text-sm font-bold text-food-text'>Custo</h3>
           <div className='mb-5 flex flex-wrap gap-3'>
-            <Stat label='Gasto no mês' value={money(report.totalCost)} />
+            <Stat label='Gasto no período' value={money(report.totalCost)} />
             <Stat label='Grátis' value={formatCount(report.totals.freeVolume)} hint='atendimento em até 24h' />
             <Stat label='Pagas' value={formatCount(report.totals.paidVolume)} />
+            <Stat
+              label='Mês anterior'
+              value={previousQuery.data ? money(previousQuery.data.totalCost) : previousQuery.isError ? "—" : "…"}
+              hint={
+                previousQuery.data?.messages
+                  ? `${previousMonthLabel()} · ${formatCount(previousQuery.data.messages.sent)} enviadas`
+                  : previousMonthLabel()
+              }
+            />
           </div>
 
           {report.days.length ? (
@@ -161,7 +183,7 @@ export function MetaUsageCard() {
               </div>
             </>
           ) : (
-            <p className='mb-5 text-sm text-food-muted'>Nenhuma mensagem entregue neste mês ainda.</p>
+            <p className='mb-5 text-sm text-food-muted'>Nenhuma mensagem entregue neste período.</p>
           )}
 
           <Alert
