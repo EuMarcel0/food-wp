@@ -18,6 +18,7 @@ import { PrinterSettingsCard } from "./PrinterSettingsCard";
 import { PrepSettingsCard } from "./PrepSettingsCard";
 import { BatchCategorySettingsCard } from "./BatchCategorySettingsCard";
 import { BotFlowSettingsCard } from "./BotFlowSettingsCard";
+import { MetaUsageCard } from "./MetaUsageCard";
 import { OpenAiUsageCard } from "./OpenAiUsageCard";
 
 function formatIdleLabel(minutes: number) {
@@ -75,6 +76,8 @@ export function SettingsPage() {
         <BotFlowSettingsCard store={store} />
 
         <OpenAiUsageCard />
+
+        <MetaUsageCard />
 
         <PrepSettingsCard store={store} />
 

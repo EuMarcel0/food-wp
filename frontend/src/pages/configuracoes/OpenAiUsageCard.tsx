@@ -8,7 +8,7 @@ import { queryKeys } from "../../lib/queryKeys";
 const BILLING_URL = "https://platform.openai.com/settings/organization/billing/overview";
 const USAGE_URL = "https://platform.openai.com/usage";
 
-function formatMoney(value: number, currency: string) {
+export function formatMoney(value: number, currency: string) {
   const digits = value > 0 && value < 0.01 ? 4 : 2;
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -18,18 +18,18 @@ function formatMoney(value: number, currency: string) {
   }).format(value);
 }
 
-function formatCount(value: number) {
+export function formatCount(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi`;
   if (value >= 10_000) return `${(value / 1_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil`;
   return value.toLocaleString("pt-BR");
 }
 
-function shortDay(date: string) {
+export function shortDay(date: string) {
   const [, month, day] = date.split("-");
   return `${day}/${month}`;
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+export function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className='min-w-[130px] flex-1 rounded-xl border border-food-border bg-food-chip px-4 py-3'>
       <p className='m-0 text-xs font-medium uppercase tracking-wide text-food-muted'>{label}</p>

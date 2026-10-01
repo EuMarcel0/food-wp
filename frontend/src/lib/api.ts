@@ -10,6 +10,7 @@ import type {
   Crust,
   Health,
   LiveConversation,
+  MetaUsageReport,
   NotificationsPage,
   Order,
   OrderLog,
@@ -100,6 +101,8 @@ export const api = {
   store: () => request<Store>("/api/store", { silent: true }),
   openAiUsage: (refresh = false) =>
     request<OpenAiUsageReport>(`/api/openai/usage${refresh ? "?refresh=1" : ""}`, { silent: true }),
+  metaUsage: (refresh = false) =>
+    request<MetaUsageReport>(`/api/meta/usage${refresh ? "?refresh=1" : ""}`, { silent: true }),
   usdBrlRate: () => request<{ rate: number; updatedAt: string; source: string }>("/api/fx/usd-brl", { silent: true }),
   updateStore: (payload: {
     idleTimeoutMinutes?: number;

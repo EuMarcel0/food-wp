@@ -302,6 +302,18 @@ export type OpenAiUsageReport = {
   fetchedAt: string;
 };
 
+export type MetaUsageReport = {
+  configured: boolean;
+  from: string;
+  to: string;
+  currency: string;
+  totalCost: number;
+  totals: { volume: number; freeVolume: number; paidVolume: number };
+  days: { date: string; volume: number; paidVolume: number; cost: number }[];
+  categories: { category: string; volume: number; freeVolume: number; paidVolume: number; cost: number }[];
+  fetchedAt: string;
+};
+
 export type OrderStats = {
   /** Dia filtrado (YYYY-MM-DD). */
   day?: string;
