@@ -828,9 +828,12 @@ export function WhatsAppInbox({
         ref={chatShellRef}
         className={cn(
           "flex min-h-0 flex-col bg-[#efeae2] dark:bg-[#0b141a]",
+          CHAT_WALLPAPER,
           selectedId || isDesktop ? "flex" : "hidden",
           !selectedId && "hidden lg:flex",
-          !isDesktop && selectedId && "fixed inset-x-0 top-0 z-[100] h-[100dvh] max-h-[100dvh] max-lg:flex"
+          !isDesktop && selectedId
+            ? "fixed inset-x-0 top-0 z-[100] h-[100dvh] max-h-[100dvh] max-lg:flex"
+            : "relative"
         )}
       >
         {!selected ? (
@@ -1242,6 +1245,10 @@ function isImageMessage(message: ConversationMessage) {
     (message.msgType === "image" || message.msgType === "sticker" || message.mediaMime?.startsWith("image/"))
   );
 }
+
+/** Desenhos do WhatsApp sobre a cor do chat; o blend mantém a cor de fundo (as imagens são opacas). */
+const CHAT_WALLPAPER =
+  "isolate before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:bg-repeat before:bg-size-[420px_auto] before:opacity-80 before:bg-[url(/conversas-wpp-light.webp)] before:mix-blend-multiply dark:before:bg-[url(/conversas-wpp-dark.webp)] dark:before:mix-blend-luminosity";
 
 /** Texto transcrito do áudio do cliente (linha "📝 …" gravada pelo backend). */
 function audioTranscript(body: string | null | undefined) {
