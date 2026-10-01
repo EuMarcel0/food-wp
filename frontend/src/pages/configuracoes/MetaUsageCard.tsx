@@ -4,6 +4,7 @@ import { Alert, Button, Card, Skeleton, Tooltip } from "antd";
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
+import type { MetaUsageReport } from "../../types";
 import { Stat, formatCount, formatMoney, shortDay } from "./OpenAiUsageCard";
 
 const INSIGHTS_URL = "https://business.facebook.com/wa/manage/phone-numbers/";
@@ -42,7 +43,8 @@ export function MetaUsageCard() {
 
   const report = usageQuery.data;
   const money = (value: number) => formatMoney(value, report?.currency ?? "BRL");
-  const maxVolume = Math.max(0, ...(report?.days ?? []).map(day => day.volume));
+  const dayTotal = (day: MetaUsageReport["days"][number]) => day.sent + day.received || day.volume;
+  const maxVolume = Math.max(0, ...(report?.days ?? []).map(dayTotal));
 
   return (
     <Card
@@ -84,9 +86,28 @@ export function MetaUsageCard() {
             aproximado informado pela Meta; o valor oficial é o da fatura.
           </p>
 
+          {report.messages ? (
+            <>
+              <h3 className='m-0 mb-2 text-sm font-bold text-food-text'>Todas as mensagens</h3>
+              <div className='mb-5 flex flex-wrap gap-3'>
+                <Stat label='Enviadas' value={formatCount(report.messages.sent)} hint='pelo número da loja' />
+                <Stat
+                  label='Entregues'
+                  value={formatCount(report.messages.delivered)}
+                  hint={
+                    report.messages.sent
+                      ? `${Math.round((report.messages.delivered / report.messages.sent) * 100)}% das enviadas`
+                      : undefined
+                  }
+                />
+                <Stat label='Recebidas' value={formatCount(report.messages.received)} hint='enviadas pelos clientes' />
+              </div>
+            </>
+          ) : null}
+
+          <h3 className='m-0 mb-2 text-sm font-bold text-food-text'>Custo</h3>
           <div className='mb-5 flex flex-wrap gap-3'>
             <Stat label='Gasto no mês' value={money(report.totalCost)} />
-            <Stat label='Mensagens' value={formatCount(report.totals.volume)} hint='entregues no mês' />
             <Stat label='Grátis' value={formatCount(report.totals.freeVolume)} hint='atendimento em até 24h' />
             <Stat label='Pagas' value={formatCount(report.totals.paidVolume)} />
           </div>
@@ -96,18 +117,19 @@ export function MetaUsageCard() {
               <h3 className='m-0 mb-2 text-sm font-bold text-food-text'>Mensagens por dia</h3>
               <div className='mb-5 flex h-28 items-end gap-1 overflow-x-auto rounded-xl border border-food-border px-3 pb-2 pt-3'>
                 {report.days.map(day => {
-                  const ratio = maxVolume > 0 ? day.volume / maxVolume : 0;
+                  const total = dayTotal(day);
+                  const ratio = maxVolume > 0 ? total / maxVolume : 0;
                   return (
                     <Tooltip
                       key={day.date}
-                      title={`${shortDay(day.date)} · ${day.volume} msg. (${day.paidVolume} pagas) · ${money(day.cost)}`}
+                      title={`${shortDay(day.date)} · ${day.sent} enviadas · ${day.received} recebidas · ${day.paidVolume} pagas · ${money(day.cost)}`}
                     >
                       <div className='flex h-full min-w-[14px] flex-1 flex-col items-center justify-end gap-1'>
                         <div
                           className='w-full rounded-t bg-food-accent'
                           style={{
-                            height: `${Math.max(ratio * 100, day.volume ? 4 : 1)}%`,
-                            opacity: day.volume ? 1 : 0.25
+                            height: `${Math.max(ratio * 100, total ? 4 : 1)}%`,
+                            opacity: total ? 1 : 0.25
                           }}
                         />
                         <span className='text-[10px] tabular-nums text-food-muted'>{day.date.slice(8)}</span>

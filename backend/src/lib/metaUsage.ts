@@ -3,7 +3,17 @@ import { env } from "../config/env.js";
 const CACHE_MS = 5 * 60 * 1000;
 const MAX_PAGES = 5;
 
-export type MetaUsageDay = { date: string; volume: number; paidVolume: number; cost: number };
+export type MetaUsageDay = {
+  date: string;
+  volume: number;
+  paidVolume: number;
+  cost: number;
+  sent: number;
+  received: number;
+};
+
+/** Mesmos números de "All Messages" no WhatsApp Manager. */
+export type MetaMessageTotals = { sent: number; delivered: number; received: number };
 
 export type MetaUsageCategory = {
   /** SERVICE, MARKETING, UTILITY, AUTHENTICATION… */
@@ -21,6 +31,8 @@ export type MetaUsageReport = {
   currency: string;
   totalCost: number;
   totals: { volume: number; freeVolume: number; paidVolume: number };
+  /** null se a Meta não devolveu o analytics de mensagens. */
+  messages: MetaMessageTotals | null;
   days: MetaUsageDay[];
   categories: MetaUsageCategory[];
   fetchedAt: string;
@@ -39,6 +51,14 @@ type PricingAnalytics = {
   data?: { data_points?: DataPoint[] }[];
   paging?: { next?: string };
 };
+
+type MessagingAnalytics = {
+  analytics?: { data_points?: { start: number; sent?: number; delivered?: number }[] };
+};
+
+/** product_types da Meta: 0 = template, 2 = mensagem comum (enviadas), 100 = recebidas do cliente. */
+const OUTBOUND_TYPES = "[0,2]";
+const INBOUND_TYPES = "[100]";
 
 let cache: { key: string; at: number; report: MetaUsageReport } | null = null;
 
@@ -84,6 +104,7 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
     currency: "BRL",
     totalCost: 0,
     totals: { volume: 0, freeVolume: 0, paidVolume: 0 },
+    messages: null,
     days: [],
     categories: [],
     fetchedAt: now.toISOString(),
@@ -97,9 +118,22 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
     `pricing_analytics.start(${monthStart}).end(${nowSeconds}).granularity(DAILY)` +
     ".dimensions(PRICING_CATEGORY,PRICING_TYPE)";
   const base = `https://graph.facebook.com/${env.whatsappGraphVersion}/${env.whatsappWabaId}`;
-  const first = await graphGet<{ currency?: string; pricing_analytics?: PricingAnalytics }>(
-    `${base}?fields=${encodeURIComponent(`currency,${field}`)}`,
-  );
+  const messaging = (productTypes: string) =>
+    graphGet<MessagingAnalytics>(
+      `${base}?fields=${encodeURIComponent(
+        `analytics.start(${monthStart}).end(${nowSeconds}).granularity(DAY).product_types(${productTypes})`,
+      )}`,
+    ).catch((error) => {
+      console.warn("[meta] analytics de mensagens indisponível:", error instanceof Error ? error.message : error);
+      return null;
+    });
+  const [first, outbound, inbound] = await Promise.all([
+    graphGet<{ currency?: string; pricing_analytics?: PricingAnalytics }>(
+      `${base}?fields=${encodeURIComponent(`currency,${field}`)}`,
+    ),
+    messaging(OUTBOUND_TYPES),
+    messaging(INBOUND_TYPES),
+  ]);
 
   const points: DataPoint[] = [];
   let page: PricingAnalytics | undefined = first.pricing_analytics;
@@ -109,17 +143,38 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
   }
 
   const days = new Map<string, MetaUsageDay>();
+  const dayOf = (start: number) => {
+    const date = dayKey(start);
+    const day = days.get(date) ?? { date, volume: 0, paidVolume: 0, cost: 0, sent: 0, received: 0 };
+    days.set(date, day);
+    return day;
+  };
+
+  let messages: MetaMessageTotals | null = null;
+  if (outbound || inbound) {
+    messages = { sent: 0, delivered: 0, received: 0 };
+    for (const point of outbound?.analytics?.data_points ?? []) {
+      const sent = Number(point.sent ?? 0);
+      messages.sent += sent;
+      messages.delivered += Number(point.delivered ?? 0);
+      dayOf(point.start).sent += sent;
+    }
+    for (const point of inbound?.analytics?.data_points ?? []) {
+      const received = Number(point.sent ?? point.delivered ?? 0);
+      messages.received += received;
+      dayOf(point.start).received += received;
+    }
+  }
+
   const categories = new Map<string, MetaUsageCategory>();
   for (const point of points) {
     const volume = Number(point.volume ?? 0);
     const cost = Number(point.cost ?? 0);
     const free = (point.pricing_type ?? "").startsWith("FREE");
-    const date = dayKey(point.start);
-    const day = days.get(date) ?? { date, volume: 0, paidVolume: 0, cost: 0 };
+    const day = dayOf(point.start);
     day.volume += volume;
     day.cost += cost;
     if (!free) day.paidVolume += volume;
-    days.set(date, day);
 
     const name = point.pricing_category || "OUTROS";
     const category = categories.get(name) ?? { category: name, volume: 0, freeVolume: 0, paidVolume: 0, cost: 0 };
@@ -142,6 +197,7 @@ export async function getMetaUsageReport(force = false): Promise<MetaUsageReport
       freeVolume: categoryList.reduce((sum, item) => sum + item.freeVolume, 0),
       paidVolume: categoryList.reduce((sum, item) => sum + item.paidVolume, 0),
     },
+    messages,
     days: dayList,
     categories: categoryList,
   };

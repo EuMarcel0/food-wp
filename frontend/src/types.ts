@@ -309,7 +309,8 @@ export type MetaUsageReport = {
   currency: string;
   totalCost: number;
   totals: { volume: number; freeVolume: number; paidVolume: number };
-  days: { date: string; volume: number; paidVolume: number; cost: number }[];
+  messages: { sent: number; delivered: number; received: number } | null;
+  days: { date: string; volume: number; paidVolume: number; cost: number; sent: number; received: number }[];
   categories: { category: string; volume: number; freeVolume: number; paidVolume: number; cost: number }[];
   fetchedAt: string;
 };
