@@ -58,7 +58,7 @@ export function MetaUsageCard() {
 
   return (
     <Card
-      className='overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-3xl'
+      className='overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft'
       title='Consumo da Meta (WhatsApp)'
       extra={
         report?.configured ? (

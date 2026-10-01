@@ -179,7 +179,7 @@ export function NeighborhoodFees({ store }: { store?: Store }) {
       className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft"
       title="Taxas por bairro"
     >
-      <p className="mb-4 max-w-xl text-sm leading-normal text-food-muted">
+      <p className="mb-4 text-sm leading-normal text-food-muted">
         No WhatsApp, depois de Entrega, o cliente escolhe o bairro nesta lista
         (com a taxa) e em seguida digita o endereço. Sem bairro cadastrado, vale
         a taxa default.
@@ -205,7 +205,7 @@ export function NeighborhoodFees({ store }: { store?: Store }) {
         }}
       >
         {({ isSubmitting, status }) => (
-          <FormikForm className="mb-6 max-w-xl">
+          <FormikForm className="mb-6">
             {status ? (
               <Alert type="error" showIcon className="mb-3" message={status} />
             ) : null}

@@ -88,7 +88,7 @@ export function SettingsPage() {
         <PrinterSettingsCard />
 
         <Card
-          className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
+          className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft"
           title="Tempo sem resposta"
         >
           <Formik

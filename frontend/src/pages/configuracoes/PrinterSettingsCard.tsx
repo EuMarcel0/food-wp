@@ -80,7 +80,7 @@ export function PrinterSettingsCard() {
 
   return (
     <Card
-      className='overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl'
+      className='overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft'
       title='Impressão do cupom'
       extra={online ? <Tag color='success'>Agente online</Tag> : <Tag>Agente offline</Tag>}
     >

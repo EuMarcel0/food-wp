@@ -172,7 +172,7 @@ export function BrandingCard({
       className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft"
       title="Perfil do estabelecimento"
     >
-      <p className="mb-5 max-w-2xl text-sm leading-normal text-food-muted">
+      <p className="mb-5 text-sm leading-normal text-food-muted">
         Nome e foto que o cliente vê. A foto atualiza o avatar da conversa no
         WhatsApp. O nome entra nas mensagens do bot. Fora do horário abaixo, o
         bot avisa que a loja está fechada.
@@ -209,7 +209,7 @@ export function BrandingCard({
               />
             ) : null}
 
-            <div className="max-w-md">
+            <div>
               <div className="mb-4 flex items-center gap-3">
                 <Avatar
                   src={preview}
@@ -243,7 +243,7 @@ export function BrandingCard({
               </FormField>
             </div>
 
-            <div className="mt-2 max-w-2xl">
+            <div className="mt-2">
               <h3 className="m-0 mb-1 text-base font-bold tracking-tight text-food-text">
                 Horário de funcionamento
               </h3>

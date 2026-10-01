@@ -29,7 +29,7 @@ export function ReceiptSettingsCard({ store }: { store?: Store }) {
 
   return (
     <Card
-      className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft [&_.ant-card-body]:max-w-xl"
+      className="overflow-hidden rounded-2xl border border-food-border bg-food-surface shadow-food-soft"
       title="Cupom de impressão"
     >
       <p className="mb-4 text-sm leading-normal text-food-muted">
