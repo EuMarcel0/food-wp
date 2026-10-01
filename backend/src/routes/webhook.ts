@@ -9,12 +9,15 @@ import {
 } from "../conversation/engine.js";
 import { getStore } from "../data/repository.js";
 import { logInboundByPhone, logPhoneEchoByCustomerPhone } from "../lib/messageLog.js";
+import { canTranscribeCustomerAudio } from "../lib/audioTranscript.js";
 import {
   describeInboundWithoutMedia,
   parseInboundMedia,
   persistInboundWhatsAppMedia,
+  type ParsedInboundMedia,
   type WhatsAppInboundMessage,
 } from "../lib/inboundWhatsAppMedia.js";
+import { sendTypingIndicator } from "../lib/whatsapp.js";
 import { enqueueByUser, isUserBusy, queueKeyForPhone } from "../lib/userQueue.js";
 import { noteWebhook } from "../lib/webhookStats.js";
 
@@ -66,6 +69,52 @@ type WhatsAppChange = {
     }>;
   };
 };
+
+/**
+ * v2: transcreve o áudio e trata o texto como se o cliente tivesse digitado
+ * (mesmo agrupamento e mesmas etapas). Sem transcrição, segue o fluxo antigo de mídia.
+ */
+async function handleInboundAudio(input: {
+  to: string;
+  queueKey: string;
+  parsed: ParsedInboundMedia;
+  waMessageId?: string;
+  name?: string;
+  avatarUrl?: string;
+}) {
+  const { to, queueKey, waMessageId, name, avatarUrl } = input;
+  const warnUnsupported = () =>
+    handleUnsupportedInbound({ from: to, name, avatarUrl, waMessageId });
+
+  if (!(await canTranscribeCustomerAudio())) {
+    await enqueueByUser(queueKey, async () => {
+      await persistInboundWhatsAppMedia({ to, parsed: input.parsed, waMessageId, name, avatarUrl });
+      await warnUnsupported();
+    });
+    return;
+  }
+
+  if (waMessageId) await sendTypingIndicator(waMessageId).catch(() => undefined);
+  const { transcript } = await persistInboundWhatsAppMedia({
+    to,
+    parsed: input.parsed,
+    waMessageId,
+    name,
+    avatarUrl,
+    transcribe: true,
+  });
+  if (!transcript) {
+    await enqueueByUser(queueKey, warnUnsupported);
+    return;
+  }
+
+  const message = { from: to, name, avatarUrl, text: transcript, waMessageId };
+  if (isAiCollecting(to) || isUserBusy(queueKey)) {
+    await queueAiOrderText(message);
+    return;
+  }
+  await enqueueByUser(queueKey, () => handleIncomingMessage(message));
+}
 
 webhookRouter.get("/whatsapp", (req, res) => {
   const mode = String(req.query["hub.mode"] ?? "");
@@ -195,6 +244,19 @@ webhookRouter.post("/whatsapp", (req, res) => {
           console.log(
             `WhatsApp inbound media type=${inboundMedia.msgType} from=${message.from} wa_id=${waId ?? "-"}`,
           );
+          if (inboundMedia.msgType === "audio") {
+            handleInboundAudio({
+              to,
+              queueKey,
+              parsed: inboundMedia,
+              waMessageId: message.id,
+              name,
+              avatarUrl,
+            }).catch((error) => {
+              console.error("Falha ao processar áudio WhatsApp", error);
+            });
+            continue;
+          }
           enqueueByUser(queueKey, async () => {
             await persistInboundWhatsAppMedia({
               to,

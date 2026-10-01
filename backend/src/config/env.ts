@@ -27,6 +27,8 @@ export const env = {
 
   openaiApiKey: read("OPENAI_API_KEY"),
   openaiModel: read("OPENAI_MODEL", "gpt-4.1-mini"),
+  /** Transcrição dos áudios dos clientes (v2). */
+  openaiTranscribeModel: read("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
   /** Guarda as chamadas nos Logs da OpenAI (platform.openai.com/logs). Desligue com OPENAI_STORE_LOGS=false. */
   openaiStoreLogs: read("OPENAI_STORE_LOGS", "true").toLowerCase() !== "false",
   /** Admin key (sk-admin-...) só para ler consumo/custos da organização em Configurações. */

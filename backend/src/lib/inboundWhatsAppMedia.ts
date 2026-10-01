@@ -3,8 +3,12 @@ import {
   saveChatMedia,
   upsertCustomer,
 } from "../data/repository.js";
+import { transcribeCustomerAudio } from "./audioTranscript.js";
 import { logInboundByPhone } from "./messageLog.js";
 import { downloadWhatsAppMedia } from "./whatsapp.js";
+
+/** Linha da transcrição no corpo da mensagem de áudio (o painel exibe abaixo do player). */
+export const AUDIO_TRANSCRIPT_PREFIX = "📝 ";
 
 export type WhatsAppInboundMessage = {
   type?: string;
@@ -135,13 +139,19 @@ export async function persistInboundWhatsAppMedia(input: {
   waMessageId?: string;
   name?: string;
   avatarUrl?: string;
-}) {
+  /** Áudio: transcreve antes de registrar (o texto aparece no chat do painel). */
+  transcribe?: boolean;
+}): Promise<{ transcript: string | null }> {
   const { parsed } = input;
+  let transcript: string | null = null;
   try {
     const downloaded = await downloadWhatsAppMedia(parsed.mediaId, {
       fileName: parsed.fileName,
       mimeHint: parsed.mimeHint,
     });
+    if (input.transcribe && parsed.msgType === "audio") {
+      transcript = await transcribeCustomerAudio(downloaded);
+    }
     const customer = await upsertCustomer(
       input.to,
       input.name,
@@ -158,7 +168,7 @@ export async function persistInboundWhatsAppMedia(input: {
     });
     await logInboundByPhone(
       input.to,
-      parsed.body,
+      transcript ? `${parsed.body}\n${AUDIO_TRANSCRIPT_PREFIX}${transcript}` : parsed.body,
       parsed.msgType,
       { name: input.name, avatarUrl: input.avatarUrl },
       {
@@ -167,6 +177,7 @@ export async function persistInboundWhatsAppMedia(input: {
         waMessageId: input.waMessageId ?? null,
       },
     );
+    return { transcript };
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : "falha ao baixar";
@@ -180,5 +191,6 @@ export async function persistInboundWhatsAppMedia(input: {
       { name: input.name, avatarUrl: input.avatarUrl },
       { waMessageId: input.waMessageId ?? null },
     );
+    return { transcript };
   }
 }

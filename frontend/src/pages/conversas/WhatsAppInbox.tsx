@@ -1243,6 +1243,12 @@ function isImageMessage(message: ConversationMessage) {
   );
 }
 
+/** Texto transcrito do áudio do cliente (linha "📝 …" gravada pelo backend). */
+function audioTranscript(body: string | null | undefined) {
+  const line = (body ?? "").split("\n").find(part => part.startsWith("📝 "));
+  return line ? line.slice("📝 ".length).trim() : "";
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const mine = message.direction === "outbound";
   const pending = message.id.startsWith("temp-");
@@ -1286,6 +1292,12 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             >
               Seu navegador não reproduz áudio.
             </audio>
+            {audioTranscript(message.body) ? (
+              <div className='border-t border-black/5 pt-1.5 text-[13px] italic leading-snug opacity-90 dark:border-white/10'>
+                <span className='not-italic opacity-70'>Transcrição: </span>
+                {audioTranscript(message.body)}
+              </div>
+            ) : null}
           </div>
         ) : isImage ? (
           <div className='space-y-1.5'>
