@@ -49,6 +49,12 @@ conversationsRouter.post("/close-all", async (_req, res) => {
     let failed = 0;
     for (const item of open) {
       try {
+        const updated = await closeConversationByAgent(item.id);
+        if (!updated) {
+          failed += 1;
+          continue;
+        }
+        closed += 1;
         if (item.phone) {
           await sendText(item.phone, AGENT_CLOSE_MESSAGE);
           await appendConversationMessage({
@@ -60,9 +66,6 @@ conversationsRouter.post("/close-all", async (_req, res) => {
             body: AGENT_CLOSE_MESSAGE
           });
         }
-        const updated = await closeConversationByAgent(item.id);
-        if (updated) closed += 1;
-        else failed += 1;
       } catch {
         failed += 1;
       }
@@ -237,6 +240,14 @@ conversationsRouter.post("/:id/close", async (req, res) => {
       return;
     }
 
+    // Fecha antes de avisar: o update só casa com closed_at nulo, então
+    // cliques/requests simultâneos não enviam a despedida duas vezes.
+    const updated = await closeConversationByAgent(id);
+    if (!updated) {
+      res.status(409).json({ error: "Esta conversa já está encerrada." });
+      return;
+    }
+
     const phone = await customerPhoneFor(current.customerId);
     if (phone) {
       await sendText(phone, AGENT_CLOSE_MESSAGE);
@@ -248,12 +259,6 @@ conversationsRouter.post("/:id/close", async (req, res) => {
         author: "bot",
         body: AGENT_CLOSE_MESSAGE
       });
-    }
-
-    const updated = await closeConversationByAgent(id);
-    if (!updated) {
-      res.status(404).json({ error: "Conversa não encontrada." });
-      return;
     }
 
     res.json(updated);

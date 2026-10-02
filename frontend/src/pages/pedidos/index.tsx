@@ -26,7 +26,7 @@ import { useDebouncedValue, useMediaQuery } from "../../lib/hooks";
 import { PAGE_SIZE, clampPage, serverPagination } from "../../lib/pagination";
 import { queryKeys } from "../../lib/queryKeys";
 import { toast } from "../../lib/toast";
-import { supabase } from "../../lib/supabase";
+import { realtimeTopic, supabase } from "../../lib/supabase";
 import {
   nextStatus,
   STATUS_COLOR,
@@ -148,7 +148,7 @@ export function OrdersPage() {
     }
 
     const channel = client
-      .channel("orders-feed")
+      .channel(realtimeTopic("orders-feed"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "orders" },

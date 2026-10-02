@@ -6,7 +6,7 @@ import {
   playKitchenPrintSound,
   playNewOrderSound,
 } from "../lib/notifySound";
-import { supabase } from "../lib/supabase";
+import { realtimeTopic, supabase } from "../lib/supabase";
 
 const DRAIN_INTERVAL_MS = 10_000;
 const PRINTED_SOUND_WINDOW_MS = 2 * 60_000;
@@ -33,7 +33,7 @@ export function OrderAlerts() {
     if (!client) return () => window.clearInterval(timer);
 
     const channel = client
-      .channel("order-alerts")
+      .channel(realtimeTopic("order-alerts"))
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },

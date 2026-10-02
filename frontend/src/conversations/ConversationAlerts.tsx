@@ -15,7 +15,7 @@ import {
 } from "../lib/conversationBadge";
 import { playNewMessageSound } from "../lib/notifySound";
 import { queryKeys } from "../lib/queryKeys";
-import { supabase } from "../lib/supabase";
+import { realtimeTopic, supabase } from "../lib/supabase";
 import type { LiveConversation } from "../types";
 import { applyRealtimeMessageToCaches } from "./realtimeCache";
 
@@ -125,7 +125,7 @@ export function ConversationAlertsProvider({
     };
 
     const channel = client
-      .channel("conversation-alerts")
+      .channel(realtimeTopic("conversation-alerts"))
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "conversation_messages" },

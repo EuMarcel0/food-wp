@@ -9,7 +9,7 @@ import { api } from "../../lib/api";
 import { useMediaQuery } from "../../lib/hooks";
 import { displayName } from "../../lib/profile";
 import { queryKeys } from "../../lib/queryKeys";
-import { supabase } from "../../lib/supabase";
+import { realtimeTopic, supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
 import { cn } from "../../lib/cn";
 import { listPage } from "../../ui";
@@ -71,7 +71,7 @@ export function ConversationsPage() {
     }
 
     const channel = client
-      .channel("conversations-feed")
+      .channel(realtimeTopic("conversations-feed"))
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => {
         void refresh();
       })

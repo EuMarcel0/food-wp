@@ -213,6 +213,23 @@ export function upsertMessageInCache(
   return { ...current, pages: nextPages };
 }
 
+/**
+ * Um refetch já em voo (snapshot anterior ao INSERT) sobrescreveria o
+ * setQueryData ao resolver; nesse caso reinicia o fetch.
+ */
+export function upsertRealtimeMessage(
+  queryClient: QueryClient,
+  message: ConversationMessage,
+) {
+  const key = queryKeys.conversations.messages(message.conversationId);
+  queryClient.setQueryData<MessagesInfinite>(key, (current) =>
+    upsertMessageInCache(current, message),
+  );
+  if (queryClient.isFetching({ queryKey: key, exact: true }) > 0) {
+    void queryClient.invalidateQueries({ queryKey: key, exact: true });
+  }
+}
+
 function previewFromBody(body: string, fallback?: string | null) {
   const text = body.replace(/\s+/g, " ").trim();
   if (!text) return fallback ?? null;
@@ -270,9 +287,6 @@ export function applyRealtimeMessageToCaches(
   }
 
   if (viewingConversationId && viewingConversationId === conversationId) {
-    queryClient.setQueryData<MessagesInfinite>(
-      queryKeys.conversations.messages(conversationId),
-      (current) => upsertMessageInCache(current, message),
-    );
+    upsertRealtimeMessage(queryClient, message);
   }
 }

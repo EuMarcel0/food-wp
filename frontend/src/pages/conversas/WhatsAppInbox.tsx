@@ -21,7 +21,7 @@ import { useMediaQuery } from "../../lib/hooks";
 import { usePullToRefresh } from "../../lib/usePullToRefresh";
 import { displayName, generatedAvatar } from "../../lib/profile";
 import { queryKeys } from "../../lib/queryKeys";
-import { supabase } from "../../lib/supabase";
+import { realtimeTopic, supabase } from "../../lib/supabase";
 import { toast } from "../../lib/toast";
 import { cn } from "../../lib/cn";
 import {
@@ -34,7 +34,7 @@ import { useConversationViewing, CONVERSATIONS_LIVE_EVENT } from "../../conversa
 import {
   mapRealtimeConversationMessage,
   patchLiveConversationInCache,
-  upsertMessageInCache,
+  upsertRealtimeMessage,
   type LiveConversationsInfinite,
   type MessagesInfinite
 } from "../../conversations/realtimeCache";
@@ -422,8 +422,10 @@ export function WhatsAppInbox({
     const client = supabase;
     if (!client || !selectedId) return;
     const key = queryKeys.conversations.messages(selectedId);
+    const resync = () => void queryClient.invalidateQueries({ queryKey: key, exact: true });
+    let subscribedOnce = false;
     const channel = client
-      .channel(`conversation-messages-${selectedId}`)
+      .channel(realtimeTopic(`conversation-messages-${selectedId}`))
       .on(
         "postgres_changes",
         {
@@ -436,17 +438,26 @@ export function WhatsAppInbox({
           const row = payload.new as Record<string, unknown> | null;
           if ((payload.eventType === "INSERT" || payload.eventType === "UPDATE") && row) {
             const message = mapRealtimeConversationMessage(row);
-            if (message) {
-              queryClient.setQueryData<MessagesInfinite>(key, current => upsertMessageInCache(current, message));
-            }
+            if (message) upsertRealtimeMessage(queryClient, message);
           }
           void queryClient.invalidateQueries({
             queryKey: queryKeys.conversations.live
           });
         }
       )
-      .subscribe();
+      .subscribe(status => {
+        if (status !== "SUBSCRIBED") return;
+        // Reinscrição após queda do WebSocket: eventos do intervalo se perderam.
+        if (subscribedOnce) resync();
+        subscribedOnce = true;
+      });
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
       void client.removeChannel(channel);
     };
   }, [queryClient, selectedId]);

@@ -20,3 +20,15 @@ export const supabase = supabaseReady
       },
     })
   : null;
+
+let topicSeq = 0;
+
+/**
+ * O realtime-js reaproveita o canal existente com o mesmo tópico, e o
+ * removeChannel só o tira da lista após o ack do servidor. Remontar com o
+ * mesmo nome pega o canal antigo (saindo) e para de receber eventos.
+ */
+export function realtimeTopic(name: string) {
+  topicSeq += 1;
+  return `${name}:${Date.now().toString(36)}${topicSeq}`;
+}

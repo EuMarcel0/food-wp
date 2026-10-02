@@ -1121,8 +1121,13 @@ export async function handleUnsupportedInbound(input: {
   const state: ConversationState = existing?.state ?? "welcome";
   const context = existing?.context ?? emptyContext();
 
-  // Loja fechada: mídia fora de pedido ativo só recebe aviso de horário.
-  if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(state)) {
+  // Loja fechada: mídia fora de pedido ativo só recebe aviso de horário
+  // (pedido feito e ainda não entregue segue o fluxo normal).
+  if (
+    !isStoreOpen(store.businessHours, store.timezone) &&
+    !isOrderInProgress(state) &&
+    !isOpenOrderStatus((await findLatestOrder(customer.id))?.status ?? "delivered")
+  ) {
     if (input.waMessageId) {
       await sendTypingIndicator(input.waMessageId).catch(() => undefined);
     }
@@ -3155,7 +3160,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     await askContactName(input.from);
   }
 
-  async function replyOpenOrderStatus(thanks = false) {
+  async function replyOpenOrderStatus(thanks = false, opts?: { offerNewOrder?: boolean }) {
     const latest = await findLatestOrder(customer.id);
     if (!latest || !isOpenOrderStatus(latest.status)) return false;
     // Não reabre Ativas: só responde o status do pedido em andamento.
@@ -3164,6 +3169,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       thanks,
       allowCustomerCancel: store.allowCustomerCancel
     });
+    if (opts?.offerNewOrder === false) {
+      await sendText(input.from, status);
+      return true;
+    }
     await sendButtons(input.from, `${status}\n\nQuer fazer *outro pedido*? Toque em *Novo pedido*.`, [
       { id: "order", title: "Novo pedido" }
     ]);
@@ -3190,9 +3199,22 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   }
 
   // Loja fechada: bloqueia novos fluxos; pedido já em andamento continua.
+  // Pedido feito e ainda não entregue mantém o bot ativo até ENTREGUE (sem novo pedido).
   if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(state)) {
-    await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
-    return;
+    const latest = await findLatestOrder(customer.id);
+    if (!latest || !isOpenOrderStatus(latest.status)) {
+      await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
+      return;
+    }
+    const wantsCancel = store.allowCustomerCancel && command === "cancelar pedido";
+    if (!wantsCancel) {
+      if (!input.replyId && isCustomerAck(input.text, command)) {
+        await touchConversation(customer.id);
+        return;
+      }
+      await replyOpenOrderStatus(false, { offerNewOrder: false });
+      return;
+    }
   }
 
   // Cancelamento do pedido pelo cliente (frase exata), se a loja permitir.
@@ -3236,6 +3258,21 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       input.from,
       "👋 Atendimento encerrado. Obrigado pelo contato! Quando quiser pedir de novo, é só mandar uma mensagem."
     );
+    return;
+  }
+
+  // "Não" de um prompt de novo pedido antigo (ex.: conversa já encerrada pelo
+  // painel): nunca inicia pedido. No meio de outro pedido, só reenvia a etapa.
+  if (
+    state !== "awaiting_new_order" &&
+    (incoming === NEW_ORDER_NO || incoming === "handoff_new_order:no")
+  ) {
+    if (isOrderInProgress(state)) {
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+    await persist("welcome", emptyContext(), { close: true });
+    await declineNewOrder(input.from, store.timezone);
     return;
   }
 

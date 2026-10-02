@@ -17,7 +17,7 @@ import {
 } from "../lib/autoPrint";
 import { isAutoPrintStation } from "../lib/printAgent";
 import { bindNotifySoundUnlock, playNewOrderSound } from "../lib/notifySound";
-import { supabase } from "../lib/supabase";
+import { realtimeTopic, supabase } from "../lib/supabase";
 import type { AppNotification } from "../types";
 
 const NOTIF_FIRST_PAGE = 20;
@@ -161,7 +161,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     const channel = client
-      .channel("notifications-feed")
+      .channel(realtimeTopic("notifications-feed"))
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications" },
