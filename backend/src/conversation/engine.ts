@@ -151,7 +151,28 @@ const ACK_KEYS = [
   "rsrs",
   "de nada",
   "por nada",
-  "disponha"
+  "disponha",
+  "tranquilo",
+  "tranquila",
+  "trankilo",
+  "suave",
+  "de boa",
+  "deboa",
+  "ta bom",
+  "tabom",
+  "ta certo",
+  "tudo certo",
+  "certinho",
+  "show de bola",
+  "uhum",
+  "aham",
+  "agradeco",
+  "agradecido",
+  "agradecida",
+  "grato",
+  "grata",
+  "gratidao",
+  "amem"
 ];
 
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 60;
@@ -3282,13 +3303,13 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       await startAnotherOrder(input.replyId ? undefined : input.text);
       return;
     }
-    // Pedido em aberto (Aceito/Saiu…): não reinicia o menu — só informa o status.
-    if (await replyOpenOrderStatus(isCustomerAck(input.text, command))) return;
-    // Agradecimento / emoji após ociosidade: não reinicia o cardápio.
+    // Agradecimento / emoji após ociosidade: não responde nem reinicia o cardápio.
     if (!input.replyId && isCustomerAck(input.text, command)) {
       await touchConversation(customer.id);
       return;
     }
+    // Pedido em aberto (Aceito/Saiu…): não reinicia o menu — só informa o status.
+    if (await replyOpenOrderStatus()) return;
     if (isV2(store)) {
       await startConversationV2(input.replyId ? undefined : input.text);
       return;
@@ -3302,16 +3323,9 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   const orderActive = isOrderInProgress(state);
   const hasReply = Boolean(input.replyId);
 
-  // Agradecimento / emoji fora do fluxo: não inicia novo pedido (ex.: após despedida).
-  // Não engole awaiting_new_order (Sim/Não) nem código de pedido.
-  if (
-    !orderActive &&
-    !hasReply &&
-    state !== "awaiting_new_order" &&
-    state !== "awaiting_order_code" &&
-    isCustomerAck(input.text, command)
-  ) {
-    if (await replyOpenOrderStatus(true)) return;
+  // Agradecimento / emoji fora do fluxo (ex.: após despedida ou encerramento):
+  // não responde nada. Não engole código de pedido.
+  if (!orderActive && !hasReply && state !== "awaiting_order_code" && isCustomerAck(input.text, command)) {
     await touchConversation(customer.id);
     return;
   }
