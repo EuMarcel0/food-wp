@@ -1248,7 +1248,7 @@ async function askAiDrink(to: string) {
 async function askAiOrderNote(to: string) {
   await sendButtons(
     to,
-    "📝 Alguma *observação* para o pedido?\n*Digite* por ex.: calabresa sem cebola. Ou toque em *Pular*.",
+    "📝 Alguma *observação* para o pedido?\n*Digite* por ex.: calabresa sem cebola e enviar o molho. Ou toque em *Pular*.",
     [{ id: "skip_note", title: "Pular" }]
   );
 }
@@ -2858,7 +2858,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
     if (outcome.status === "error") {
       await persist("awaiting_ai_change", ctx);
-      await sendText(input.from, "😕 Tive um probleminha para entender a alteração. Pode escrever de novo o que quer mudar?");
+      await sendText(
+        input.from,
+        "😕 Tive um probleminha para entender a alteração. Pode escrever de novo o que quer mudar?"
+      );
       return;
     }
 
@@ -2867,11 +2870,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       : null;
 
     if (outcome.status !== "ok" || cartKey(outcome.items) === before) {
-      const reply = [
-        outcome.answer,
-        notFoundLine,
-        outcome.status === "question" ? outcome.question : AI_CHANGE_PROMPT
-      ]
+      const reply = [outcome.answer, notFoundLine, outcome.status === "question" ? outcome.question : AI_CHANGE_PROMPT]
         .filter(Boolean)
         .join("\n");
       ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
@@ -2909,7 +2908,12 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
 
     const totalCents = orderTotalCents(store, ctx);
-    if (ctx.paymentMethod === "cash" && ctx.changeForCents && ctx.changeForCents < totalCents && target !== "awaiting_payment") {
+    if (
+      ctx.paymentMethod === "cash" &&
+      ctx.changeForCents &&
+      ctx.changeForCents < totalCents &&
+      target !== "awaiting_payment"
+    ) {
       ctx.changeForCents = undefined;
       target = "awaiting_change";
     }
@@ -3284,10 +3288,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
   // "Não" de um prompt de novo pedido antigo (ex.: conversa já encerrada pelo
   // painel): nunca inicia pedido. No meio de outro pedido, só reenvia a etapa.
-  if (
-    state !== "awaiting_new_order" &&
-    (incoming === NEW_ORDER_NO || incoming === "handoff_new_order:no")
-  ) {
+  if (state !== "awaiting_new_order" && (incoming === NEW_ORDER_NO || incoming === "handoff_new_order:no")) {
     if (isOrderInProgress(state)) {
       await resumeCurrentStep(input.from, store, state, context);
       return;
@@ -3490,7 +3491,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
   if (state === "awaiting_ai_drink") {
     const text = input.text.trim();
-    if (incoming === "skip_drinks" || (!hasReply && text && (isSkipDrinks(incoming, normalized) || isAddonsDoneText(text)))) {
+    if (
+      incoming === "skip_drinks" ||
+      (!hasReply && text && (isSkipDrinks(incoming, normalized) || isAddonsDoneText(text)))
+    ) {
       context.aiDrinkAsked = true;
       context.aiExtraPhase = "addon_ask";
       context.aiStepIndex = undefined;
