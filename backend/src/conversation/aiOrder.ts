@@ -203,6 +203,7 @@ type AiItem = {
   quantity: number;
   size: string | null;
   flavors: string[];
+  flavor_terms?: string[];
   product: string | null;
   options: string[];
   crust: string | null;
@@ -210,12 +211,9 @@ type AiItem = {
   notes: string | null;
 };
 
-type AiFlavorChoice = { term: string; flavors: string[] };
-
 type AiResult = {
   items: AiItem[];
   not_found: string[];
-  flavor_choices?: AiFlavorChoice[];
   question: string | null;
   answer: string | null;
   menu_requested: boolean;
@@ -227,32 +225,8 @@ type AiResult = {
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "items",
-    "not_found",
-    "flavor_choices",
-    "question",
-    "answer",
-    "menu_requested",
-    "fulfillment",
-    "address",
-    "payment",
-  ],
+  required: ["items", "not_found", "question", "answer", "menu_requested", "fulfillment", "address", "payment"],
   properties: {
-    flavor_choices: {
-      type: "array",
-      description:
-        "Termos ambíguos: o cliente citou um ingrediente/termo que não é o nome de um sabor e que aparece em 2+ sabores. Cada um com o termo e os códigos pN candidatos.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["term", "flavors"],
-        properties: {
-          term: { type: "string", description: "Termo como o cliente escreveu (ex.: carne seca)." },
-          flavors: { type: "array", items: { type: "string" }, description: "Códigos pN dos sabores candidatos." },
-        },
-      },
-    },
     answer: {
       type: ["string", "null"],
       description: "Resposta curta a perguntas do cliente (preço, frete, sabores etc.). Não bloqueia o pedido.",
@@ -279,12 +253,18 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "quantity", "size", "flavors", "product", "options", "crust", "addons", "notes"],
+        required: ["kind", "quantity", "size", "flavors", "flavor_terms", "product", "options", "crust", "addons", "notes"],
         properties: {
           kind: { type: "string", enum: ["pizza", "product"] },
           quantity: { type: "integer" },
           size: { type: ["string", "null"], description: "Código do tamanho (sN) quando kind=pizza." },
           flavors: { type: "array", items: { type: "string" }, description: "Códigos dos sabores (pN)." },
+          flavor_terms: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Mesma ordem de flavors: o trecho EXATO que o cliente escreveu para cada sabor (ex.: 'carne seca', 'frango catupiry'). Se escolheu de uma lista numerada, o nome do sabor escolhido. Vazio quando kind=product.",
+          },
           product: { type: ["string", "null"], description: "Código do produto (iN) quando kind=product." },
           options: { type: "array", items: { type: "string" }, description: "Códigos das opções (oN)." },
           crust: { type: ["string", "null"], description: "Código da borda (cN) ou null." },
@@ -331,10 +311,10 @@ function systemPrompt(catalogText: string) {
     "- Nomes de sabores com erros ('calabreza', 'frango catupiri', 'portugueza', 'mussarela/muçarela', '4 queijo') = sabor mais parecido do cardápio.",
     "- Se o cliente pedir algo vago de bebida ('um refri') e houver várias opções, pergunte qual em 'question'.",
     "",
-    "Sabor ambíguo por ingrediente:",
-    "- Se o cliente citar um ingrediente/termo (ex.: 'carne seca', 'bacon', 'camarão') que NÃO é claramente o nome de um sabor, e esse termo aparece no nome ou na descrição de 2 ou mais sabores, NÃO escolha: coloque em flavor_choices o termo e TODOS os códigos pN candidatos, e deixe essa pizza FORA de items (mantenha os demais itens). Não use 'question' para isso.",
-    "- Se o termo for o nome (ou quase o nome) de um único sabor, use esse sabor direto, sem flavor_choices.",
-    "- Se a última mensagem do assistente listou sabores numerados e o cliente responder com o número ('1', '02', 'a primeira') ou o nome, use o sabor correspondente da lista na pizza (com o tamanho/quantidade já ditos) e não repita flavor_choices.",
+    "Sabores citados por ingrediente:",
+    "- Sempre coloque a pizza em items com o sabor mais provável, e em flavor_terms o trecho EXATO que o cliente usou para cada sabor (ex.: 'carne seca'). O sistema confere o cardápio e pergunta ao cliente se houver mais de um sabor com aquele termo. Não pergunte isso em 'question'.",
+    "- Ingredientes diferentes não são sinônimos: 'carne seca' ≠ 'carne de sol', 'frango' ≠ 'peru'.",
+    "- Se a última mensagem do assistente listou sabores numerados e o cliente responder com o número ('1', '02', 'a terceira') ou o nome, use o sabor correspondente da lista (com o tamanho/quantidade já ditos) e coloque em flavor_terms o NOME do sabor escolhido.",
     "",
     "Perguntas e outras informações (não bloqueiam o pedido):",
     "- Perguntas de preço/tamanho/sabores: responda em 'answer' usando SÓ os preços do cardápio (ex.: 'A pizza M custa R$ 55,00 e aceita até 2 sabores.').",
@@ -410,19 +390,88 @@ function findSizeGroup(product: Product, sizeName: string) {
   );
 }
 
+const STOPWORDS = new Set(["a", "o", "as", "os", "de", "da", "do", "das", "dos", "com", "c", "e", "pizza", "sabor", "meia", "metade"]);
+
+function termTokens(value: string) {
+  return normalize(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter(token => token && !STOPWORDS.has(token));
+}
+
+function flavorDescription(product: Product) {
+  const description = product.description?.trim();
+  return description && description.toLowerCase() !== "null" ? description : "";
+}
+
+const CHOICE_MARKER = "Há mais de um sabor";
+
+type FlavorChoice = { term: string; products: Product[] };
+
+type FlavorResolution = { product: Product } | { choice: FlavorChoice };
+
+/**
+ * Confere o termo que o cliente usou contra o cardápio, de forma literal:
+ * nome exato → esse sabor; termo presente (como frase) no nome/descrição de
+ * 2+ sabores → o cliente escolhe; de 1 só → esse sabor; nenhum → palpite da IA.
+ */
+function resolveFlavor(term: string, guess: Product, catalog: Pick<Catalog, "pizzas">, turns: AiTurn[]): FlavorResolution {
+  const tokens = termTokens(term);
+  if (!tokens.length) return { product: guess };
+  const pizzas = [...catalog.pizzas.values()];
+  const phrase = ` ${tokens.join(" ")} `;
+  const sameTokens = (product: Product) => {
+    const name = termTokens(cleanFlavorName(product.name));
+    return name.length === tokens.length && tokens.every(token => name.includes(token));
+  };
+
+  const exact = pizzas.filter(sameTokens);
+  if (exact.length === 1) return { product: exact[0] };
+
+  const candidates = pizzas.filter(product => {
+    const name = termTokens(cleanFlavorName(product.name));
+    if (tokens.every(token => name.includes(token))) return true;
+    return ` ${termTokens(`${product.name} ${flavorDescription(product)}`).join(" ")} `.includes(phrase);
+  });
+  if (!candidates.length) return { product: guess };
+  if (candidates.length === 1) return { product: candidates[0] };
+
+  // Cliente já escolheu numa lista anterior: aceita o sabor se ele estava entre os listados.
+  const chosenName = cleanFlavorName(guess.name);
+  const alreadyAsked = turns.some(
+    turn => turn.role === "assistant" && turn.content.includes(CHOICE_MARKER) && turn.content.includes(`*${chosenName}*`)
+  );
+  if (alreadyAsked && candidates.some(product => product.id === guess.id)) return { product: guess };
+
+  return { choice: { term, products: candidates.slice(0, MAX_FLAVOR_CHOICES) } };
+}
+
 /** Converte a resposta da IA em itens do carrinho (preço sempre do cadastro). */
-function toCartItems(result: AiResult, catalog: Catalog) {
+function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
   const items: CartItem[] = [];
   const problems: string[] = [];
+  const choices: FlavorChoice[] = [];
 
   for (const raw of result.items) {
     const quantity = clampQuantity(raw.quantity);
 
     if (raw.kind === "pizza") {
       const size = raw.size ? catalog.sizes.get(raw.size) : undefined;
-      const flavors = [...new Set(raw.flavors)]
-        .map(key => catalog.pizzas.get(key))
-        .filter((item): item is Product => Boolean(item));
+      const resolved: Product[] = [];
+      let ambiguous = false;
+      raw.flavors.forEach((key, index) => {
+        const guess = catalog.pizzas.get(key);
+        if (!guess) return;
+        const outcome = resolveFlavor(raw.flavor_terms?.[index] ?? "", guess, catalog, turns);
+        if ("choice" in outcome) {
+          ambiguous = true;
+          if (!choices.some(item => normalize(item.term) === normalize(outcome.choice.term))) choices.push(outcome.choice);
+          return;
+        }
+        resolved.push(outcome.product);
+      });
+      if (ambiguous) continue;
+      const flavors = resolved.filter((item, index) => resolved.findIndex(other => other.id === item.id) === index);
       if (!flavors.length) continue;
       if (!size) {
         const sizeNames = [...catalog.sizes.values()].map(item => item.name).join(", ");
@@ -510,31 +559,24 @@ function toCartItems(result: AiResult, catalog: Catalog) {
     });
   }
 
-  return { items, problems };
+  return { items, problems, choices };
 }
 
 const MAX_FLAVOR_CHOICES = 8;
 
 /** Lista numerada (nome em negrito + descrição) para o cliente escolher o sabor. */
-function flavorChoiceQuestion(choices: AiFlavorChoice[] | undefined, catalog: Catalog) {
-  for (const choice of choices ?? []) {
-    const flavors = [...new Set(choice.flavors)]
-      .map(key => catalog.pizzas.get(key))
-      .filter((item): item is Product => Boolean(item))
-      .slice(0, MAX_FLAVOR_CHOICES);
-    if (flavors.length < 2) continue;
-    const term = choice.term.replace(/\s+/g, " ").trim().slice(0, 40);
-    const lines = [term ? `🤔 Há mais de um sabor de pizza com *${term}*:` : "🤔 Há mais de um sabor que combina com o seu pedido:", ""];
-    flavors.forEach((product, index) => {
-      const description = product.description?.trim();
-      lines.push(`*${String(index + 1).padStart(2, "0")} ${cleanFlavorName(product.name)}*`);
-      if (description && description.toLowerCase() !== "null") lines.push(description.slice(0, 160));
-      lines.push("");
-    });
-    lines.push("Qual você deseja? Digite o *nome* ou o *número*.");
-    return lines.join("\n");
-  }
-  return undefined;
+function flavorChoiceQuestion(choice: FlavorChoice | undefined) {
+  if (!choice) return undefined;
+  const term = choice.term.replace(/\s+/g, " ").trim().slice(0, 40);
+  const lines = [`🤔 ${CHOICE_MARKER} de pizza com *${term}*:`, ""];
+  choice.products.forEach((product, index) => {
+    const description = flavorDescription(product);
+    lines.push(`*${String(index + 1).padStart(2, "0")}* - *${cleanFlavorName(product.name)}*`);
+    if (description) lines.push(description.slice(0, 160));
+    lines.push("");
+  });
+  lines.push("Qual você deseja? Digite o *nome* ou o *número*.");
+  return lines.join("\n");
 }
 
 /**
@@ -561,10 +603,9 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
     return { status: "error", message: error instanceof Error ? error.message : "Falha na IA." };
   }
 
-  const { items, problems } = toCartItems(result, catalog);
+  const { items, problems, choices } = toCartItems(result, catalog, turns);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
-  const question =
-    flavorChoiceQuestion(result.flavor_choices, catalog) ?? problems[0] ?? (result.question?.trim() || undefined);
+  const question = flavorChoiceQuestion(choices[0]) ?? problems[0] ?? (result.question?.trim() || undefined);
   const address = result.address?.replace(/\s+/g, " ").trim().slice(0, 300);
   const extras: AiOutcomeExtras = {
     notFound,
@@ -592,7 +633,7 @@ function drinksSystemPrompt(catalogText: string) {
     "- Aceite erros de digitação e nomes aproximados ('coca 2l', 'coca zero 1l', 'guarana lata', 'agua com gas', 'suco de laranja').",
     "- Se o cliente pedir algo vago ('um refri', 'uma coca') e houver várias opções, pergunte qual em 'question' (curta, simpática, sem códigos).",
     "- Bebidas que não existem no cardápio vão em not_found (texto curto como o cliente escreveu).",
-    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_choices=[].",
+    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_terms=[].",
     "",
     "CARDÁPIO DE BEBIDAS:",
     catalogText,
