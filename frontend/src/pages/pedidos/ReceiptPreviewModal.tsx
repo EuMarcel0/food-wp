@@ -11,43 +11,56 @@ import { toast } from "../../lib/toast";
 import { ReceiptTicket } from "./ReceiptTicket";
 import type { Order, Store } from "../../types";
 
+/**
+ * Imprime o cupom num iframe oculto (funciona no PWA instalado, onde pop-up
+ * com noopener abre em branco). Copia os estilos da página para o cupom
+ * renderizar igual à prévia.
+ */
 function printTicketFallback(node: HTMLElement, title: string) {
-  const win = window.open(
-    "",
-    "_blank",
-    "noopener,noreferrer,width=420,height=720",
-  );
-  if (!win) {
-    window.print();
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(frame);
+
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  if (!doc || !win) {
+    frame.remove();
+    toast.error("Não foi possível abrir a impressão.");
     return;
   }
 
+  const styles = [...document.querySelectorAll('style, link[rel="stylesheet"]')]
+    .map(item => item.outerHTML)
+    .join("\n");
   const safeTitle = title.replace(/[<>&"]/g, "");
-  win.document.open();
-  win.document.write(`<!DOCTYPE html>
+  doc.open();
+  doc.write(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
+  <base href="${document.baseURI}" />
   <title>${safeTitle}</title>
+  ${styles}
   <style>
     @page { margin: 4mm; size: 80mm auto; }
-    html, body { margin: 0; padding: 0; background: #fff; }
+    html, body { margin: 0; padding: 0; background: #fff !important; color: #000; }
   </style>
 </head>
 <body>${node.outerHTML}</body>
 </html>`);
-  win.document.close();
+  doc.close();
 
+  let printed = false;
   const trigger = () => {
+    if (printed) return;
+    printed = true;
     win.focus();
     win.print();
-    win.close();
+    window.setTimeout(() => frame.remove(), 1000);
   };
-  if (win.document.readyState === "complete") {
-    window.setTimeout(trigger, 50);
-  } else {
-    win.onload = () => window.setTimeout(trigger, 50);
-  }
+  frame.onload = () => window.setTimeout(trigger, 150);
+  window.setTimeout(trigger, 800);
 }
 
 export function ReceiptPreviewModal({

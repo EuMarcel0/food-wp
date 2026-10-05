@@ -38,7 +38,17 @@ export function loadConfig() {
     return created;
   }
 
-  const raw = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  // Bloco de Notas pode salvar com BOM, que quebra o JSON.parse.
+  const text = readFileSync(CONFIG_PATH, "utf8").replace(/^\uFEFF/, "");
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `config.json inválido em ${CONFIG_PATH}: ${error instanceof Error ? error.message : error}. ` +
+        "Corrija o arquivo (JSON válido) ou apague-o para recriar (o painel precisará conectar de novo).",
+    );
+  }
   // 42 era o padrão antigo; 48mm aproveita melhor a Elgin 80mm.
   let columns = Number(raw.columns);
   if (!Number.isFinite(columns) || columns === 42) columns = 48;

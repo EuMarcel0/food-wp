@@ -197,7 +197,7 @@ app.post("/print-report", auth, async (req, res) => {
   }
 });
 
-app.listen(config.port, "127.0.0.1", () => {
+const server = app.listen(config.port, "127.0.0.1", () => {
   console.log("");
   console.log("Food WP · Agente de impressão");
   console.log(`  URL:     http://127.0.0.1:${config.port}`);
@@ -211,4 +211,15 @@ app.listen(config.port, "127.0.0.1", () => {
   console.log("No painel: Configurações → Impressão → Conectar agente");
   console.log("");
   refreshPrintQueuePoller(enqueuePrint);
+});
+
+server.on("error", (error) => {
+  if (error && error.code === "EADDRINUSE") {
+    console.error(
+      `Porta ${config.port} já está em uso. Feche a outra instância do agente (npm start / tarefa agendada) e inicie o serviço de novo.`,
+    );
+  } else {
+    console.error("Falha ao abrir o servidor:", error);
+  }
+  process.exit(1);
 });
