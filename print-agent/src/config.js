@@ -38,16 +38,27 @@ export function loadConfig() {
     return created;
   }
 
-  // Bloco de Notas pode salvar com BOM, que quebra o JSON.parse.
-  const text = readFileSync(CONFIG_PATH, "utf8").replace(/^\uFEFF/, "");
+  // Bloco de Notas / PowerShell 5 podem salvar com BOM, que quebra o JSON.parse.
+  const original = readFileSync(CONFIG_PATH, "utf8");
+  const text = original.replace(/^\uFEFF/, "");
   let raw;
   try {
     raw = JSON.parse(text);
+    if (text !== original) writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), "utf8");
   } catch (error) {
-    throw new Error(
-      `config.json inválido em ${CONFIG_PATH}: ${error instanceof Error ? error.message : error}. ` +
-        "Corrija o arquivo (JSON válido) ou apague-o para recriar (o painel precisará conectar de novo).",
+    // Arquivo corrompido: guarda cópia e recria, preservando o token se der para ler.
+    const backup = `${CONFIG_PATH}.bad-${Date.now()}`;
+    writeFileSync(backup, original, "utf8");
+    const token = /"token"\s*:\s*"([^"]+)"/.exec(text)?.[1] ?? "";
+    const printerName = /"printerName"\s*:\s*"([^"]*)"/.exec(text)?.[1] ?? "";
+    const apiBaseUrl = /"apiBaseUrl"\s*:\s*"([^"]*)"/.exec(text)?.[1] ?? "";
+    console.error(
+      `config.json inválido (${error instanceof Error ? error.message : error}). Cópia em ${backup}; recriando.`,
     );
+    const port = Number(/"port"\s*:\s*(\d+)/.exec(text)?.[1]) || PORT;
+    raw = { port, token, printerName, columns: 48, apiBaseUrl };
+    if (!raw.token) raw.token = randomBytes(24).toString("hex");
+    writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), "utf8");
   }
   // 42 era o padrão antigo; 48mm aproveita melhor a Elgin 80mm.
   let columns = Number(raw.columns);

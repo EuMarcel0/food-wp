@@ -1,3 +1,4 @@
+import "./logFile.js";
 import cors from "cors";
 import express from "express";
 import { hostname } from "node:os";
