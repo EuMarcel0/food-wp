@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "build": "node scripts/build.mjs",
     "build:exe": "node scripts/build.mjs",
+    "build:app": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-app.ps1",
     "install-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-service.ps1",
     "uninstall-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/uninstall.ps1"
   },
