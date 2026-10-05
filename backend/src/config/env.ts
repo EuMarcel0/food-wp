@@ -24,6 +24,13 @@ export const env = {
   whatsappAppId: read("WHATSAPP_APP_ID"),
   whatsappGraphVersion: read("WHATSAPP_GRAPH_VERSION", "v21.0"),
   whatsappWabaId: read("WHATSAPP_WABA_ID"),
+  /** Tarifa (BRL) por mensagem paga, usada quando a API da Meta devolve custo 0. */
+  metaPrices: {
+    SERVICE: Number(read("META_PRICE_SERVICE", "0.035")),
+    MARKETING: Number(read("META_PRICE_MARKETING", "0")),
+    UTILITY: Number(read("META_PRICE_UTILITY", "0")),
+    AUTHENTICATION: Number(read("META_PRICE_AUTHENTICATION", "0")),
+  } as Record<string, number>,
 
   openaiApiKey: read("OPENAI_API_KEY"),
   openaiModel: read("OPENAI_MODEL", "gpt-4.1-mini"),

@@ -172,14 +172,16 @@ export async function getMetaUsageReport(
   const categories = new Map<string, MetaUsageCategory>();
   for (const point of points) {
     const volume = Number(point.volume ?? 0);
-    const cost = Number(point.cost ?? 0);
     const free = (point.pricing_type ?? "").startsWith("FREE");
+    const name = point.pricing_category || "OUTROS";
+    const metaCost = Number(point.cost ?? 0);
+    const rate = env.metaPrices[name.split("_")[0]] ?? 0;
+    const cost = metaCost > 0 ? metaCost : free ? 0 : volume * (Number.isFinite(rate) ? rate : 0);
     const day = dayOf(point.start, point.end);
     day.volume += volume;
     day.cost += cost;
     if (!free) day.paidVolume += volume;
 
-    const name = point.pricing_category || "OUTROS";
     const category = categories.get(name) ?? { category: name, volume: 0, freeVolume: 0, paidVolume: 0, cost: 0 };
     category.volume += volume;
     category.cost += cost;

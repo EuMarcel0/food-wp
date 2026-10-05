@@ -93,8 +93,8 @@ export function MetaUsageCard() {
         <>
           <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
             <p className='m-0 text-sm leading-normal text-food-muted'>
-              {shortDay(report.from)} a {shortDay(report.to)}. Custo aproximado informado pela Meta; o valor oficial é o
-              da fatura.
+              {shortDay(report.from)} a {shortDay(report.to)}. Custo estimado pela tarifa da Meta por mensagem paga; o
+              valor oficial é o da fatura.
             </p>
             <UsageRangePicker value={period.range} onChange={period.setRange} />
           </div>
