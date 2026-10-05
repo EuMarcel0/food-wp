@@ -119,7 +119,7 @@ export async function getMetaUsageReport(
 
   const field =
     `pricing_analytics.start(${monthStart}).end(${nowSeconds}).granularity(DAILY)` +
-    ".metric_types([COST,VOLUME]).dimensions(PRICING_CATEGORY,PRICING_TYPE)";
+    ".dimensions(PRICING_CATEGORY,PRICING_TYPE)";
   const base = `https://graph.facebook.com/${env.whatsappGraphVersion}/${env.whatsappWabaId}`;
   const messaging = (productTypes: string) =>
     graphGet<MessagingAnalytics>(
