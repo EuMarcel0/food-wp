@@ -305,6 +305,7 @@ function systemPrompt(catalogText: string) {
     "- Várias mensagens seguidas (uma por linha) formam UM pedido só. Junte as informações de todas as mensagens do cliente na conversa.",
     "- Ignore ruído: saudações, 'por favor', 'moço', 'boa noite', 'tô com fome', emojis, 'kkk', 'rápido' etc.",
     "- Sabores ditos juntos sem outro tamanho/quantidade ('quatro queijos e atum', 'calabresa com frango') = UMA pizza meio a meio, se o tamanho permitir; se passar do limite, pergunte.",
+    "- 'Uma família nordestina e lombinho' = UMA pizza família meio Nordestina e meio Lombinho (um item com 2 sabores), NUNCA duas pizzas. Só são duas pizzas quando o cliente diz a quantidade ('duas', '2') ou repete o tamanho/artigo ('uma família nordestina e uma família lombinho').",
     "- Quantidade por fatias/pedaços: use o tamanho cujo nome cite as fatias; se nenhum citar, use o padrão P/broto = 4, M = 6, G = 8, F/família = 12 fatias (o mais próximo) e avise em 'answer' qual tamanho considerou.",
     "- Tamanho informado numa mensagem e sabores em outra: combine (ex.: 'o preço da M' e depois 'quero de calabresa' = pizza M de calabresa, se não houver outro tamanho pedido).",
     "- Escrita por extenso ou abreviada: 'uma', 'duas', '2x', 'refri', 'refrigerante 2 litros', 'coca lata', 'guaraná 1,5' etc.",
@@ -444,6 +445,41 @@ function resolveFlavor(term: string, guess: Product, catalog: Pick<Catalog, "piz
   if (alreadyAsked && candidates.some(product => product.id === guess.id)) return { product: guess };
 
   return { choice: { term, products: candidates.slice(0, MAX_FLAVOR_CHOICES) } };
+}
+
+const PIZZA_SIZE_WORD = /\b(familias?|grandes?|gigantes?|medias?|pequenas?|brotos?)\b/g;
+const MORE_PIZZAS =
+  /\b(duas|dois|tres|quatro|cinco|seis|outra|outro|outras|outros|mais uma|mais um|e uma|e um|uma de|um de|cada)\b|\b[2-9]\s*x?\s*(pizzas?|familias?|grandes?|gigantes?|medias?|pequenas?|brotos?)\b/;
+
+/**
+ * Cliente citou UMA pizza ("uma família nordestina e lombinho") e a IA devolveu uma pizza por sabor.
+ * Pela regra do cardápio isso é meio a meio: junta numa pizza só, se o tamanho aceitar os sabores.
+ */
+function mergeSinglePizzaSplit(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+  const pizzas = result.items.filter(item => item.kind === "pizza");
+  if (pizzas.length < 2) return;
+  const size = pizzas[0].size ? catalog.sizes.get(pizzas[0].size) : undefined;
+  if (!size || pizzas.some(item => item.size !== pizzas[0].size || clampQuantity(item.quantity) !== 1)) return;
+  const flavors = pizzas.flatMap(item => item.flavors);
+  if (flavors.length > size.maxFlavors) return;
+
+  const said = normalize(
+    turns
+      .filter(turn => turn.role === "user" && !turn.content.startsWith("Bebidas:"))
+      .map(turn => turn.content)
+      .join("\n"),
+  );
+  if ((said.match(PIZZA_SIZE_WORD) ?? []).length !== 1 || MORE_PIZZAS.test(said)) return;
+
+  const merged: AiItem = {
+    ...pizzas[0],
+    flavors,
+    flavor_terms: pizzas.flatMap(item => item.flavor_terms ?? []),
+    crust: pizzas.find(item => item.crust)?.crust ?? null,
+    addons: [...new Set(pizzas.flatMap(item => item.addons))],
+    notes: pizzas.map(item => item.notes).filter(Boolean).join("; ") || null,
+  };
+  result.items = [merged, ...result.items.filter(item => item.kind !== "pizza")];
 }
 
 /** Converte a resposta da IA em itens do carrinho (preço sempre do cadastro). */
@@ -603,6 +639,7 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
     return { status: "error", message: error instanceof Error ? error.message : "Falha na IA." };
   }
 
+  mergeSinglePizzaSplit(result, catalog, turns);
   const { items, problems, choices } = toCartItems(result, catalog, turns);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
   const question = flavorChoiceQuestion(choices[0]) ?? problems[0] ?? (result.question?.trim() || undefined);

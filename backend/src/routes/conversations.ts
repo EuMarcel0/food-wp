@@ -56,7 +56,7 @@ conversationsRouter.post("/close-all", async (_req, res) => {
         }
         closed += 1;
         if (item.phone) {
-          await sendText(item.phone, AGENT_CLOSE_MESSAGE);
+          await sendText(item.phone, AGENT_CLOSE_MESSAGE, { skipLog: true });
           await appendConversationMessage({
             conversationId: item.id,
             customerId: item.customerId,
@@ -250,7 +250,7 @@ conversationsRouter.post("/:id/close", async (req, res) => {
 
     const phone = await customerPhoneFor(current.customerId);
     if (phone) {
-      await sendText(phone, AGENT_CLOSE_MESSAGE);
+      await sendText(phone, AGENT_CLOSE_MESSAGE, { skipLog: true });
       await appendConversationMessage({
         conversationId: current.id,
         customerId: current.customerId,

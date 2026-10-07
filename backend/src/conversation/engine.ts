@@ -5,7 +5,7 @@ import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from 
 import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints } from "./aiOrder.js";
 import { enqueueWaitByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
-import { looksLikeOrderChange, type OrderChangeContext } from "./orderChange.js";
+import { looksLikeOrderChange, looksLikeQuestion, type OrderChangeContext } from "./orderChange.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
@@ -2613,6 +2613,8 @@ type IncomingMessageInput = {
   };
   /** Mensagens de texto já agrupadas (v2): processa direto, sem esperar mais. */
   aiFlush?: boolean;
+  /** Chegaram enquanto a IA ainda respondia as anteriores: complementam o pedido, não a etapa seguinte. */
+  aiLate?: boolean;
 };
 
 /** v2: etapas de texto livre em que mensagens picadas são agrupadas antes de processar. */
@@ -2639,8 +2641,28 @@ const ORDER_CHANGE_STATES: Partial<Record<ConversationState, OrderChangeContext>
   awaiting_contact_name: "checkout"
 };
 
+/** v2: etapas logo após o carrinho, onde pode cair texto enviado enquanto a IA ainda respondia. */
+const LATE_TEXT_STATES = new Set<ConversationState>([
+  "awaiting_ai_drink",
+  "awaiting_ai_addon",
+  "awaiting_ai_note",
+  "awaiting_fulfillment"
+]);
+
+/** v2: etapas em que o texto digitado é gravado como está (endereço, observação, nome). */
+const FREE_TEXT_STEPS = new Set<ConversationState>([
+  "awaiting_address",
+  "awaiting_neighborhood",
+  "awaiting_ai_note",
+  "awaiting_contact_name"
+]);
+
 const AI_CHANGE_PROMPT =
   "✏️ Claro! O que você quer *adicionar*, *remover* ou *trocar* no pedido?\nEscreva do seu jeito (ex.: *mais uma Coca 2L* ou *tira a borda*).";
+
+function cartKey(items: CartItem[]) {
+  return JSON.stringify(items.map(item => [item.productId, item.name, item.quantity, item.unitPriceCents]));
+}
 
 function isKeepOrderText(text: string) {
   const plain = normalize(text)
@@ -2656,7 +2678,13 @@ const AI_BURST_QUIET_MS = 3500;
 const AI_BURST_MAX_WAIT_MS = 12_000;
 const AI_COLLECTING_TTL_MS = 3 * 60 * 60 * 1000;
 
-type AiBurst = { texts: string[]; firstAt: number; timer?: ReturnType<typeof setTimeout>; last: IncomingMessageInput };
+type AiBurst = {
+  texts: string[];
+  firstAt: number;
+  timer?: ReturnType<typeof setTimeout>;
+  last: IncomingMessageInput;
+  late: boolean;
+};
 const aiBursts = new Map<string, AiBurst>();
 const aiBurstChains = new Map<string, Promise<void>>();
 const aiCollecting = new Map<string, number>();
@@ -2684,7 +2712,7 @@ function bufferAiOrderText(input: IncomingMessageInput) {
   if (!text) return;
   const key = queueKeyForPhone(input.from);
   const now = Date.now();
-  const burst = aiBursts.get(key) ?? { texts: [], firstAt: now, last: input };
+  const burst = aiBursts.get(key) ?? { texts: [], firstAt: now, last: input, late: aiBurstChains.has(key) };
   if (burst.timer) clearTimeout(burst.timer);
   burst.texts.push(text);
   burst.last = input;
@@ -2704,7 +2732,8 @@ function flushAiBurst(key: string) {
         text: burst.texts.join("\n"),
         replyId: undefined,
         location: undefined,
-        aiFlush: true
+        aiFlush: true,
+        aiLate: burst.late
       })
     );
   };
@@ -2850,8 +2879,6 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
    */
   async function handleAiOrderChange(ctx: ConversationContext, text: string, resumeState: ConversationState) {
     ctx.aiResumeState = resumeState;
-    const cartKey = (items: CartItem[]) =>
-      JSON.stringify(items.map(item => [item.productId, item.name, item.quantity, item.unitPriceCents]));
     const before = cartKey(ctx.cart);
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
     const outcome = await interpretOrder(ctx.aiTurns);
@@ -2882,6 +2909,42 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     ctx.cart = outcome.items;
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
     await resumeAfterAiChange(ctx, ["✏️ *Pedido atualizado!*", notFoundLine].filter(Boolean).join("\n"));
+  }
+
+  /**
+   * v2: texto que não responde a etapa atual (pergunta, "pra entregar", mensagem atrasada).
+   * A IA lê com o pedido inteiro: guarda entrega/endereço/pagamento, responde perguntas,
+   * ajusta o carrinho se for o caso e volta para a mesma etapa. `quiet`: não repete a etapa sem resposta.
+   */
+  async function handleSideText(
+    ctx: ConversationContext,
+    text: string,
+    currentState: ConversationState,
+    opts?: { quiet?: boolean }
+  ) {
+    const before = cartKey(ctx.cart);
+    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
+    const outcome = await interpretOrder(ctx.aiTurns);
+    if (outcome.status === "error") {
+      await persist(currentState, ctx);
+      await resumeCurrentStep(input.from, store, currentState, ctx);
+      return;
+    }
+    ctx.aiHints = mergeAiHints(ctx.aiHints, outcome.hints);
+
+    if (outcome.status === "ok" && outcome.items.length && cartKey(outcome.items) !== before) {
+      ctx.cart = outcome.items;
+      ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
+      ctx.aiResumeState = currentState;
+      await resumeAfterAiChange(ctx, [outcome.answer, "✏️ *Pedido atualizado!*"].filter(Boolean).join("\n"));
+      return;
+    }
+
+    const reply = [outcome.answer, outcome.status === "question" ? outcome.question : null].filter(Boolean).join("\n");
+    if (reply) ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: reply });
+    await persist(currentState, ctx);
+    if (reply) await sendText(input.from, reply);
+    if (reply || !opts?.quiet) await resumeCurrentStep(input.from, store, currentState, ctx);
   }
 
   async function resumeAfterAiChange(ctx: ConversationContext, intro: string) {
@@ -2951,6 +3014,12 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     if (outcome.status === "question") {
       await persist("awaiting_ai_drink", ctx);
       await sendText(input.from, [notFoundLine, outcome.question].filter(Boolean).join("\n"));
+      return;
+    }
+
+    if (outcome.status === "empty" && !notFoundLine) {
+      // Não citou bebida (ex.: "pra entregar", uma pergunta): não é resposta desta etapa.
+      await handleSideText(ctx, text, "awaiting_ai_drink");
       return;
     }
 
@@ -3447,6 +3516,42 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
     await persist("awaiting_new_order", context);
     await askNewOrderPrompt(input.from);
+    return;
+  }
+
+  // v2: texto que chegou enquanto a IA montava o carrinho complementa o pedido (ex.: "pra entregar"),
+  // em vez de ser lido como resposta da etapa que apareceu depois.
+  if (
+    isV2(store) &&
+    input.aiLate &&
+    LATE_TEXT_STATES.has(state) &&
+    context.cart.length &&
+    !hasReply &&
+    input.text.trim()
+  ) {
+    await handleSideText(context, input.text.trim(), state, { quiet: true });
+    return;
+  }
+
+  // v2: botão "Corrigir pedido" de uma mensagem anterior, tocado em outra etapa do checkout.
+  if (isV2(store) && incoming === "ai_fix" && context.cart.length && ORDER_CHANGE_STATES[state]) {
+    context.aiResumeState = state;
+    await persist("awaiting_ai_change", context);
+    await sendText(input.from, AI_CHANGE_PROMPT);
+    return;
+  }
+
+  // v2: pergunta digitada numa etapa que grava texto livre (endereço, observação, nome)
+  // é respondida pela IA em vez de virar endereço/observação/nome.
+  if (
+    isV2(store) &&
+    FREE_TEXT_STEPS.has(state) &&
+    context.cart.length &&
+    !hasReply &&
+    !input.location &&
+    looksLikeQuestion(input.text)
+  ) {
+    await handleSideText(context, input.text.trim(), state);
     return;
   }
 
@@ -4654,7 +4759,8 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
 
-    const address = resolveTypedAddress(input);
+    // Toque em botão de mensagem antiga nunca vira endereço.
+    const address = hasReply ? null : resolveTypedAddress(input);
     if (!address || address.trim().length < (context.addressDraft ? 3 : 5)) {
       await sendText(
         input.from,

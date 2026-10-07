@@ -51,10 +51,24 @@ const CHECKOUT_WORDS =
 /** "uma coca 2l", "2 guaraná lata" digitado solto numa etapa do checkout. */
 const BARE_ITEM = /^(e |mais )?(\d+|um|uma|dois|duas|tres)\s/;
 
+const QUESTION_START =
+  /^(qual|quais|quanto|quanta|quantos|quantas|como|quando|onde|cade|por que|porque|pq|sera que|voces|vcs|aceita|aceitam)\b/;
+const QUESTION_PHRASE =
+  /\b(nao entendi|nao entendo|entendi nada|nao ta certo|ta errado|esta errado|ficou caro|ta caro|qual o valor|qual valor|quanto ficou|quanto deu|quanto fica)\b/;
+
+/** Pergunta/dúvida do cliente — não deve ser gravada como endereço, observação ou nome. */
+export function looksLikeQuestion(text: string) {
+  if (text.includes("?")) return true;
+  const plain = plainText(text);
+  return Boolean(plain) && (QUESTION_START.test(plain) || QUESTION_PHRASE.test(plain));
+}
+
 export function looksLikeOrderChange(text: string, context: OrderChangeContext) {
   const plain = plainText(text);
   if (!plain || plain.length < 3) return false;
   if (GENERIC.test(plain)) return true;
+  // Borda é sempre do pedido ("quero com borda", "sem borda", "borda de cheddar").
+  if (/\bbordas?\b/.test(plain)) return true;
 
   const hasProduct = PRODUCT.test(plain);
   if (!hasProduct && FALSE_POSITIVE.test(plain)) return false;
