@@ -220,13 +220,35 @@ type AiResult = {
   fulfillment: "delivery" | "pickup" | null;
   address: string | null;
   payment: string | null;
+  fee_question: boolean;
+  fee_neighborhood: string | null;
 };
 
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["items", "not_found", "question", "answer", "menu_requested", "fulfillment", "address", "payment"],
+  required: [
+    "items",
+    "not_found",
+    "question",
+    "answer",
+    "menu_requested",
+    "fulfillment",
+    "address",
+    "payment",
+    "fee_question",
+    "fee_neighborhood",
+  ],
   properties: {
+    fee_question: {
+      type: "boolean",
+      description:
+        "true se a ÚLTIMA mensagem do cliente pergunta a taxa/valor da entrega ou se entregam num bairro, ou responde com o bairro a uma pergunta de taxa feita antes.",
+    },
+    fee_neighborhood: {
+      type: ["string", "null"],
+      description: "Bairro citado nessa pergunta de taxa/entrega, como o cliente escreveu (ex.: 'Fazenda Campos'); senão null.",
+    },
     answer: {
       type: ["string", "null"],
       description: "Resposta curta a perguntas do cliente (preço, frete, sabores etc.). Não bloqueia o pedido.",
@@ -319,7 +341,7 @@ function systemPrompt(catalogText: string) {
     "",
     "Perguntas e outras informações (não bloqueiam o pedido):",
     "- Perguntas de preço/tamanho/sabores: responda em 'answer' usando SÓ os preços do cardápio (ex.: 'A pizza M custa R$ 55,00 e aceita até 2 sabores.').",
-    "- Pergunta de frete/taxa/entrega: a taxa depende do bairro e é calculada quando o cliente informar o endereço; diga isso em 'answer' (nunca invente valor de frete).",
+    "- Pergunta de frete/taxa/se entregam num bairro: fee_question=true e fee_neighborhood=bairro citado (ou null se não citou). O sistema responde a taxa pelo cadastro de bairros: NÃO fale de taxa/entrega em 'answer' (nunca invente valor de frete). Se a mensagem anterior do assistente pediu o bairro para informar a taxa, a resposta do cliente com o bairro também é fee_question=true.",
     "- Pedido de cardápio/menu/sabores/opções na ÚLTIMA mensagem do cliente: menu_requested=true (mensagens antigas não contam).",
     "- 'answer' responde só às perguntas da ÚLTIMA mensagem do cliente; se não houver pergunta nova, answer=null.",
     "- Endereço de entrega em qualquer mensagem: copie em 'address' e use fulfillment=delivery. 'Vou buscar', 'retirar', 'pego aí' = fulfillment=pickup.",
@@ -341,6 +363,8 @@ type AiOutcomeExtras = {
   answer?: string;
   menuRequested: boolean;
   hints: AiOrderHints;
+  /** Cliente perguntou a taxa/se entrega; `neighborhood` = bairro citado. */
+  feeQuestion?: { neighborhood?: string };
 };
 
 export type AiOrderOutcome =
@@ -653,6 +677,9 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
       address: address && address.length >= 5 ? address : undefined,
       payment: result.payment?.trim() || undefined,
     },
+    feeQuestion: result.fee_question
+      ? { neighborhood: result.fee_neighborhood?.replace(/\s+/g, " ").trim().slice(0, 80) || undefined }
+      : undefined,
   };
 
   if (question) return { status: "question", question, items, ...extras };
@@ -670,7 +697,7 @@ function drinksSystemPrompt(catalogText: string) {
     "- Aceite erros de digitação e nomes aproximados ('coca 2l', 'coca zero 1l', 'guarana lata', 'agua com gas', 'suco de laranja').",
     "- Se o cliente pedir algo vago ('um refri', 'uma coca') e houver várias opções, pergunte qual em 'question' (curta, simpática, sem códigos).",
     "- Bebidas que não existem no cardápio vão em not_found (texto curto como o cliente escreveu).",
-    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_terms=[].",
+    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_terms=[], fee_question=false, fee_neighborhood=null.",
     "",
     "CARDÁPIO DE BEBIDAS:",
     catalogText,

@@ -209,15 +209,7 @@ conversationsRouter.post("/:id/release", async (req, res) => {
     }
 
     const phone = await customerPhoneFor(updated.customerId);
-    if (phone) {
-      // Usa state/context de antes do release (etapa em que o bot parou).
-      await resumeAfterHumanHandoff({
-        phone,
-        customerId: current.customerId,
-        state: current.state,
-        context: current.context
-      });
-    }
+    if (phone) await resumeAfterHumanHandoff({ phone });
 
     res.json(updated);
   } catch (error) {

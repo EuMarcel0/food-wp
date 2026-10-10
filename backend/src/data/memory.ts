@@ -1461,6 +1461,7 @@ export const memoryStore = {
           customerId: item.customerId,
           storeId: item.storeId,
           phone: customer?.waPhone ?? null,
+          lastMessageAt: item.lastMessageAt ?? null,
         };
       });
   },

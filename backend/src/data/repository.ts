@@ -2367,7 +2367,7 @@ export async function listOpenConversationsForClose(limit = 200) {
 
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, customer_id, store_id, customers(wa_phone)")
+    .select("id, customer_id, store_id, last_message_at, customers(wa_phone)")
     .is("closed_at", null)
     .order("last_message_at", { ascending: false })
     .limit(capped);
@@ -2386,6 +2386,7 @@ export async function listOpenConversationsForClose(limit = 200) {
       customerId: String(row.customer_id),
       storeId: String(row.store_id),
       phone: customer?.wa_phone ? String(customer.wa_phone) : null,
+      lastMessageAt: row.last_message_at ? String(row.last_message_at) : null,
     };
   });
 }

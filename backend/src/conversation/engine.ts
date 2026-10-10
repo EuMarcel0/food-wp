@@ -1,8 +1,8 @@
 import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
-import { closedStoreMessage, dayPeriodWish, isStoreOpen } from "../lib/businessHours.js";
+import { closedStoreMessage, dayPeriodWish, isStoreOpen, localDayKey } from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
-import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints } from "./aiOrder.js";
+import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints, type AiOrderOutcome } from "./aiOrder.js";
 import { enqueueWaitByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
 import { looksLikeOrderChange, looksLikeQuestion, type OrderChangeContext } from "./orderChange.js";
@@ -843,30 +843,26 @@ function isOrderInProgress(state: ConversationState) {
  * em que o fluxo parou (com botões/lista quando houver).
  * Fora do horário: só bloqueia se não houver pedido em andamento.
  */
-export async function resumeAfterHumanHandoff(input: {
-  phone: string;
-  customerId: string;
-  state: ConversationState;
-  context: ConversationContext;
-}) {
-  const store = await getStore();
-  if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(input.state)) {
+/** Loja fechada: o aviso de horário vai uma vez por dia para cada cliente; o resto fica sem resposta. */
+const closedNoticeDay = new Map<string, string>();
+
+async function sendClosedNoticeOnce(to: string, customerId: string, store: Store) {
+  const today = localDayKey(new Date(), store.timezone);
+  if (closedNoticeDay.get(customerId) === today) {
+    await touchConversation(customerId);
     return;
   }
+  closedNoticeDay.set(customerId, today);
+  await sendText(to, closedStoreMessage(store.name, store.businessHours));
+}
 
-  const latest = await findLatestOrder(input.customerId);
-  const afterDelivered =
-    input.state === "welcome" && !(input.context.cart?.length ?? 0) && latest?.status === "delivered";
-
-  if (afterDelivered) {
-    const customer = await upsertCustomer(input.phone);
-    await saveConversation(customer, "awaiting_new_order", emptyContext(), { reopen: true });
-    await askNewOrderAfterHandoff(input.phone);
-    return;
-  }
-
-  await sendText(input.phone, "Atendimento humano encerrado. Vamos continuar de onde você parou!");
-  await resumeCurrentStep(input.phone, store, input.state, input.context, { afterHandoff: true });
+/**
+ * Atendente devolveu o chat ao bot: nada é enviado ao cliente e o pedido que estava
+ * em montagem é descartado (o atendente já cuidou dele); a próxima mensagem começa do zero.
+ */
+export async function resumeAfterHumanHandoff(input: { phone: string }) {
+  const customer = await upsertCustomer(input.phone);
+  await saveConversation(customer, "welcome", emptyContext());
 }
 
 async function askNewOrderPrompt(to: string, intro?: string) {
@@ -880,10 +876,6 @@ async function askNewOrderPrompt(to: string, intro?: string) {
       { id: NEW_ORDER_NO, title: "❌ Não" }
     ]
   );
-}
-
-async function askNewOrderAfterHandoff(to: string) {
-  await askNewOrderPrompt(to, "Atendimento humano encerrado. Seu último pedido já está *entregue*.");
 }
 
 async function declineNewOrder(to: string, timezone: string) {
@@ -1111,7 +1103,7 @@ async function resumeCurrentStep(
       await sendText(to, "Me envie o código do pedido (ex.: A7K2).");
       return;
     case "awaiting_new_order":
-      await askNewOrderAfterHandoff(to);
+      await askNewOrderPrompt(to);
       return;
     default:
       if (isV2(store)) {
@@ -1149,10 +1141,7 @@ export async function handleUnsupportedInbound(input: {
     !isOrderInProgress(state) &&
     !isOpenOrderStatus((await findLatestOrder(customer.id))?.status ?? "delivered")
   ) {
-    if (input.waMessageId) {
-      await sendTypingIndicator(input.waMessageId).catch(() => undefined);
-    }
-    await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
+    await sendClosedNoticeOnce(input.from, customer.id, store);
     return;
   }
   if (input.waMessageId) {
@@ -2660,6 +2649,41 @@ const FREE_TEXT_STEPS = new Set<ConversationState>([
 const AI_CHANGE_PROMPT =
   "✏️ Claro! O que você quer *adicionar*, *remover* ou *trocar* no pedido?\nEscreva do seu jeito (ex.: *mais uma Coca 2L* ou *tira a borda*).";
 
+/** Taxa/entrega respondida pelo cadastro de bairros (a IA só identifica o bairro citado). */
+function deliveryFeeAnswer(store: Store, question: { neighborhood?: string }) {
+  if (!store.deliveryEnabled) {
+    return store.pickupEnabled ? "🛵 No momento não estamos fazendo entregas, só *retirada*." : null;
+  }
+  const feeText = (cents: number) => (cents > 0 ? `*${formatBRL(cents)}*` : "*grátis*");
+  const zones = store.neighborhoods ?? [];
+  if (!zones.length) return `🛵 Entregamos sim! A taxa de entrega é ${feeText(store.deliveryFeeCents)}.`;
+  if (!question.neighborhood) return "📍 Me diga o seu *bairro* que eu te passo o valor da entrega.";
+
+  const result = matchNeighborhoodQuery(question.neighborhood, zones);
+  if (result.status === "unique") {
+    const zone = result.match.zone;
+    if (result.match.score >= 90) {
+      return `🛵 Entregamos sim no *${zone.name}*! A taxa de entrega é ${feeText(zone.feeCents)}.`;
+    }
+    // Parecido, mas não igual (ex.: "Top Parque" → "Parque Verde"): confirma antes de afirmar.
+    return `📍 Você quis dizer *${zone.name}*? Se for, a taxa de entrega é ${feeText(zone.feeCents)}. Se não, me diga o nome certinho do bairro.`;
+  }
+  if (result.status === "ambiguous") {
+    const options = result.matches
+      .slice(0, 3)
+      .map(item => `*${item.zone.name}* (${formatBRL(item.zone.feeCents)})`)
+      .join(", ");
+    return `📍 Encontrei bairros parecidos: ${options}. Qual é o seu?`;
+  }
+  return `😕 Não encontrei o bairro *${question.neighborhood}* na nossa área de entrega. Confira o nome do bairro ou envie o endereço completo.`;
+}
+
+function applyFeeAnswer(store: Store, outcome: AiOrderOutcome) {
+  if (outcome.status === "error" || !outcome.feeQuestion) return;
+  const fee = deliveryFeeAnswer(store, outcome.feeQuestion);
+  if (fee) outcome.answer = [fee, outcome.answer].filter(Boolean).join("\n");
+}
+
 function cartKey(items: CartItem[]) {
   return JSON.stringify(items.map(item => [item.productId, item.name, item.quantity, item.unitPriceCents]));
 }
@@ -2798,6 +2822,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   async function handleAiOrderText(ctx: ConversationContext, text: string, opts?: { menuSent?: boolean }) {
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
     const outcome = await interpretOrder(ctx.aiTurns);
+    applyFeeAnswer(store, outcome);
 
     if (outcome.status === "error") {
       await persist("awaiting_ai_order", ctx);
@@ -2882,6 +2907,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     const before = cartKey(ctx.cart);
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
     const outcome = await interpretOrder(ctx.aiTurns);
+    applyFeeAnswer(store, outcome);
 
     if (outcome.status === "error") {
       await persist("awaiting_ai_change", ctx);
@@ -2925,6 +2951,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     const before = cartKey(ctx.cart);
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
     const outcome = await interpretOrder(ctx.aiTurns);
+    applyFeeAnswer(store, outcome);
     if (outcome.status === "error") {
       await persist(currentState, ctx);
       await resumeCurrentStep(input.from, store, currentState, ctx);
@@ -3297,7 +3324,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   if (!isStoreOpen(store.businessHours, store.timezone) && !isOrderInProgress(state)) {
     const latest = await findLatestOrder(customer.id);
     if (!latest || !isOpenOrderStatus(latest.status)) {
-      await sendText(input.from, closedStoreMessage(store.name, store.businessHours));
+      await sendClosedNoticeOnce(input.from, customer.id, store);
       return;
     }
     const wantsCancel = store.allowCustomerCancel && command === "cancelar pedido";

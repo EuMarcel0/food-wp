@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Badge, Button, Dropdown, Empty, Input, Popover, Spin, Tag } from "antd";
+import { Alert, Avatar, Badge, Button, Dropdown, Empty, Input, Popover, Segmented, Spin, Tag } from "antd";
 import {
   ArrowDownOutlined,
   ArrowLeftOutlined,
@@ -236,6 +236,7 @@ export function WhatsAppInbox({
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [onlyHuman, setOnlyHuman] = useState(false);
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [readTick, setReadTick] = useState(0);
@@ -251,11 +252,13 @@ export function WhatsAppInbox({
   onLoadMoreRef.current = onLoadMore;
   const pullToRefresh = usePullToRefresh(listScrollRef, onRefresh, !isDesktop);
 
+  const humanCount = useMemo(() => items.filter(item => item.handoffMode === "human").length, [items]);
   const filtered = useMemo(() => {
     const q = query.trim();
-    if (!q) return items;
-    return items.filter(item => matchesConversation(item, q));
-  }, [items, query]);
+    const base = onlyHuman && !readOnly ? items.filter(item => item.handoffMode === "human") : items;
+    if (!q) return base;
+    return base.filter(item => matchesConversation(item, q));
+  }, [items, query, onlyHuman, readOnly]);
 
   useEffect(() => {
     if (selectedId && !items.some(item => item.id === selectedId)) {
@@ -689,6 +692,18 @@ export function WhatsAppInbox({
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
+          {!readOnly ? (
+            <Segmented
+              block
+              size='small'
+              value={onlyHuman ? "human" : "all"}
+              onChange={value => setOnlyHuman(value === "human")}
+              options={[
+                { label: "Todas", value: "all" },
+                { label: `Bot pausado (${humanCount})`, value: "human" }
+              ]}
+            />
+          ) : null}
         </div>
 
         <div className='relative flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -748,6 +763,8 @@ export function WhatsAppInbox({
               description={
                 query.trim()
                   ? "Nenhuma conversa encontrada"
+                  : onlyHuman && !readOnly
+                    ? "Nenhum cliente com o bot pausado"
                   : readOnly
                     ? "Nenhuma conversa no histórico"
                     : "Nenhuma conversa ativa"

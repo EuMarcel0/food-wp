@@ -2,11 +2,13 @@ import {
   claimCloseIdleAfterDelivered,
   claimCloseIdleConversation,
   claimIdleWarningConversation,
+  closeConversationByAgent,
   getStore,
   listIdleOpenConversations,
   listIdleWarningConversations,
+  listOpenConversationsForClose,
 } from "../data/repository.js";
-import { dayPeriodWish } from "../lib/businessHours.js";
+import { dayPeriodWish, localDayKey } from "../lib/businessHours.js";
 import { sendText } from "../lib/whatsapp.js";
 
 export const IDLE_WARNING_MESSAGE =
@@ -24,6 +26,26 @@ function idleDeliveredCloseMessage(timezone: string) {
 }
 
 const CHECK_EVERY_MS = 60_000;
+/** Na virada do dia, só encerra quem está parado há pelo menos isso (não corta pedido das 23:59). */
+const DAY_ROLLOVER_QUIET_MS = 60 * 60 * 1000;
+
+/** Virada do dia: encerra em silêncio (sem mensagem ao cliente) as conversas que sobraram de ontem. */
+async function closeYesterdayConversations(timezone: string) {
+  const now = new Date();
+  const today = localDayKey(now, timezone);
+  const open = await listOpenConversationsForClose(500);
+  for (const item of open) {
+    if (!item.lastMessageAt) continue;
+    const last = new Date(item.lastMessageAt);
+    if (localDayKey(last, timezone) === today || now.getTime() - last.getTime() < DAY_ROLLOVER_QUIET_MS) continue;
+    await closeConversationByAgent(item.id).catch((error) => {
+      console.error(
+        `[idle-timeout] falha ao encerrar conversa de ontem ${item.id}:`,
+        error instanceof Error ? error.message : error,
+      );
+    });
+  }
+}
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -34,6 +56,8 @@ async function sweepIdleConversations() {
   try {
     const store = await getStore();
     const idleMinutes = store.idleTimeoutMinutes ?? 60;
+
+    await closeYesterdayConversations(store.timezone);
 
     // 1) Metade do tempo: aviso “ainda está aí?” (não na etapa pós-entrega).
     const warningCandidates = await listIdleWarningConversations(idleMinutes);

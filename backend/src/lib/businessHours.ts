@@ -22,6 +22,11 @@ const DAY_LABELS = [
 const DAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] as const;
 export const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
+/** Data local (AAAA-MM-DD) no fuso da loja. */
+export function localDayKey(date: Date, timeZone = DEFAULT_TIMEZONE) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
 /** Saudação final conforme o horário no fuso da loja. */
 export function dayPeriodWish(timeZone = DEFAULT_TIMEZONE, now = new Date()) {
   const { minutes } = localClock(now, timeZone);
