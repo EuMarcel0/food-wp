@@ -19,8 +19,25 @@ const CONFIG_PATH = join(DIR, "config.json");
  *   printerName: string;
  *   columns: number;
  *   apiBaseUrl: string;
+ *   printMode: "image" | "text";
+ *   fontScale: number;
  * }} AgentConfig
  */
+
+/** image = igual à prévia do painel; text = ESC/POS em texto (impressoras que não aceitam imagem). */
+function parsePrintMode(value) {
+  return value === "text" ? "text" : "image";
+}
+
+const DEFAULT_FONT_SCALE = 1.5;
+
+/** Tamanho da letra no cupom em imagem, relativo à prévia do painel (1 = igual à tela). */
+function parseFontScale(value) {
+  const scale = Number(value);
+  // 1.3 era o padrão anterior: sobe junto com o novo padrão.
+  if (!Number.isFinite(scale) || scale <= 0 || scale === 1.3) return DEFAULT_FONT_SCALE;
+  return Math.min(2, Math.max(0.8, scale));
+}
 
 /** @returns {AgentConfig} */
 export function loadConfig() {
@@ -33,6 +50,8 @@ export function loadConfig() {
       printerName: "",
       columns: 48,
       apiBaseUrl: "",
+      printMode: "image",
+      fontScale: DEFAULT_FONT_SCALE,
     };
     writeFileSync(CONFIG_PATH, JSON.stringify(created, null, 2), "utf8");
     return created;
@@ -69,6 +88,8 @@ export function loadConfig() {
     printerName: String(raw.printerName || "").trim(),
     columns: Math.min(48, Math.max(32, columns)),
     apiBaseUrl: String(raw.apiBaseUrl || "").trim().replace(/\/$/, ""),
+    printMode: parsePrintMode(raw.printMode),
+    fontScale: parseFontScale(raw.fontScale),
   };
 }
 
@@ -88,6 +109,8 @@ export function saveConfig(patch) {
     apiBaseUrl: String(patch.apiBaseUrl !== undefined ? patch.apiBaseUrl : current.apiBaseUrl)
       .trim()
       .replace(/\/$/, ""),
+    printMode: parsePrintMode(patch.printMode ?? current.printMode),
+    fontScale: parseFontScale(patch.fontScale ?? current.fontScale),
   };
   mkdirSync(DIR, { recursive: true });
   writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2), "utf8");

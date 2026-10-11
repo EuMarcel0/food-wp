@@ -1462,6 +1462,7 @@ export const memoryStore = {
           storeId: item.storeId,
           phone: customer?.waPhone ?? null,
           lastMessageAt: item.lastMessageAt ?? null,
+          handoffMode: item.handoffMode === "human" ? ("human" as const) : ("bot" as const),
         };
       });
   },

@@ -5,8 +5,8 @@ import { hostname } from "node:os";
 import { configPaths, loadConfig, saveConfig } from "./config.js";
 import { listPrinters } from "./printers.js";
 import { refreshPrintQueuePoller } from "./printQueue.js";
+import { printReceipt } from "./printReceipt.js";
 import { rawPrintWindows } from "./rawPrint.js";
-import { buildReceiptEscPos } from "./receipt.js";
 import { buildSalesByPaymentEscPos } from "./salesReport.js";
 
 const config = loadConfig();
@@ -54,6 +54,8 @@ app.get("/health", (_req, res) => {
     port: config.port,
     printerName: config.printerName || null,
     columns: config.columns,
+    printMode: config.printMode,
+    fontScale: config.fontScale,
     apiBaseUrl: config.apiBaseUrl || null,
     queuePolling: Boolean(config.apiBaseUrl && config.printerName),
   });
@@ -109,6 +111,8 @@ app.put("/config", auth, (req, res) => {
       body.apiBaseUrl !== undefined
         ? String(body.apiBaseUrl || "")
         : config.apiBaseUrl,
+    printMode: body.printMode !== undefined ? String(body.printMode) : config.printMode,
+    fontScale: body.fontScale !== undefined ? Number(body.fontScale) : config.fontScale,
   });
   Object.assign(config, next);
   refreshPrintQueuePoller(enqueuePrint);
@@ -141,14 +145,15 @@ app.post("/print", auth, async (req, res) => {
       body.columns !== undefined
         ? Math.min(48, Math.max(32, Number(body.columns) || 48))
         : config.columns;
-    const buffer = buildReceiptEscPos({
-      store: body.store,
-      order,
-      columns,
-    });
     const result = await enqueuePrint(async () => {
-      await rawPrintWindows(printerName, buffer);
-      return { ok: true, printer: printerName, bytes: buffer.length };
+      const printed = await printReceipt(printerName, {
+        store: body.store,
+        order,
+        columns,
+        mode: config.printMode,
+        fontScale: config.fontScale,
+      });
+      return { ok: true, printer: printerName, mode: printed.mode };
     });
     res.json(result);
   } catch (error) {

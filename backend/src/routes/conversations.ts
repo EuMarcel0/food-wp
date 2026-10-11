@@ -180,11 +180,6 @@ conversationsRouter.post("/:id/takeover", async (req, res) => {
       return;
     }
 
-    const phone = await customerPhoneFor(updated.customerId);
-    if (phone) {
-      await sendText(phone, "Um atendente vai continuar este atendimento por aqui. Pode falar normalmente.");
-    }
-
     res.json(updated);
   } catch (error) {
     res.status(500).json({

@@ -16,7 +16,7 @@ function encodeText(text) {
 }
 
 /** CNPJ só dígitos → 00.000.000/0000-00 (igual ao painel). */
-function formatCnpj(value) {
+export function formatCnpj(value) {
   const digits = String(value ?? "").replace(/\D/g, "").slice(0, 14);
   if (!digits) return "";
   if (digits.length <= 2) return digits;
@@ -82,7 +82,7 @@ function sectionTitle(columns, label) {
   return `${"-".repeat(left)}${text}${"-".repeat(right)}`;
 }
 
-function formatBRL(cents) {
+export function formatBRL(cents) {
   const value = Number(cents || 0) / 100;
   // ASCII puro: evita NBSP do toLocaleString ("R$\u00A077,00" → "R$?77,00").
   const [intPart, decPart = "00"] = value.toFixed(2).split(".");
@@ -90,7 +90,7 @@ function formatBRL(cents) {
   return `R$ ${withDots},${decPart}`;
 }
 
-function formatPhone(raw) {
+export function formatPhone(raw) {
   const digits = String(raw ?? "").replace(/\D/g, "");
   if (!digits) return "";
   const local =
@@ -111,7 +111,7 @@ function pad2(value) {
 }
 
 /** Sempre DD/MM/YYYY HH:mm no fuso de Brasília (evita ISO/locale do Node). */
-function formatDate(iso) {
+export function formatDate(iso) {
   try {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return String(iso ?? "");
@@ -142,7 +142,7 @@ function formatDate(iso) {
   }
 }
 
-const PAYMENT = {
+export const PAYMENT = {
   pix: "Pix",
   cash: "Dinheiro",
   card: "Cartao",
@@ -151,13 +151,13 @@ const PAYMENT = {
   other: "Outro",
 };
 
-function addonNames(extras) {
+export function addonNames(extras) {
   return (extras ?? [])
     .filter((item) => item.groupId === "__addon__")
     .flatMap((item) => (item.options ?? []).map((opt) => opt.name).filter(Boolean));
 }
 
-function crustNames(extras) {
+export function crustNames(extras) {
   return (extras ?? [])
     .filter((item) => item.groupId === "__crust__")
     .flatMap((item) => (item.options ?? []).map((opt) => opt.name).filter(Boolean));

@@ -29,13 +29,16 @@ const CHECK_EVERY_MS = 60_000;
 /** Na virada do dia, só encerra quem está parado há pelo menos isso (não corta pedido das 23:59). */
 const DAY_ROLLOVER_QUIET_MS = 60 * 60 * 1000;
 
-/** Virada do dia: encerra em silêncio (sem mensagem ao cliente) as conversas que sobraram de ontem. */
+/**
+ * Virada do dia: encerra em silêncio (sem mensagem ao cliente) as conversas do bot que sobraram de ontem.
+ * Atendimento humano fica como está até o atendente devolver ao bot.
+ */
 async function closeYesterdayConversations(timezone: string) {
   const now = new Date();
   const today = localDayKey(now, timezone);
   const open = await listOpenConversationsForClose(500);
   for (const item of open) {
-    if (!item.lastMessageAt) continue;
+    if (!item.lastMessageAt || item.handoffMode === "human") continue;
     const last = new Date(item.lastMessageAt);
     if (localDayKey(last, timezone) === today || now.getTime() - last.getTime() < DAY_ROLLOVER_QUIET_MS) continue;
     await closeConversationByAgent(item.id).catch((error) => {

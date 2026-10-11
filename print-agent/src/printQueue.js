@@ -1,8 +1,7 @@
 import { hostname } from "node:os";
 import { loadConfig, saveConfig } from "./config.js";
 import { playKitchenPrintAlert } from "./kitchenAlert.js";
-import { rawPrintWindows } from "./rawPrint.js";
-import { buildReceiptEscPos } from "./receipt.js";
+import { printReceipt } from "./printReceipt.js";
 
 /**
  * @typedef {{
@@ -119,21 +118,21 @@ async function drainPrintQueue(enqueuePrint) {
         } catch {
           store = null;
         }
-        const columns = config.columns;
-        const buffer = buildReceiptEscPos({
-          store: store
-            ? {
-                name: store.name,
-                legalName: store.legalName,
-                cnpj: store.cnpj,
-                receiptFooter: store.receiptFooter,
-              }
-            : undefined,
-          order,
-          columns,
-        });
         await enqueuePrint(async () => {
-          await rawPrintWindows(config.printerName, buffer);
+          await printReceipt(config.printerName, {
+            store: store
+              ? {
+                  name: store.name,
+                  legalName: store.legalName,
+                  cnpj: store.cnpj,
+                  receiptFooter: store.receiptFooter,
+                }
+              : undefined,
+            order,
+            columns: config.columns,
+            mode: config.printMode,
+            fontScale: config.fontScale,
+          });
         });
         await apiFetch(`/api/orders/${item.id}/print-complete`, {
           method: "POST",
