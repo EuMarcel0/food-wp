@@ -108,6 +108,37 @@ export function ConversationsPage() {
     }
   });
 
+  const releaseManyMutation = useMutation({
+    mutationFn: (ids: string[]) => api.releaseConversations(ids),
+    onSuccess: async result => {
+      if (result.failed) {
+        toast.error(`${result.released} devolvida(s) ao bot, ${result.failed} com falha.`);
+      } else {
+        toast.success(`${result.released} conversa(s) devolvida(s) ao bot.`);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations.all
+      });
+    }
+  });
+
+  function askReleaseMany(ids: string[]) {
+    return dialog.confirm({
+      title: "Devolver ao bot",
+      description: (
+        <>
+          <strong>{ids.length}</strong> conversa(s) voltam para o bot, sem mensagem ao cliente. O bot responde quando
+          cada cliente mandar a próxima mensagem. Continuar?
+        </>
+      ),
+      okText: "Devolver ao bot",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        await releaseManyMutation.mutateAsync(ids);
+      }
+    });
+  }
+
   const closeMutation = useMutation({
     mutationFn: (id: string) => api.closeConversation(id),
     onSuccess: async () => {
@@ -320,6 +351,8 @@ export function ConversationsPage() {
             }
             onTakeover={askTakeover}
             onRelease={item => releaseMutation.mutate(item.id)}
+            onReleaseMany={askReleaseMany}
+            releasingMany={releaseManyMutation.isPending}
             onClose={askClose}
             // onCloseAll={askCloseAll}
             onMobileChatOpenChange={setMobileChatOpen}

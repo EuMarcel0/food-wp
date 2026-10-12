@@ -77,6 +77,7 @@ export const queryKeys = {
       to?: string;
       paymentMethods?: string[];
     }) => ["orders", "reports", "sales-by-payment", filters] as const,
+    botPerformance: (day: string) => ["orders", "reports", "bot-performance", day] as const,
   },
   conversations: {
     all: ["conversations"] as const,

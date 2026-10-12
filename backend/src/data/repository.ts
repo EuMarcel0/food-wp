@@ -6,6 +6,7 @@ import type {
   OrderFilter,
   ProductFilter,
 } from "../lib/filters.js";
+import { summarizeBotPerformance, type BotPerformanceReport } from "../lib/botPerformance.js";
 import { buildOrderStats } from "../lib/orderStats.js";
 import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
@@ -2289,12 +2290,47 @@ export async function touchConversation(customerId: string) {
     .eq("customer_id", customerId);
 }
 
+const OPEN_ORDER_STATUSES = ["received", "accepted", "ready", "out_for_delivery"];
+
+/** Marca/limpa a intervenção do atendente no ciclo atual da conversa (sem a migration 056, ignora). */
+async function setConversationAssisted(conversationId: string, assistedAt: string | null) {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const { error } = await supabase
+    .from("conversations")
+    .update({ assisted_at: assistedAt })
+    .eq("id", conversationId);
+  if (error && !error.message?.includes("assisted_at")) {
+    console.warn("[assisted] falha ao atualizar conversa:", error.message);
+  }
+}
+
+async function markOrderHumanAssisted(orderId: string, onlyOpen = false) {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  let query = supabase.from("orders").update({ human_assisted: true }).eq("id", orderId);
+  if (onlyOpen) query = query.in("status", OPEN_ORDER_STATUSES);
+  const { error } = await query;
+  if (error && !error.message?.includes("human_assisted")) {
+    console.warn("[assisted] falha ao marcar pedido:", error.message);
+  }
+}
+
 export async function recordConversationOrder(
   customerId: string,
   order: { id: string; code: string },
 ) {
   const supabase = getSupabase();
   if (!supabase) return memoryStore.recordConversationOrder(customerId, order);
+
+  const { data: assisted, error: assistedError } = await supabase
+    .from("conversations")
+    .select("assisted_at")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (!assistedError && assisted?.assisted_at) {
+    await markOrderHumanAssisted(order.id);
+  }
 
   const now = new Date().toISOString();
   const { data, error } = await supabase
@@ -2324,6 +2360,7 @@ export async function recordConversationOrder(
     }
     throw new Error(error.message);
   }
+  if (data && assisted?.assisted_at) await setConversationAssisted(String(data.id), null);
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
@@ -2356,6 +2393,7 @@ export async function closeConversationByAgent(conversationId: string) {
     }
     throw new Error(error.message);
   }
+  if (data) await setConversationAssisted(conversationId, null);
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
@@ -2494,6 +2532,7 @@ export async function claimCloseIdleConversation(
     }
     throw new Error(error.message);
   }
+  if (data) await setConversationAssisted(conversationId, null);
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
@@ -2546,6 +2585,7 @@ export async function claimCloseIdleAfterDelivered(
     }
     throw new Error(error.message);
   }
+  if (data) await setConversationAssisted(conversationId, null);
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
@@ -3385,6 +3425,11 @@ export async function setConversationHandoff(
     throw new Error(error.message);
   }
   if (!data) return null;
+  if (mode === "human") {
+    await setConversationAssisted(id, now);
+    // Assumiu depois do pedido feito (ainda em andamento): o pedido conta como intervenção.
+    if (data.last_order_id) await markOrderHumanAssisted(String(data.last_order_id), true);
+  }
   return mapConversation(data as Record<string, unknown>);
 }
 
@@ -3896,6 +3941,47 @@ export async function getOrder(id: string) {
     .maybeSingle();
   if (error || !data) return memoryStore.getOrder(id);
   return mapOrder(data as Record<string, unknown>);
+}
+
+/** Pedidos do dia (todos vêm do WhatsApp): feitos só pelo bot × com intervenção do atendente. */
+export async function getBotPerformanceReport(input: {
+  day: string;
+  createdFrom: string;
+  createdTo: string;
+}): Promise<BotPerformanceReport> {
+  const supabase = getSupabase();
+  if (!supabase) return memoryStore.getBotPerformanceReport(input);
+
+  const range = (columns: string) =>
+    supabase
+      .from("orders")
+      .select(columns)
+      .gte("created_at", input.createdFrom)
+      .lte("created_at", input.createdTo)
+      .limit(SALES_REPORT_LIMIT);
+
+  const { data, error } = await range("status, human_assisted");
+  if (error?.message?.includes("human_assisted")) {
+    const legacy = await range("status");
+    if (legacy.error) throw new Error(legacy.error.message);
+    return summarizeBotPerformance(
+      input.day,
+      ((legacy.data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
+        status: String(row.status ?? "received"),
+        humanAssisted: false,
+      })),
+      false,
+    );
+  }
+  if (error) throw new Error(error.message);
+  return summarizeBotPerformance(
+    input.day,
+    ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
+      status: String(row.status ?? "received"),
+      humanAssisted: Boolean(row.human_assisted),
+    })),
+    true,
+  );
 }
 
 export async function getOrderStats(day?: string) {

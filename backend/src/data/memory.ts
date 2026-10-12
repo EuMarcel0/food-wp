@@ -4,6 +4,7 @@ import type {
   OrderFilter,
   ProductFilter,
 } from "../lib/filters.js";
+import { summarizeBotPerformance } from "../lib/botPerformance.js";
 import { buildOrderStats } from "../lib/orderStats.js";
 import { paginateItems } from "../lib/pagination.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
@@ -1837,6 +1838,18 @@ export const memoryStore = {
       orders,
       totals,
     };
+  },
+
+  getBotPerformanceReport(input: { day: string; createdFrom: string; createdTo: string }) {
+    const fromMs = Date.parse(input.createdFrom);
+    const toMs = Date.parse(input.createdTo);
+    const rows = this.listOrders()
+      .filter((order) => {
+        const ms = Date.parse(order.createdAt);
+        return ms >= fromMs && ms <= toMs;
+      })
+      .map((order) => ({ status: order.status, humanAssisted: false }));
+    return summarizeBotPerformance(input.day, rows, false);
   },
 
   getOrderStats(day?: string) {

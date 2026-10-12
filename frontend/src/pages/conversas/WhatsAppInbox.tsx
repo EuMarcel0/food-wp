@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Badge, Button, Dropdown, Empty, Input, Popover, Segmented, Spin, Tag } from "antd";
+import { Alert, Avatar, Badge, Button, Checkbox, Dropdown, Empty, Input, Popover, Segmented, Spin, Tag } from "antd";
 import {
   ArrowDownOutlined,
   ArrowLeftOutlined,
   CheckOutlined,
+  CheckSquareOutlined,
   CloseCircleOutlined,
   MoreOutlined,
   RobotOutlined,
@@ -208,6 +209,8 @@ export function WhatsAppInbox({
   onRefresh,
   onTakeover,
   onRelease,
+  onReleaseMany,
+  releasingMany = false,
   onClose,
   // onCloseAll,
   onMobileChatOpenChange
@@ -226,6 +229,9 @@ export function WhatsAppInbox({
   onRefresh?: () => Promise<unknown>;
   onTakeover?: (item: LiveConversation) => void;
   onRelease?: (item: LiveConversation) => void;
+  /** Filtro "Bot pausado": devolve as selecionadas ao bot (resolve true se confirmou). */
+  onReleaseMany?: (ids: string[]) => Promise<boolean>;
+  releasingMany?: boolean;
   onClose?: (item: LiveConversation) => void;
   // onCloseAll?: () => void;
   onMobileChatOpenChange?: (open: boolean) => void;
@@ -259,6 +265,45 @@ export function WhatsAppInbox({
     if (!q) return base;
     return base.filter(item => matchesConversation(item, q));
   }, [items, query, onlyHuman, readOnly]);
+
+  const canBulkRelease = onlyHuman && !readOnly && Boolean(onReleaseMany);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkIds, setBulkIds] = useState<Set<string>>(() => new Set());
+  const bulkSelecting = canBulkRelease && bulkMode;
+  const allFilteredSelected = filtered.length > 0 && filtered.every(item => bulkIds.has(item.id));
+
+  useEffect(() => {
+    if (!canBulkRelease) {
+      setBulkMode(false);
+      setBulkIds(new Set());
+    }
+  }, [canBulkRelease]);
+
+  useEffect(() => {
+    setBulkIds(current => {
+      const visible = new Set(filtered.map(item => item.id));
+      const next = new Set([...current].filter(id => visible.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filtered]);
+
+  function toggleBulk(id: string) {
+    setBulkIds(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function releaseSelected() {
+    if (!onReleaseMany || !bulkIds.size) return;
+    const done = await onReleaseMany([...bulkIds]);
+    if (done) {
+      setBulkIds(new Set());
+      setBulkMode(false);
+    }
+  }
 
   useEffect(() => {
     if (selectedId && !items.some(item => item.id === selectedId)) {
@@ -704,6 +749,48 @@ export function WhatsAppInbox({
               ]}
             />
           ) : null}
+          {canBulkRelease && filtered.length ? (
+            bulkSelecting ? (
+              <div className='flex flex-wrap items-center justify-between gap-2'>
+                <Checkbox
+                  checked={allFilteredSelected}
+                  indeterminate={bulkIds.size > 0 && !allFilteredSelected}
+                  onChange={event =>
+                    setBulkIds(event.target.checked ? new Set(filtered.map(item => item.id)) : new Set())
+                  }
+                >
+                  <span className='text-xs text-food-muted'>
+                    {bulkIds.size ? `${bulkIds.size} selecionada(s)` : "Selecionar todas"}
+                  </span>
+                </Checkbox>
+                <div className='flex items-center gap-1.5'>
+                  <Button
+                    size='small'
+                    onClick={() => {
+                      setBulkMode(false);
+                      setBulkIds(new Set());
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size='small'
+                    type='primary'
+                    icon={<RobotOutlined />}
+                    disabled={!bulkIds.size}
+                    loading={releasingMany}
+                    onClick={() => void releaseSelected()}
+                  >
+                    Devolver ao bot
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button size='small' block icon={<CheckSquareOutlined />} onClick={() => setBulkMode(true)}>
+                Selecionar para devolver ao bot
+              </Button>
+            )
+          ) : null}
         </div>
 
         <div className='relative flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -775,11 +862,17 @@ export function WhatsAppInbox({
             const active = item.id === selectedId;
             const human = item.handoffMode === "human";
             const unread = unreadIds.has(item.id);
+            const checked = bulkIds.has(item.id);
             return (
               <button
                 key={item.id}
                 type='button'
+                aria-pressed={bulkSelecting ? checked : undefined}
                 onClick={() => {
+                  if (bulkSelecting) {
+                    toggleBulk(item.id);
+                    return;
+                  }
                   setSelectedId(item.id);
                   markConversationRead(item.id, item.lastMessageAt);
                 }}
@@ -790,6 +883,17 @@ export function WhatsAppInbox({
                     : "border-l-transparent bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
                 )}
               >
+                {bulkSelecting ? (
+                  <span
+                    aria-hidden='true'
+                    className={cn(
+                      "mt-2.5 flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border border-solid text-[11px] text-white transition-colors",
+                      checked ? "border-food-accent bg-food-accent" : "border-food-border bg-transparent"
+                    )}
+                  >
+                    {checked ? <CheckOutlined /> : null}
+                  </span>
+                ) : null}
                 <Badge dot={unread} color='#22c55e' offset={[-2, 34]}>
                   <Avatar
                     size={40}

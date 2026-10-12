@@ -218,6 +218,39 @@ export function formatBusinessHoursLines(hours: BusinessHoursDay[] | null | unde
   return lines;
 }
 
+/** Resposta a "que horas fecha/abre?" com o horário do dia, no fuso da loja. */
+export function storeHoursAnswer(
+  hours: BusinessHoursDay[] | null | undefined,
+  timeZone = DEFAULT_TIMEZONE,
+  now = new Date(),
+) {
+  if (!hours?.length) return null;
+  const clock = localClock(now, timeZone);
+  const today = hours.find((item) => item.day === clock.day);
+  const yesterday = hours.find((item) => item.day === ((clock.day + 6) % 7) as Weekday);
+
+  // Madrugada dentro do expediente que começou ontem (ex.: 18:00 às 01:00).
+  if (coversInstant(yesterday, clock.minutes, "yesterday") && yesterday) {
+    return `🕐 Estamos atendendo até às *${yesterday.close}*. 😊`;
+  }
+  if (!today || today.closed) {
+    const schedule = formatBusinessHoursLines(hours);
+    return [
+      "😴 Hoje não abrimos.",
+      schedule.length ? ["🕐 Horário de funcionamento:", ...schedule].join("\n") : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (coversInstant(today, clock.minutes, "today")) {
+    return `🕐 Hoje estamos atendendo até às *${today.close}*. 😊`;
+  }
+  if (clock.minutes < minutesOfDay(today.open)) {
+    return `🕐 Hoje abrimos às *${today.open}* e atendemos até às *${today.close}*. 😊`;
+  }
+  return `😴 Hoje já encerramos (atendemos das *${today.open}* às *${today.close}*).`;
+}
+
 export function closedStoreMessage(
   storeName: string,
   hours: BusinessHoursDay[] | null | undefined,

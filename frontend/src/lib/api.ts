@@ -22,6 +22,7 @@ import type {
   Store,
   StorePaymentMethod,
   SalesByPaymentReport,
+  BotPerformanceReport,
 } from "../types";
 
 const base = import.meta.env.VITE_API_URL ?? "";
@@ -391,6 +392,8 @@ export const api = {
       }),
       { silent },
     ),
+  botPerformanceReport: (day: string) =>
+    request<BotPerformanceReport>(withQuery("/api/orders/reports/bot-performance", { day })),
   order: (id: string, silent = false) => request<Order>(`/api/orders/${id}`, { silent }),
   orderPrintQueue: (silent = true) =>
     request<{ items: { id: string; code: string; requestedAt: string }[] }>(
@@ -478,6 +481,11 @@ export const api = {
   releaseConversation: (id: string) =>
     request<unknown>(`/api/conversations/${id}/release`, {
       method: "POST"
+    }),
+  releaseConversations: (ids: string[]) =>
+    request<{ released: number; failed: number; total: number }>("/api/conversations/release-many", {
+      method: "POST",
+      body: JSON.stringify({ ids })
     }),
   closeConversation: (id: string) =>
     request<unknown>(`/api/conversations/${id}/close`, {

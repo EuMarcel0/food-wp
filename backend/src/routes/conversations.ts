@@ -81,6 +81,43 @@ conversationsRouter.post("/close-all", async (_req, res) => {
   }
 });
 
+conversationsRouter.post("/release-many", async (req, res) => {
+  try {
+    const raw: unknown[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = [...new Set(raw.map(String).map(id => id.trim()).filter(Boolean))].slice(0, 200);
+    if (!ids.length) {
+      res.status(400).json({ error: "Selecione ao menos uma conversa." });
+      return;
+    }
+    let released = 0;
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        const current = await getConversationById(id);
+        if (!current || current.handoffMode !== "human") {
+          failed += 1;
+          continue;
+        }
+        const updated = await setConversationHandoff(id, "bot", null);
+        if (!updated) {
+          failed += 1;
+          continue;
+        }
+        const phone = await customerPhoneFor(updated.customerId);
+        if (phone) await resumeAfterHumanHandoff({ phone });
+        released += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    res.json({ released, failed, total: ids.length });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao devolver as conversas ao bot."
+    });
+  }
+});
+
 conversationsRouter.get("/:id/messages", async (req, res) => {
   try {
     const id = String(req.params.id);

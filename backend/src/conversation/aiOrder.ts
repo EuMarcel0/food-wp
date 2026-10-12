@@ -222,6 +222,7 @@ type AiResult = {
   payment: string | null;
   fee_question: boolean;
   fee_neighborhood: string | null;
+  hours_question: boolean;
 };
 
 const SCHEMA = {
@@ -238,8 +239,14 @@ const SCHEMA = {
     "payment",
     "fee_question",
     "fee_neighborhood",
+    "hours_question",
   ],
   properties: {
+    hours_question: {
+      type: "boolean",
+      description:
+        "true se a ÚLTIMA mensagem do cliente pergunta o horário de funcionamento (que horas fecha/abre/encerra, até que horas atendem, se ainda estão abertos).",
+    },
     fee_question: {
       type: "boolean",
       description:
@@ -346,7 +353,8 @@ function systemPrompt(catalogText: string) {
     "- 'answer' responde só às perguntas da ÚLTIMA mensagem do cliente; se não houver pergunta nova, answer=null.",
     "- Endereço de entrega em qualquer mensagem: copie em 'address' e use fulfillment=delivery. 'Vou buscar', 'retirar', 'pego aí' = fulfillment=pickup.",
     "- Forma de pagamento ('no pix', 'cartão', 'dinheiro', 'troco pra 100'): 'payment' = nome exato da lista de formas de pagamento; se não houver correspondência, null.",
-    "- Perguntas sobre horário, tempo de entrega ou coisas fora do cardápio: responda em 'answer' que um atendente pode confirmar, sem inventar.",
+    "- Pergunta de horário de funcionamento (que horas fecha/abre/encerra, até que horas atendem): hours_question=true. O sistema responde o horário pelo cadastro da loja: NÃO fale de horário em 'answer'.",
+    "- Perguntas sobre tempo de entrega ou coisas fora do cardápio: responda em 'answer' que um atendente pode confirmar, sem inventar.",
     "",
     "Quando usar 'question':",
     "- Só quando faltar algo OBRIGATÓRIO para montar um item (tamanho da pizza, qual bebida, limite de sabores).",
@@ -365,6 +373,8 @@ type AiOutcomeExtras = {
   hints: AiOrderHints;
   /** Cliente perguntou a taxa/se entrega; `neighborhood` = bairro citado. */
   feeQuestion?: { neighborhood?: string };
+  /** Cliente perguntou o horário de funcionamento. */
+  hoursQuestion?: boolean;
 };
 
 export type AiOrderOutcome =
@@ -680,6 +690,7 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
     feeQuestion: result.fee_question
       ? { neighborhood: result.fee_neighborhood?.replace(/\s+/g, " ").trim().slice(0, 80) || undefined }
       : undefined,
+    hoursQuestion: Boolean(result.hours_question),
   };
 
   if (question) return { status: "question", question, items, ...extras };
@@ -697,7 +708,7 @@ function drinksSystemPrompt(catalogText: string) {
     "- Aceite erros de digitação e nomes aproximados ('coca 2l', 'coca zero 1l', 'guarana lata', 'agua com gas', 'suco de laranja').",
     "- Se o cliente pedir algo vago ('um refri', 'uma coca') e houver várias opções, pergunte qual em 'question' (curta, simpática, sem códigos).",
     "- Bebidas que não existem no cardápio vão em not_found (texto curto como o cliente escreveu).",
-    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_terms=[], fee_question=false, fee_neighborhood=null.",
+    "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_terms=[], fee_question=false, fee_neighborhood=null, hours_question=false.",
     "",
     "CARDÁPIO DE BEBIDAS:",
     catalogText,

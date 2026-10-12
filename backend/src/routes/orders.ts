@@ -3,9 +3,11 @@ import {
   claimAutoPrint,
   completeAutoPrint,
   failAutoPrint,
+  getBotPerformanceReport,
   getOrder,
   getOrderStats,
   getSalesByPaymentReport,
+  getStore,
   listAutoPrintQueue,
   listOrderLogs,
   listOrdersPage,
@@ -19,6 +21,7 @@ import {
   parseOptionalText,
   parseSearch,
 } from "../lib/filters.js";
+import { DEFAULT_TIMEZONE, localDayKey } from "../lib/businessHours.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { notifyCustomerOrderItemsChanged, notifyCustomerOrderStatus } from "../lib/orderNotify.js";
 import type { OrderStatus, PaymentMethod, Fulfillment } from "../types.js";
@@ -51,6 +54,24 @@ ordersRouter.get("/stats", async (req, res) => {
     return;
   }
   res.json(await getOrderStats(day));
+});
+
+ordersRouter.get("/reports/bot-performance", async (req, res) => {
+  try {
+    const store = await getStore();
+    const day = parseOptionalText(req.query.day) || localDayKey(new Date(), store.timezone || DEFAULT_TIMEZONE);
+    const createdFrom = parseDateDay(day, false);
+    const createdTo = parseDateDay(day, true);
+    if (!createdFrom || !createdTo) {
+      res.status(400).json({ error: "Informe a data no formato YYYY-MM-DD." });
+      return;
+    }
+    res.json(await getBotPerformanceReport({ day, createdFrom, createdTo }));
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao montar o gráfico do bot.",
+    });
+  }
 });
 
 ordersRouter.get("/reports/sales-by-payment", async (req, res) => {

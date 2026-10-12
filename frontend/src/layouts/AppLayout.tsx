@@ -6,6 +6,7 @@ import {
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
+  PieChartOutlined,
   PlusCircleOutlined,
   SettingOutlined,
   ShoppingOutlined,
@@ -21,6 +22,8 @@ import { ConnectionStatus } from "./ConnectionStatus";
 // import { NotificationProvider } from "../notifications/NotificationProvider";
 import { OrderAlerts } from "../notifications/OrderAlerts";
 import { UserMenu } from "./UserMenu";
+import { useAuth } from "../auth/AuthProvider";
+import { canSeeBotAnalytics } from "../lib/access";
 import { api } from "../lib/api";
 import {
   CONVERSATION_READ_EVENT,
@@ -151,6 +154,8 @@ export function AppLayout() {
     [liveKey, seenTick],
   );
   const showConversasDot = hasUnread;
+  const { user } = useAuth();
+  const showCharts = canSeeBotAnalytics(user?.email);
 
   useEffect(() => {
     const bump = () => setSeenTick((value) => value + 1);
@@ -189,9 +194,10 @@ export function AppLayout() {
           },
         ],
       },
+      ...(showCharts ? [{ key: "/graficos", icon: <PieChartOutlined />, label: "Gráficos" }] : []),
       { key: "/configuracoes", icon: <SettingOutlined />, label: "Configurações" },
     ],
-    [showConversasDot],
+    [showConversasDot, showCharts],
   );
 
   function go(path: string) {

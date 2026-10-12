@@ -363,6 +363,15 @@ export type SalesByPaymentReport = {
   totals: { orderCount: number; totalCents: number };
 };
 
+export type BotPerformanceReport = {
+  day: string;
+  total: number;
+  botOnly: number;
+  humanAssisted: number;
+  other: number;
+  tracking: boolean;
+};
+
 export type NotificationType = "order_created" | "order_updated";
 
 export type AppNotification = {

@@ -1,5 +1,11 @@
 import { applyAutoAccept } from "../lib/autoAcceptOrder.js";
-import { closedStoreMessage, dayPeriodWish, isStoreOpen, localDayKey } from "../lib/businessHours.js";
+import {
+  closedStoreMessage,
+  dayPeriodWish,
+  isStoreOpen,
+  localDayKey,
+  storeHoursAnswer
+} from "../lib/businessHours.js";
 import { formatBRL, formatReais } from "../lib/money.js";
 import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from "../lib/whatsapp.js";
 import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints, type AiOrderOutcome } from "./aiOrder.js";
@@ -1467,7 +1473,12 @@ function isV2(store: Pick<Store, "botFlowVersion">) {
   return store.botFlowVersion === "v2";
 }
 
-const AI_ORDER_EXAMPLE = "Ex.: *uma família meia calabresa e meia frango com catupiry borda de cheddar e uma coca 1L*";
+const AI_ORDER_EXAMPLE =
+  "Ex.: *2 pizzas família, uma meia calabresa e meia frango com catupiry com borda de cheddar e outra portuguesa, e 2 Coca-Cola 2L*";
+
+function addressKey(value?: string | null) {
+  return normalize(value ?? "").replace(/[^a-z0-9]/g, "");
+}
 
 function aiOrderPrompt(intro = "✍️ *Digite seu pedido* em *uma mensagem*.") {
   return [intro, AI_ORDER_EXAMPLE, "Para encerrar sem pedir, digite *Sair*."].join("\n");
@@ -2678,10 +2689,32 @@ function deliveryFeeAnswer(store: Store, question: { neighborhood?: string }) {
   return `😕 Não encontrei o bairro *${question.neighborhood}* na nossa área de entrega. Confira o nome do bairro ou envie o endereço completo.`;
 }
 
+/** Taxa e horário vêm do cadastro da loja, nunca da IA. */
 function applyFeeAnswer(store: Store, outcome: AiOrderOutcome) {
-  if (outcome.status === "error" || !outcome.feeQuestion) return;
-  const fee = deliveryFeeAnswer(store, outcome.feeQuestion);
-  if (fee) outcome.answer = [fee, outcome.answer].filter(Boolean).join("\n");
+  if (outcome.status === "error") return;
+  const fee = outcome.feeQuestion ? deliveryFeeAnswer(store, outcome.feeQuestion) : null;
+  const hours = outcome.hoursQuestion ? storeHoursAnswer(store.businessHours, store.timezone) : null;
+  if (fee || hours) outcome.answer = [hours, fee, outcome.answer].filter(Boolean).join("\n");
+}
+
+const STORE_HOURS_QUESTION = [
+  /\b(que|q|qual|quais)\s+(horas?|horario)\s+(voces?\s+|vcs?\s+|a\s+pizzaria\s+|a\s+loja\s+)?(fecha|fecham|encerra|encerram|abre|abrem|funciona|funcionam|atende|atendem)\b/,
+  /\b(fecha|fecham|encerra|encerram|abre|abrem|funciona|funcionam|atende|atendem)\s+(que|q)\s+horas?\b/,
+  /\bate\s+(que|q)\s+horas?\b/,
+  /\bhorario\s+(de\s+)?(funcionamento|fechamento|atendimento|encerramento|abertura)\b/,
+  /\b(qual|quais)\s+(e\s+)?(o\s+)?horario\b/,
+  /\b(ainda\s+)?(estao|esta|tao|ta)\s+(abert[oa]s?|funcionando|atendendo)\b/
+];
+
+/** Pergunta só de horário ("que horas fecha?"), sem pedido junto. */
+function asksStoreHours(text: string) {
+  const plain = normalize(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain || plain.length > 120) return false;
+  if (/\b(pizza|pizzas|quero|queria|pedido|pedir|borda|coca|refri|lanche)\b/.test(plain)) return false;
+  return STORE_HOURS_QUESTION.some(pattern => pattern.test(plain));
 }
 
 function cartKey(items: CartItem[]) {
@@ -2830,7 +2863,13 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
 
+    const previousHintAddress = ctx.aiHints?.address;
     ctx.aiHints = mergeAiHints(ctx.aiHints, outcome.hints);
+    // Correção do pedido depois do endereço: mantém entrega/endereço, salvo se o cliente mandou outro agora.
+    const newAddress =
+      Boolean(outcome.hints.address) && addressKey(outcome.hints.address) !== addressKey(previousHintAddress);
+    const keepAddress =
+      hasKnownDeliveryAddress(ctx) && !newAddress && outcome.hints.fulfillment !== "pickup";
 
     if (outcome.menuRequested && !opts?.menuSent) {
       if (store.menuImageUrl) {
@@ -2854,7 +2893,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         helped
           ? "✍️ Quando decidir, é só *digitar seu pedido* aqui."
           : "😕 Não consegui identificar itens do cardápio nessa mensagem. Me envie seu pedido, por favor.",
-        helped ? null : AI_ORDER_EXAMPLE
+        AI_ORDER_EXAMPLE
       ]
         .filter(Boolean)
         .join("\n");
@@ -2873,10 +2912,12 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
 
     ctx.cart = outcome.items;
-    ctx.fulfillment = undefined;
-    ctx.neighborhoodId = undefined;
-    ctx.neighborhoodName = undefined;
-    ctx.addressText = undefined;
+    if (!keepAddress) {
+      ctx.fulfillment = undefined;
+      ctx.neighborhoodId = undefined;
+      ctx.neighborhoodName = undefined;
+      ctx.addressText = undefined;
+    }
     ctx.addressDraft = undefined;
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, {
       role: "assistant",
@@ -3126,6 +3167,11 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
    * senão mostra Entrega / Retirada / Corrigir.
    */
   async function continueAfterAiCart(ctx: ConversationContext, intro: string) {
+    if (store.deliveryEnabled && hasKnownDeliveryAddress(ctx)) {
+      await sendText(input.from, [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)].join("\n"));
+      await confirmKnownAddress(ctx);
+      return;
+    }
     const hints = ctx.aiHints ?? {};
     const address = hints.fulfillment !== "pickup" ? hints.address : undefined;
     if (!address || !store.deliveryEnabled) {
@@ -3136,6 +3182,25 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     await sendText(input.from, [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)].join("\n"));
     ctx.fulfillment = "delivery";
     await applyTypedAddress(ctx, address);
+  }
+
+  /** Entrega com endereço já informado neste pedido (e bairro resolvido, se houver bairros cadastrados). */
+  function hasKnownDeliveryAddress(ctx: ConversationContext) {
+    if (ctx.fulfillment !== "delivery" || !ctx.addressText?.trim()) return false;
+    return !(store.neighborhoods ?? []).length || Boolean(ctx.neighborhoodId);
+  }
+
+  /** Reaproveita o endereço já informado: v2 mostra a taxa recalculada; sem taxa, segue para o pagamento. */
+  async function confirmKnownAddress(ctx: ConversationContext) {
+    ctx.addressDraft = undefined;
+    ctx.neighborhoodPage = null;
+    const hasFee = (store.neighborhoods ?? []).length > 0 || store.deliveryFeeCents > 0;
+    if (isV2(store) && hasFee) {
+      await persist("awaiting_fee_confirm", ctx);
+      await askFeeConfirm(input.from, store, ctx);
+      return;
+    }
+    await goToPayment(ctx);
   }
 
   /** Entrega: oferece o endereço do último pedido (Sim / Outro endereço); sem histórico, pede o endereço. */
@@ -3334,6 +3399,15 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         return;
       }
       await replyOpenOrderStatus(false, { offerNewOrder: false });
+      return;
+    }
+  }
+
+  // "Que horas fecha?": responde pelo horário cadastrado, sem IA e sem mudar a etapa.
+  if (!input.replyId && !input.location && asksStoreHours(input.text)) {
+    const answer = storeHoursAnswer(store.businessHours, store.timezone);
+    if (answer) {
+      await sendText(input.from, answer);
       return;
     }
   }
@@ -4625,6 +4699,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         return;
       }
       context.fulfillment = fromCart;
+      if (fromCart === "delivery" && isV2(store) && hasKnownDeliveryAddress(context)) {
+        await confirmKnownAddress(context);
+        return;
+      }
       if (fromCart === "delivery") {
         context.neighborhoodId = undefined;
         context.neighborhoodName = undefined;
@@ -4657,6 +4735,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
 
     context.fulfillment = resolved;
+    if (resolved === "delivery" && isV2(store) && hasKnownDeliveryAddress(context)) {
+      await confirmKnownAddress(context);
+      return;
+    }
     if (resolved === "delivery") {
       context.neighborhoodId = undefined;
       context.neighborhoodName = undefined;
@@ -4672,6 +4754,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
 
+    context.addressText = undefined;
+    context.addressDraft = undefined;
+    context.neighborhoodId = undefined;
+    context.neighborhoodName = undefined;
     await goToPayment(context);
     return;
   }
