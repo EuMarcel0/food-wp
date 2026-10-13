@@ -15,6 +15,8 @@ export type PrintAgentHealth = {
   printerName?: string | null;
   columns?: number;
   apiBaseUrl?: string | null;
+  /** false = este PC só imprime manualmente (não consome a fila de aceites). */
+  autoPrint?: boolean;
   queuePolling?: boolean;
 };
 
@@ -22,7 +24,19 @@ export type PrintAgentPrinter = {
   name: string;
   isDefault: boolean;
   offline: boolean;
+  /** Compartilhada (\\PC\impressora), porta TCP/IP ou adicionada por IP. */
+  network?: boolean;
+  source?: "windows" | "ip";
 };
+
+const TCP_PRINTER = /^tcp:\/\/([\d.]+):(\d+)$/i;
+
+/** "tcp://192.168.0.50:9100" → "192.168.0.50" (porta só se não for a padrão). */
+export function tcpPrinterLabel(name: string) {
+  const match = TCP_PRINTER.exec(name.trim());
+  if (!match) return null;
+  return match[2] === "9100" ? match[1] : `${match[1]}:${match[2]}`;
+}
 
 export function getPrintAgentBase() {
   try {
@@ -68,12 +82,12 @@ export function resolvePanelApiBaseUrl() {
   return "";
 }
 
-export function setPrintAgentAuth(base: string, token: string) {
+export function setPrintAgentAuth(base: string, token: string, autoPrint = true) {
   try {
     localStorage.setItem(BASE_KEY, base.replace(/\/$/, ""));
     localStorage.setItem(TOKEN_KEY, token.trim());
-    // Ao emparelhar, este PC vira a estação de impressão.
-    localStorage.setItem(AUTO_PRINT_STATION_KEY, "1");
+    // Ao emparelhar, segue o que o agente deste PC já usa (cozinha = automático).
+    localStorage.setItem(AUTO_PRINT_STATION_KEY, autoPrint ? "1" : "0");
   } catch {
     // storage bloqueado
   }
@@ -128,14 +142,17 @@ export async function pairPrintAgent(base = DEFAULT_BASE) {
     token: string;
     port: number;
     printerName?: string | null;
+    autoPrint?: boolean;
   };
   const resolved = `http://127.0.0.1:${data.port || 19100}`;
-  setPrintAgentAuth(resolved, data.token);
+  const autoPrint = data.autoPrint !== false;
+  setPrintAgentAuth(resolved, data.token, autoPrint);
   await pushApiBaseToAgent().catch(() => undefined);
   return {
     base: resolved,
     token: data.token,
     printerName: data.printerName ?? "",
+    autoPrint,
   };
 }
 
@@ -172,13 +189,36 @@ export async function savePrintAgentPrinter(printerName: string) {
   const apiBaseUrl = resolvePanelApiBaseUrl();
   return authedFetch("/config", {
     method: "PUT",
-    body: JSON.stringify({ printerName, apiBaseUrl }),
+    body: JSON.stringify({ printerName, apiBaseUrl, autoPrint: isAutoPrintStation() }),
   }) as Promise<{
     ok: boolean;
     printerName: string | null;
     apiBaseUrl?: string | null;
+    autoPrint?: boolean;
     queuePolling?: boolean;
   }>;
+}
+
+/** Liga/desliga a fila de aceites no agente deste PC (desligado = só impressão manual). */
+export async function setAgentAutoPrint(autoPrint: boolean) {
+  return authedFetch("/config", {
+    method: "PUT",
+    body: JSON.stringify({ autoPrint, apiBaseUrl: resolvePanelApiBaseUrl() }),
+  }) as Promise<{ ok: boolean; autoPrint?: boolean; queuePolling?: boolean }>;
+}
+
+/** Procura térmicas de rede (porta 9100) na rede do PC do agente. */
+export async function scanNetworkPrinters() {
+  return authedFetch("/printers/scan", {
+    signal: AbortSignal.timeout(60_000),
+  }) as Promise<{ found: { host: string; port: number; name: string }[] }>;
+}
+
+export async function addIpPrinter(host: string, port = 9100) {
+  return authedFetch("/printers/ip", {
+    method: "POST",
+    body: JSON.stringify({ host, port }),
+  }) as Promise<{ ok: boolean; name: string }>;
 }
 
 /** Envia a URL da API ao agente para ele pollar a fila sozinho. */

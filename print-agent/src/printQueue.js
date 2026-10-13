@@ -71,14 +71,21 @@ export function stopPrintQueuePoller() {
   }
 }
 
+/** Só a estação da cozinha (autoPrint) consome a fila; as demais imprimem apenas manualmente. */
+export function isQueuePolling(config = loadConfig()) {
+  return Boolean(config.autoPrint && apiBase() && config.printerName);
+}
+
 export function refreshPrintQueuePoller(enqueuePrint) {
   const base = apiBase();
   const config = loadConfig();
-  if (base && config.printerName) {
+  if (isQueuePolling(config)) {
     startPrintQueuePoller(enqueuePrint);
   } else {
     stopPrintQueuePoller();
-    if (!base) {
+    if (!config.autoPrint) {
+      console.log("  Fila API: off (este PC só imprime manualmente)");
+    } else if (!base) {
       console.log("  Fila API: off (configure apiBaseUrl pelo painel)");
     } else if (!config.printerName) {
       console.log("  Fila API: off (defina a impressora no painel)");
@@ -91,7 +98,7 @@ export function refreshPrintQueuePoller(enqueuePrint) {
  */
 async function drainPrintQueue(enqueuePrint) {
   const config = loadConfig();
-  if (!apiBase() || !config.printerName || polling) return;
+  if (!isQueuePolling(config) || polling) return;
   polling = true;
   const claimedBy = `print-agent:${hostname()}`;
   try {

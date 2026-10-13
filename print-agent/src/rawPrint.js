@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { parseTcpPrinter, sendTcp } from "./tcpPrint.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -356,6 +357,11 @@ function requireWindows(printerName) {
  * @param {Buffer} data
  */
 export async function rawPrintWindows(printerName, data) {
+  const tcp = parseTcpPrinter(printerName);
+  if (tcp) {
+    await sendTcp(tcp, data);
+    return;
+  }
   const name = requireWindows(printerName);
   const dir = mkdtempSync(join(tmpdir(), "food-wp-print-"));
   const binPath = join(dir, "ticket.bin");
@@ -386,11 +392,25 @@ $bytes = [System.IO.File]::ReadAllBytes(${JSON.stringify(binPath)})
  */
 export async function imagePrintWindows(printerName, rows, options) {
   const preview = !printerName && options.pngPath;
-  const name = preview ? "" : requireWindows(printerName);
+  const tcp = preview ? null : parseTcpPrinter(printerName);
+  const name = preview ? "" : tcp ? String(printerName) : requireWindows(printerName);
+  if (tcp && process.platform !== "win32") {
+    throw new Error("O cupom em imagem é desenhado pelo Windows.");
+  }
   const dir = mkdtempSync(join(tmpdir(), "food-wp-print-"));
   const rowsPath = join(dir, "ticket.txt");
+  const binPath = join(dir, "ticket.bin");
   writeFileSync(rowsPath, rows.join("\n"), "utf8");
   const width = Math.max(8, Math.round(options.widthDots / 8) * 8);
+  // Impressora por IP: o PowerShell só desenha; o envio é por socket no Node.
+  const output = preview
+    ? ""
+    : tcp
+      ? `[System.IO.File]::WriteAllBytes(${JSON.stringify(binPath)}, $bytes)`
+      : `Add-Type -TypeDefinition @"
+${RAW_PRINTER_CS}
+"@
+[FoodWpRawPrinter]::SendBytes(${JSON.stringify(name)}, $bytes)`;
   try {
     await runPowerShell(
       dir,
@@ -401,17 +421,11 @@ ${RECEIPT_RENDERER_CS}
 "@
 $rows = [System.IO.File]::ReadAllLines(${JSON.stringify(rowsPath)}, [System.Text.Encoding]::UTF8)
 $bytes = [FoodWpReceiptRenderer]::Render($rows, ${width}, 'Segoe UI', ${Number(options.fontScale) || 1}, ${JSON.stringify(options.pngPath || "")})
-${
-  preview
-    ? ""
-    : `Add-Type -TypeDefinition @"
-${RAW_PRINTER_CS}
-"@
-[FoodWpRawPrinter]::SendBytes(${JSON.stringify(name)}, $bytes)`
-}
+${output}
 `,
       preview ? "Falha ao gerar a prévia do cupom" : `Falha ao imprimir em "${name}"`,
     );
+    if (tcp) await sendTcp(tcp, readFileSync(binPath));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

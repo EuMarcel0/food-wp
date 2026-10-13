@@ -4,7 +4,14 @@ import express from "express";
 import { hostname } from "node:os";
 import { configPaths, loadConfig, saveConfig } from "./config.js";
 import { listPrinters } from "./printers.js";
-import { refreshPrintQueuePoller } from "./printQueue.js";
+import { isQueuePolling, refreshPrintQueuePoller } from "./printQueue.js";
+import {
+  formatTcpPrinter,
+  isTcpReachable,
+  isValidIpv4,
+  RAW_PORT,
+  scanNetworkPrinters,
+} from "./tcpPrint.js";
 import { printReceipt } from "./printReceipt.js";
 import { rawPrintWindows } from "./rawPrint.js";
 import { buildSalesByPaymentEscPos } from "./salesReport.js";
@@ -57,7 +64,8 @@ app.get("/health", (_req, res) => {
     printMode: config.printMode,
     fontScale: config.fontScale,
     apiBaseUrl: config.apiBaseUrl || null,
-    queuePolling: Boolean(config.apiBaseUrl && config.printerName),
+    autoPrint: config.autoPrint,
+    queuePolling: isQueuePolling(config),
   });
 });
 
@@ -79,13 +87,14 @@ app.get("/setup", (req, res) => {
     printerName: config.printerName || null,
     columns: config.columns,
     apiBaseUrl: config.apiBaseUrl || null,
+    autoPrint: config.autoPrint,
     configPath: paths.configPath,
   });
 });
 
 app.get("/printers", auth, async (_req, res) => {
   try {
-    const printers = await listPrinters();
+    const printers = await listPrinters(config.ipPrinters);
     res.json({
       host: hostname(),
       printerName: config.printerName || null,
@@ -96,6 +105,49 @@ app.get("/printers", auth, async (_req, res) => {
       error: error instanceof Error ? error.message : "Falha ao listar impressoras.",
     });
   }
+});
+
+/** Procura térmicas de rede (porta 9100) na rede local deste PC. */
+app.get("/printers/scan", auth, async (_req, res) => {
+  try {
+    const found = await scanNetworkPrinters();
+    res.json({
+      found: found.map((item) => ({ ...item, name: formatTcpPrinter(item.host, item.port) })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Falha ao procurar impressoras na rede.",
+    });
+  }
+});
+
+/** Adiciona uma impressora de rede pelo IP (testa a conexão antes de salvar). */
+app.post("/printers/ip", auth, async (req, res) => {
+  const host = String(req.body?.host || "").trim();
+  const port = Math.min(65535, Math.max(1, Number(req.body?.port) || RAW_PORT));
+  if (!isValidIpv4(host)) {
+    res.status(400).json({ error: "Informe um IP válido (ex.: 192.168.0.50)." });
+    return;
+  }
+  if (!(await isTcpReachable(host, port))) {
+    res.status(400).json({
+      error: `Nenhuma impressora respondeu em ${host}:${port}. Confira o IP e se ela está ligada na mesma rede.`,
+    });
+    return;
+  }
+  const next = saveConfig({ ipPrinters: [...config.ipPrinters, { host, port }] });
+  Object.assign(config, next);
+  res.json({ ok: true, name: formatTcpPrinter(host, port) });
+});
+
+app.delete("/printers/ip", auth, (req, res) => {
+  const host = String(req.body?.host ?? req.query.host ?? "").trim();
+  const port = Number(req.body?.port ?? req.query.port) || RAW_PORT;
+  const next = saveConfig({
+    ipPrinters: config.ipPrinters.filter((item) => item.host !== host || item.port !== port),
+  });
+  Object.assign(config, next);
+  res.json({ ok: true });
 });
 
 app.put("/config", auth, (req, res) => {
@@ -113,6 +165,7 @@ app.put("/config", auth, (req, res) => {
         : config.apiBaseUrl,
     printMode: body.printMode !== undefined ? String(body.printMode) : config.printMode,
     fontScale: body.fontScale !== undefined ? Number(body.fontScale) : config.fontScale,
+    autoPrint: body.autoPrint !== undefined ? Boolean(body.autoPrint) : config.autoPrint,
   });
   Object.assign(config, next);
   refreshPrintQueuePoller(enqueuePrint);
@@ -121,7 +174,8 @@ app.put("/config", auth, (req, res) => {
     printerName: config.printerName || null,
     columns: config.columns,
     apiBaseUrl: config.apiBaseUrl || null,
-    queuePolling: Boolean(config.apiBaseUrl && config.printerName),
+    autoPrint: config.autoPrint,
+    queuePolling: isQueuePolling(config),
   });
 });
 

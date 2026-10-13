@@ -21,8 +21,31 @@ const CONFIG_PATH = join(DIR, "config.json");
  *   apiBaseUrl: string;
  *   printMode: "image" | "text";
  *   fontScale: number;
+ *   autoPrint: boolean;
+ *   ipPrinters: { host: string; port: number }[];
  * }} AgentConfig
  */
+
+/** Sem o campo (instalações antigas) = estação da cozinha, que já imprimia sozinha. */
+function parseAutoPrint(value) {
+  return value === undefined || value === null ? true : Boolean(value);
+}
+
+const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+
+function parseIpPrinters(value) {
+  const seen = new Set();
+  const list = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    const host = String(item?.host || "").trim();
+    const port = Math.min(65535, Math.max(1, Number(item?.port) || 9100));
+    const key = `${host}:${port}`;
+    if (!IPV4.test(host) || seen.has(key)) continue;
+    seen.add(key);
+    list.push({ host, port });
+  }
+  return list.slice(0, 20);
+}
 
 /** image = igual à prévia do painel; text = ESC/POS em texto (impressoras que não aceitam imagem). */
 function parsePrintMode(value) {
@@ -52,6 +75,8 @@ export function loadConfig() {
       apiBaseUrl: "",
       printMode: "image",
       fontScale: DEFAULT_FONT_SCALE,
+      autoPrint: true,
+      ipPrinters: [],
     };
     writeFileSync(CONFIG_PATH, JSON.stringify(created, null, 2), "utf8");
     return created;
@@ -90,6 +115,8 @@ export function loadConfig() {
     apiBaseUrl: String(raw.apiBaseUrl || "").trim().replace(/\/$/, ""),
     printMode: parsePrintMode(raw.printMode),
     fontScale: parseFontScale(raw.fontScale),
+    autoPrint: parseAutoPrint(raw.autoPrint),
+    ipPrinters: parseIpPrinters(raw.ipPrinters),
   };
 }
 
@@ -111,6 +138,8 @@ export function saveConfig(patch) {
       .replace(/\/$/, ""),
     printMode: parsePrintMode(patch.printMode ?? current.printMode),
     fontScale: parseFontScale(patch.fontScale ?? current.fontScale),
+    autoPrint: parseAutoPrint(patch.autoPrint ?? current.autoPrint),
+    ipPrinters: parseIpPrinters(patch.ipPrinters ?? current.ipPrinters),
   };
   mkdirSync(DIR, { recursive: true });
   writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2), "utf8");
