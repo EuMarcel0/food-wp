@@ -2,13 +2,7 @@ export type Fulfillment = "delivery" | "pickup";
 export type PaymentMethod = "pix" | "cash" | "card" | "credit" | "debit" | "mixed" | "other";
 export type PaymentMethodKind = "pix" | "cash" | "credit" | "debit" | "mixed" | "other";
 
-export type OrderStatus =
-  | "received"
-  | "accepted"
-  | "ready"
-  | "out_for_delivery"
-  | "delivered"
-  | "cancelled";
+export type OrderStatus = "received" | "accepted" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
 
 export type ConversationState =
   | "welcome"
@@ -71,7 +65,7 @@ export const ORDER_FLOW_STATES = new Set<ConversationState>([
   "awaiting_ai_drink",
   "awaiting_ai_change",
   "awaiting_ai_addon",
-  "awaiting_ai_note",
+  "awaiting_ai_note"
 ]);
 
 export function isOrderFlowState(state: ConversationState) {
@@ -232,6 +226,11 @@ export type Store = {
   botFlowVersion: BotFlowVersion;
   /** Imagem do cardápio enviada na saudação da v2. */
   menuImageUrl: string | null;
+  /**
+   * Exemplo de pedido na saudação da v2 (só o texto do exemplo, sem o "Ex.:").
+   * null = usa o exemplo padrão do sistema.
+   */
+  orderExampleText: string | null;
 };
 
 export type BotFlowVersion = "v1" | "v2";
@@ -251,6 +250,7 @@ export type StorePatch = {
   batchCategoryIds?: string[];
   botFlowVersion?: BotFlowVersion;
   menuImageUrl?: string | null;
+  orderExampleText?: string | null;
 };
 
 export type Addon = {

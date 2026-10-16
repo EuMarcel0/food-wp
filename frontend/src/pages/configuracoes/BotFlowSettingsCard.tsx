@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CloudUploadOutlined, DeleteOutlined, EyeOutlined, SwapOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Image, Radio, Tooltip, Upload, type UploadProps } from "antd";
+import { Alert, Button, Card, Image, Input, Radio, Tooltip, Upload, type UploadProps } from "antd";
 import { api } from "../../lib/api";
 import { fileToBase64, prepareMenuImage } from "../../lib/image";
 import { toast } from "../../lib/toast";
 import { queryKeys } from "../../lib/queryKeys";
 import type { BotFlowVersion, Store } from "../../types";
+
+const DEFAULT_ORDER_EXAMPLE =
+  "2 pizzas família, uma meia calabresa e meia frango com catupiry com borda de cheddar e outra portuguesa, e 2 Coca-Cola 2L";
 
 const FLOW_OPTIONS: { value: BotFlowVersion; title: string; description: string }[] = [
   {
@@ -29,6 +32,7 @@ function formatSize(bytes: number) {
 export function BotFlowSettingsCard({ store }: { store?: Store }) {
   const queryClient = useQueryClient();
   const [version, setVersion] = useState<BotFlowVersion>(store?.botFlowVersion ?? "v1");
+  const [orderExample, setOrderExample] = useState(store?.orderExampleText ?? DEFAULT_ORDER_EXAMPLE);
   const [file, setFile] = useState<File | null>(null);
   const [removed, setRemoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +40,10 @@ export function BotFlowSettingsCard({ store }: { store?: Store }) {
   useEffect(() => {
     setVersion(store?.botFlowVersion ?? "v1");
   }, [store?.botFlowVersion]);
+
+  useEffect(() => {
+    setOrderExample(store?.orderExampleText?.trim() || DEFAULT_ORDER_EXAMPLE);
+  }, [store?.orderExampleText]);
 
   const preview = useMemo(() => {
     if (file) return URL.createObjectURL(file);
@@ -55,9 +63,24 @@ export function BotFlowSettingsCard({ store }: { store?: Store }) {
         const prepared = await prepareMenuImage(file);
         menuImage = { mime: "image/jpeg", data: await fileToBase64(prepared) };
       }
+      const trimmed = orderExample.replace(/\s+/g, " ").trim();
+      if (version === "v2" && !trimmed) {
+        throw new Error("Informe um exemplo de pedido.");
+      }
+      if (trimmed.length > 280) {
+        throw new Error("O exemplo de pedido pode ter no máximo 280 caracteres.");
+      }
+      const exampleChanged =
+        trimmed !== (store?.orderExampleText?.trim() || DEFAULT_ORDER_EXAMPLE);
       return api.updateStore({
         botFlowVersion: version,
         ...(menuImage ? { menuImage } : removed ? { menuImageUrl: null } : {}),
+        ...(version === "v2" && exampleChanged
+          ? {
+              orderExampleText:
+                trimmed === DEFAULT_ORDER_EXAMPLE ? null : trimmed,
+            }
+          : {}),
       });
     },
     onSuccess: async () => {
@@ -72,8 +95,14 @@ export function BotFlowSettingsCard({ store }: { store?: Store }) {
     },
   });
 
+  const exampleDirty =
+    orderExample.replace(/\s+/g, " ").trim() !==
+    (store?.orderExampleText?.trim() || DEFAULT_ORDER_EXAMPLE);
   const dirty =
-    version !== (store?.botFlowVersion ?? "v1") || Boolean(file) || removed;
+    version !== (store?.botFlowVersion ?? "v1") ||
+    Boolean(file) ||
+    removed ||
+    (version === "v2" && exampleDirty);
 
   const uploadProps: UploadProps = {
     accept: "image/png,image/jpeg,image/webp",
@@ -192,6 +221,37 @@ export function BotFlowSettingsCard({ store }: { store?: Store }) {
               Sem imagem, o bot só pede para o cliente digitar o pedido.
             </p>
           ) : null}
+
+          <div className="mt-5">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h3 className="m-0 text-sm font-bold text-food-text">Exemplo de pedido</h3>
+              <span className="text-xs text-food-muted">Aparece na saudação</span>
+            </div>
+            <p className="mb-2 text-xs leading-normal text-food-muted">
+              Texto depois de “Ex.:” na primeira mensagem. Use um pedido real do cardápio da loja.
+            </p>
+            <Input.TextArea
+              value={orderExample}
+              rows={3}
+              maxLength={280}
+              showCount
+              onChange={(event) => setOrderExample(event.target.value)}
+              placeholder={DEFAULT_ORDER_EXAMPLE}
+            />
+            <p className="m-0 mt-2 text-xs text-food-muted">
+              Prévia: Ex.: <em>{orderExample.replace(/\s+/g, " ").trim() || DEFAULT_ORDER_EXAMPLE}</em>
+            </p>
+            {exampleDirty && orderExample.replace(/\s+/g, " ").trim() !== DEFAULT_ORDER_EXAMPLE ? (
+              <Button
+                type="link"
+                size="small"
+                className="!mt-1 !px-0"
+                onClick={() => setOrderExample(DEFAULT_ORDER_EXAMPLE)}
+              >
+                Restaurar exemplo padrão
+              </Button>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

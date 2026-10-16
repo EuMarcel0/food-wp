@@ -1041,7 +1041,11 @@ async function resumeCurrentStep(
       await showCheckoutOptions(to, store, context, hint || "✅ Continue seu pedido");
       return;
     case "awaiting_ai_order":
-      await askAiOrder(to, opts?.afterHandoff ? undefined : "✍️ Para continuar, *digite seu pedido* aqui.");
+      await askAiOrder(
+        to,
+        store,
+        opts?.afterHandoff ? undefined : "✍️ Para continuar, *digite seu pedido* aqui.",
+      );
       return;
     case "awaiting_fee_confirm":
       await askFeeConfirm(to, store, context);
@@ -1473,22 +1477,30 @@ function isV2(store: Pick<Store, "botFlowVersion">) {
   return store.botFlowVersion === "v2";
 }
 
-const AI_ORDER_EXAMPLE =
-  "Ex.: *2 pizzas família, uma meia calabresa e meia frango com catupiry com borda de cheddar e outra portuguesa, e 2 Coca-Cola 2L*";
+const DEFAULT_ORDER_EXAMPLE =
+  "2 pizzas família, uma meia calabresa e meia frango com catupiry com borda de cheddar e outra portuguesa, e 2 Coca-Cola 2L";
 
 function addressKey(value?: string | null) {
   return normalize(value ?? "").replace(/[^a-z0-9]/g, "");
 }
 
-function aiOrderPrompt(intro = "✍️ *Digite seu pedido* em *uma mensagem*.") {
-  return [intro, AI_ORDER_EXAMPLE, "Para encerrar sem pedir, digite *Sair*."].join("\n");
+function orderExampleLine(store?: Pick<Store, "orderExampleText"> | null) {
+  const custom = store?.orderExampleText?.replace(/\s+/g, " ").trim();
+  return `Ex.: *${custom || DEFAULT_ORDER_EXAMPLE}*`;
+}
+
+function aiOrderPrompt(
+  store?: Pick<Store, "orderExampleText"> | null,
+  intro = "✍️ *Digite seu pedido* em *uma mensagem*.",
+) {
+  return [intro, orderExampleLine(store), "Para encerrar sem pedir, digite *Sair*."].join("\n");
 }
 
 /** v2: saudação + cardápio + convite para digitar o pedido numa única mensagem (cada envio é cobrado pela Meta). */
 async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: boolean }) {
   const greeting = `Olá! 👋 Sou a assistente virtual da *${store.name}* e vou te ajudar a montar seu pedido.`;
   const withMenu = store.menuImageUrl ? `${greeting}\n📋 Esse é o nosso cardápio.` : greeting;
-  const body = opts?.greetOnly ? withMenu : `${withMenu}\n\n${aiOrderPrompt()}`;
+  const body = opts?.greetOnly ? withMenu : `${withMenu}\n\n${aiOrderPrompt(store)}`;
   if (store.menuImageUrl) {
     try {
       await sendImage(to, store.menuImageUrl, body);
@@ -1497,11 +1509,11 @@ async function showWelcomeV2(to: string, store: Store, opts?: { greetOnly?: bool
       console.warn("[v2] falha ao enviar imagem do cardápio:", error instanceof Error ? error.message : error);
     }
   }
-  await sendText(to, opts?.greetOnly ? greeting : `${greeting}\n\n${aiOrderPrompt()}`);
+  await sendText(to, opts?.greetOnly ? greeting : `${greeting}\n\n${aiOrderPrompt(store)}`);
 }
 
-async function askAiOrder(to: string, intro?: string) {
-  await sendText(to, aiOrderPrompt(intro));
+async function askAiOrder(to: string, store: Pick<Store, "orderExampleText">, intro?: string) {
+  await sendText(to, aiOrderPrompt(store, intro));
 }
 
 /** v2: carrinho montado pela IA + Entrega / Retirada / Corrigir pedido. */
@@ -2893,7 +2905,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
         helped
           ? "✍️ Quando decidir, é só *digitar seu pedido* aqui."
           : "😕 Não consegui identificar itens do cardápio nessa mensagem. Me envie seu pedido, por favor.",
-        AI_ORDER_EXAMPLE
+        orderExampleLine(store)
       ]
         .filter(Boolean)
         .join("\n");
@@ -3601,7 +3613,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       const next = emptyContext();
       if (isV2(store)) {
         await persist("awaiting_ai_order", next, { reopen: true });
-        await askAiOrder(input.from, "🍕 Vamos lá! *Digite seu pedido* aqui, do seu jeito.");
+        await askAiOrder(input.from, store, "🍕 Vamos lá! *Digite seu pedido* aqui, do seu jeito.");
         return;
       }
       resetMenuBrowse(next);

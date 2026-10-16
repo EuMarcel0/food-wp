@@ -286,6 +286,19 @@ catalogRouter.patch("/store", async (req, res) => {
     patch.menuImageUrl = null;
   }
 
+  if (body.orderExampleText !== undefined) {
+    if (body.orderExampleText === null || body.orderExampleText === "") {
+      patch.orderExampleText = null;
+    } else {
+      const text = String(body.orderExampleText).replace(/\s+/g, " ").trim();
+      if (text.length > 280) {
+        res.status(400).json({ error: "O exemplo de pedido pode ter no máximo 280 caracteres." });
+        return;
+      }
+      patch.orderExampleText = text;
+    }
+  }
+
   const menuImage = body.menuImage as { mime?: string; data?: string } | undefined;
   if (menuImage?.data) {
     const match = String(menuImage.data).match(/^data:(image\/(?:png|jpeg|jpg));base64,/);

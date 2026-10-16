@@ -15,6 +15,7 @@ import {
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { HeaderSkeleton, StatCardsSkeleton } from "../../components/PageSkeletons";
+import { HumanHandoffAlert } from "../../components/HumanHandoffAlert";
 import { PageHeader } from "../../components/PageHeader";
 import { api } from "../../lib/api";
 import { STATUS_LABEL } from "../../lib/format";
@@ -287,6 +288,8 @@ export function DashboardPage() {
           />
         }
       />
+
+      <HumanHandoffAlert />
 
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill

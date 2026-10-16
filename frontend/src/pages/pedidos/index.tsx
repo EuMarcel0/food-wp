@@ -11,6 +11,7 @@ import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { ListFilters } from "../../components/ListFilters";
 import { MobileCardList } from "../../components/MobileCardList";
+import { HumanHandoffAlert } from "../../components/HumanHandoffAlert";
 import { PageHeader } from "../../components/PageHeader";
 import { RowActions } from "../../components/RowActions";
 import { CancelOrderModal } from "./CancelOrderModal";
@@ -328,6 +329,7 @@ export function OrdersPage() {
         }
         subtitle="Ao mudar o status, o cliente recebe o aviso no WhatsApp."
       />
+      <HumanHandoffAlert />
       <ListFilters
         className="mb-3 shrink-0"
         activeCount={activeCount}

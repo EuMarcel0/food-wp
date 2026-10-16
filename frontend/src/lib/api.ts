@@ -128,6 +128,7 @@ export const api = {
     botFlowVersion?: Store["botFlowVersion"];
     menuImage?: { mime: string; data: string };
     menuImageUrl?: null;
+    orderExampleText?: string | null;
   }) =>
     request<Store & { whatsappError?: string }>("/api/store", {
       method: "PATCH",

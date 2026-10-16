@@ -13,21 +13,26 @@ using System.IO;
 using System.Runtime.InteropServices;
 
 public class FoodWpRawPrinter {
-  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-  public class DOCINFOA {
-    [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-    [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-    [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DOCINFOW {
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
   }
 
-  [DllImport("winspool.Drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-  public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+  [DllImport("winspool.Drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+  public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPWStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
 
   [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
   public static extern bool ClosePrinter(IntPtr hPrinter);
 
-  [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-  public static extern bool StartDocPrinter(IntPtr hPrinter, Int32 level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+  [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+  public static extern bool StartDocPrinter(IntPtr hPrinter, Int32 level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOW di);
+
+  static string LastError() {
+    int code = Marshal.GetLastWin32Error();
+    return new System.ComponentModel.Win32Exception(code).Message + " (código " + code + ")";
+  }
 
   [DllImport("winspool.Drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
   public static extern bool EndDocPrinter(IntPtr hPrinter);
@@ -44,24 +49,24 @@ public class FoodWpRawPrinter {
   public static void SendBytes(string printer, byte[] bytes) {
     IntPtr hPrinter;
     if (!OpenPrinter(printer, out hPrinter, IntPtr.Zero)) {
-      throw new Exception("Não foi possível abrir a impressora: " + printer);
+      throw new Exception("Não foi possível abrir a impressora " + printer + ": " + LastError());
     }
     try {
-      DOCINFOA di = new DOCINFOA();
+      DOCINFOW di = new DOCINFOW();
       di.pDocName = "Food WP Cupom";
       di.pDataType = "RAW";
       if (!StartDocPrinter(hPrinter, 1, di)) {
-        throw new Exception("StartDocPrinter falhou.");
+        throw new Exception("A impressora recusou o trabalho: " + LastError());
       }
       try {
-        if (!StartPagePrinter(hPrinter)) throw new Exception("StartPagePrinter falhou.");
+        if (!StartPagePrinter(hPrinter)) throw new Exception("StartPagePrinter falhou: " + LastError());
         try {
           IntPtr pUnmanaged = Marshal.AllocCoTaskMem(bytes.Length);
           try {
             Marshal.Copy(bytes, 0, pUnmanaged, bytes.Length);
             int written;
             if (!WritePrinter(hPrinter, pUnmanaged, bytes.Length, out written)) {
-              throw new Exception("WritePrinter falhou.");
+              throw new Exception("Falha ao enviar o cupom para a impressora: " + LastError());
             }
           } finally {
             Marshal.FreeCoTaskMem(pUnmanaged);
@@ -323,10 +328,23 @@ public class FoodWpReceiptRenderer {
 }
 `;
 
+/**
+ * Texto literal do PowerShell (aspas simples): "\" e "$" ficam como estão.
+ * JSON.stringify duplicava as barras de "\\PC\Impressora" e o Windows não achava a impressora.
+ */
+function psString(value) {
+  return `'${String(value ?? "").replace(/'/g, "''")}'`;
+}
+
 async function runPowerShell(dir, script, label) {
   const psPath = join(dir, "print.ps1");
   // BOM: o PowerShell 5.1 lê scripts sem BOM como ANSI e estraga os acentos.
-  writeFileSync(psPath, `\uFEFF${script}`, "utf8");
+  // OutputEncoding UTF-8: mensagens de erro chegam ao Node com acento correto.
+  writeFileSync(
+    psPath,
+    `\uFEFF[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n${script}`,
+    "utf8",
+  );
   try {
     await execFileAsync(
       "powershell.exe",
@@ -374,8 +392,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @"
 ${RAW_PRINTER_CS}
 "@
-$bytes = [System.IO.File]::ReadAllBytes(${JSON.stringify(binPath)})
-[FoodWpRawPrinter]::SendBytes(${JSON.stringify(name)}, $bytes)
+$bytes = [System.IO.File]::ReadAllBytes(${psString(binPath)})
+[FoodWpRawPrinter]::SendBytes(${psString(name)}, $bytes)
 `,
       `Falha ao imprimir em "${name}"`,
     );
@@ -406,11 +424,11 @@ export async function imagePrintWindows(printerName, rows, options) {
   const output = preview
     ? ""
     : tcp
-      ? `[System.IO.File]::WriteAllBytes(${JSON.stringify(binPath)}, $bytes)`
+      ? `[System.IO.File]::WriteAllBytes(${psString(binPath)}, $bytes)`
       : `Add-Type -TypeDefinition @"
 ${RAW_PRINTER_CS}
 "@
-[FoodWpRawPrinter]::SendBytes(${JSON.stringify(name)}, $bytes)`;
+[FoodWpRawPrinter]::SendBytes(${psString(name)}, $bytes)`;
   try {
     await runPowerShell(
       dir,
@@ -419,8 +437,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 ${RECEIPT_RENDERER_CS}
 "@
-$rows = [System.IO.File]::ReadAllLines(${JSON.stringify(rowsPath)}, [System.Text.Encoding]::UTF8)
-$bytes = [FoodWpReceiptRenderer]::Render($rows, ${width}, 'Segoe UI', ${Number(options.fontScale) || 1}, ${JSON.stringify(options.pngPath || "")})
+$rows = [System.IO.File]::ReadAllLines(${psString(rowsPath)}, [System.Text.Encoding]::UTF8)
+$bytes = [FoodWpReceiptRenderer]::Render($rows, ${width}, 'Segoe UI', ${Number(options.fontScale) || 1}, ${psString(options.pngPath || "")})
 ${output}
 `,
       preview ? "Falha ao gerar a prévia do cupom" : `Falha ao imprimir em "${name}"`,

@@ -226,6 +226,12 @@ function mapStore(row: Record<string, unknown>): Store {
     neighborhoods: [],
     botFlowVersion: row.bot_flow_version === "v2" ? "v2" : "v1",
     menuImageUrl: (row.menu_image_url as string | null) ?? null,
+    orderExampleText: (() => {
+      const raw = row.order_example_text;
+      if (raw == null) return null;
+      const text = String(raw).trim();
+      return text || null;
+    })(),
   };
 }
 
@@ -486,6 +492,13 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
   if (patch.menuImageUrl !== undefined) {
     payload.menu_image_url = patch.menuImageUrl;
   }
+  if (patch.orderExampleText !== undefined) {
+    const text =
+      patch.orderExampleText == null
+        ? null
+        : String(patch.orderExampleText).replace(/\s+/g, " ").trim().slice(0, 280) || null;
+    payload.order_example_text = text;
+  }
   if (patch.batchCategoryIds !== undefined) {
     payload.batch_category_ids = parseBatchCategoryIds(patch.batchCategoryIds);
   }
@@ -519,6 +532,8 @@ export async function updateStore(patch: StorePatch): Promise<Store> {
           ? "Rode a migration 036_store_allow_customer_cancel.sql no Supabase."
         : error?.message?.includes("batch_category_ids")
           ? "Rode a migration 043_store_batch_category_ids.sql no Supabase."
+        : error?.message?.includes("order_example_text")
+          ? "Rode a migration 057_store_order_example.sql no Supabase."
         : error?.message?.includes("bot_flow_version") || error?.message?.includes("menu_image_url")
           ? "Rode a migration 053_store_bot_flow.sql no Supabase."
         : error?.message ?? "Falha ao salvar as configurações.",

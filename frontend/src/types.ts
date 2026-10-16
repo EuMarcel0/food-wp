@@ -278,6 +278,8 @@ export type Store = {
   neighborhoods: DeliveryNeighborhood[];
   botFlowVersion: BotFlowVersion;
   menuImageUrl: string | null;
+  /** Exemplo de pedido na saudação v2; null = padrão do sistema. */
+  orderExampleText: string | null;
 };
 
 export type BotFlowVersion = "v1" | "v2";

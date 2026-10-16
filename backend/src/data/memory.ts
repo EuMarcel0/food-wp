@@ -67,6 +67,7 @@ const store: Store = {
   neighborhoods: [],
   botFlowVersion: "v1",
   menuImageUrl: null,
+  orderExampleText: null,
 };
 
 const categories: Category[] = [
@@ -328,6 +329,13 @@ export const memoryStore = {
     }
     if (patch.menuImageUrl !== undefined) {
       store.menuImageUrl = patch.menuImageUrl;
+    }
+    if (patch.orderExampleText !== undefined) {
+      const text =
+        patch.orderExampleText == null
+          ? null
+          : String(patch.orderExampleText).replace(/\s+/g, " ").trim().slice(0, 280) || null;
+      store.orderExampleText = text;
     }
     if (patch.batchCategoryIds !== undefined) {
       store.batchCategoryIds = [

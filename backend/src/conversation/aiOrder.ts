@@ -323,7 +323,8 @@ function systemPrompt(catalogText: string) {
     "- Pizza: kind=pizza, size=código sN, flavors=lista de pN. 'meia', 'metade', '1/2', 'meio a meio' = 2 sabores; '1/3' = 3 sabores.",
     "- Respeite o limite de sabores do tamanho. Se o cliente passar do limite, pergunte em 'question'.",
     "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família' = tamanho que começa com F). Se não der para saber o tamanho de uma pizza, deixe size=null e pergunte em 'question'.",
-    "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L).",
+    "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L; 'creme cheese' / 'creme chesse' = o sabor do cardápio).",
+    "- Nunca coloque em not_found um sabor que existe no cardápio com grafia parecida. Use o código pN e o trecho do cliente em flavor_terms.",
     "- Borda e adicionais só quando o cliente pedir explicitamente. Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
     "- 'Com borda' sem sabor: use a BORDA PADRÃO do cardápio para o tipo da pizza, sem perguntar. Se não houver borda padrão para esse tipo, pergunte o sabor da borda em 'question'.",
     "- Outros produtos: kind=product, product=código iN, com options quando houver opções obrigatórias ditas pelo cliente.",
@@ -425,13 +426,65 @@ function findSizeGroup(product: Product, sizeName: string) {
   );
 }
 
-const STOPWORDS = new Set(["a", "o", "as", "os", "de", "da", "do", "das", "dos", "com", "c", "e", "pizza", "sabor", "meia", "metade"]);
+const STOPWORDS = new Set([
+  "a",
+  "o",
+  "as",
+  "os",
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "com",
+  "c",
+  "e",
+  "pizza",
+  "pizzas",
+  "sabor",
+  "sabores",
+  "meia",
+  "metade",
+  "quero",
+  "uma",
+  "um",
+]);
 
 function termTokens(value: string) {
   return normalize(value)
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
     .filter(token => token && !STOPWORDS.has(token));
+}
+
+/** Distância de edição ≤ 1 (cheese ↔ chesse, catupiri ↔ catupiry). */
+function tokensNearMatch(left: string, right: string) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  if (Math.min(left.length, right.length) < 4) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) i += 1;
+    else if (right.length > left.length) j += 1;
+    else {
+      i += 1;
+      j += 1;
+    }
+  }
+  return edits + (left.length - i) + (right.length - j) <= 1;
+}
+
+function tokenInList(token: string, list: string[]) {
+  return list.some(item => item === token || tokensNearMatch(token, item));
 }
 
 function flavorDescription(product: Product) {
@@ -445,29 +498,41 @@ type FlavorChoice = { term: string; products: Product[] };
 
 type FlavorResolution = { product: Product } | { choice: FlavorChoice };
 
+function flavorCandidates(term: string, catalog: Pick<Catalog, "pizzas">) {
+  const tokens = termTokens(term);
+  if (!tokens.length) return [] as Product[];
+  const pizzas = [...catalog.pizzas.values()];
+  const phrase = ` ${tokens.join(" ")} `;
+
+  const exact = pizzas.filter(product => {
+    const name = termTokens(cleanFlavorName(product.name));
+    return (
+      name.length === tokens.length &&
+      tokens.every(token => tokenInList(token, name)) &&
+      name.every(token => tokenInList(token, tokens))
+    );
+  });
+  if (exact.length) return exact;
+
+  return pizzas.filter(product => {
+    const name = termTokens(cleanFlavorName(product.name));
+    if (tokens.every(token => tokenInList(token, name))) return true;
+    const haystack = termTokens(`${product.name} ${flavorDescription(product)}`);
+    if (tokens.every(token => tokenInList(token, haystack))) return true;
+    return ` ${haystack.join(" ")} `.includes(phrase);
+  });
+}
+
 /**
- * Confere o termo que o cliente usou contra o cardápio, de forma literal:
- * nome exato → esse sabor; termo presente (como frase) no nome/descrição de
- * 2+ sabores → o cliente escolhe; de 1 só → esse sabor; nenhum → palpite da IA.
+ * Confere o termo que o cliente usou contra o cardápio (com tolerância a typo):
+ * nome exato → esse sabor; termo presente no nome/descrição de 2+ → pergunta;
+ * de 1 só → esse sabor; nenhum → palpite da IA.
  */
 function resolveFlavor(term: string, guess: Product, catalog: Pick<Catalog, "pizzas">, turns: AiTurn[]): FlavorResolution {
   const tokens = termTokens(term);
   if (!tokens.length) return { product: guess };
-  const pizzas = [...catalog.pizzas.values()];
-  const phrase = ` ${tokens.join(" ")} `;
-  const sameTokens = (product: Product) => {
-    const name = termTokens(cleanFlavorName(product.name));
-    return name.length === tokens.length && tokens.every(token => name.includes(token));
-  };
 
-  const exact = pizzas.filter(sameTokens);
-  if (exact.length === 1) return { product: exact[0] };
-
-  const candidates = pizzas.filter(product => {
-    const name = termTokens(cleanFlavorName(product.name));
-    if (tokens.every(token => name.includes(token))) return true;
-    return ` ${termTokens(`${product.name} ${flavorDescription(product)}`).join(" ")} `.includes(phrase);
-  });
+  const candidates = flavorCandidates(term, catalog);
   if (!candidates.length) return { product: guess };
   if (candidates.length === 1) return { product: candidates[0] };
 
@@ -479,6 +544,44 @@ function resolveFlavor(term: string, guess: Product, catalog: Pick<Catalog, "piz
   if (alreadyAsked && candidates.some(product => product.id === guess.id)) return { product: guess };
 
   return { choice: { term, products: candidates.slice(0, MAX_FLAVOR_CHOICES) } };
+}
+
+/**
+ * A IA às vezes manda um sabor do cardápio em not_found por typo (cheese/chesse).
+ * Se o termo bater em um único sabor, vira pizza (tamanho null → o fluxo pergunta).
+ */
+function rescueNotFoundFlavors(result: AiResult, catalog: Catalog) {
+  if (!result.not_found?.length) return;
+  const kept: string[] = [];
+  for (const raw of result.not_found) {
+    const term = String(raw ?? "").trim();
+    if (!term) continue;
+    const matches = flavorCandidates(term, catalog);
+    if (matches.length !== 1) {
+      kept.push(term);
+      continue;
+    }
+    const entry = [...catalog.pizzas.entries()].find(([, product]) => product.id === matches[0].id);
+    if (!entry) {
+      kept.push(term);
+      continue;
+    }
+    const [key] = entry;
+    const sizeFromItems = result.items.find(item => item.kind === "pizza" && item.size)?.size ?? null;
+    result.items.push({
+      kind: "pizza",
+      quantity: 1,
+      size: sizeFromItems,
+      flavors: [key],
+      flavor_terms: [term],
+      product: null,
+      options: [],
+      crust: null,
+      addons: [],
+      notes: null,
+    });
+  }
+  result.not_found = kept;
 }
 
 const PIZZA_SIZE_WORD = /\b(familias?|grandes?|gigantes?|medias?|pequenas?|brotos?)\b/g;
@@ -674,6 +777,7 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   }
 
   mergeSinglePizzaSplit(result, catalog, turns);
+  rescueNotFoundFlavors(result, catalog);
   const { items, problems, choices } = toCartItems(result, catalog, turns);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
   const question = flavorChoiceQuestion(choices[0]) ?? problems[0] ?? (result.question?.trim() || undefined);
