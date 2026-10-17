@@ -454,6 +454,29 @@ export function addonLabel(selections?: CartSelection[]) {
   return `Adicionais: ${names.join(", ")}`;
 }
 
+/** Soma só o preço dos adicionais (em centavos), sem borda/tamanho. */
+export function addonExtraCents(selections?: CartSelection[]) {
+  return (selections ?? [])
+    .filter((item) => item.groupId === ADDON_GROUP_ID)
+    .reduce(
+      (sum, item) =>
+        sum +
+        item.options.reduce(
+          (line, option) => line + Math.round(Number(option.extraPrice || 0) * 100),
+          0,
+        ),
+      0,
+    );
+}
+
+/** Preço unitário da pizza/produto sem adicionais (para exibir na linha do item). */
+export function baseUnitPriceCents(
+  unitPriceCents: number,
+  selections?: CartSelection[],
+) {
+  return Math.max(0, Math.round(Number(unitPriceCents) || 0) - addonExtraCents(selections));
+}
+
 export function crustLabel(selections?: CartSelection[]) {
   const names = (selections ?? [])
     .filter((item) => item.groupId === CRUST_GROUP_ID)

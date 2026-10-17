@@ -1,4 +1,12 @@
-import { addonNames, crustNames, formatBRL, formatCnpj, formatDate, formatPhone } from "./receipt.js";
+import {
+  addonNames,
+  baseUnitPriceCents,
+  crustNames,
+  formatBRL,
+  formatCnpj,
+  formatDate,
+  formatPhone,
+} from "./receipt.js";
 
 /**
  * Cupom em blocos para a impressão como imagem — espelha o ReceiptTicket do painel
@@ -71,9 +79,10 @@ export function buildReceiptLayout(input) {
   if (!items.length) rows.push(row("T", { text: "Sem itens", after: 4 }));
   for (const item of items) {
     const quantity = Number(item.quantity) || 1;
-    const unit = Number(item.unitPriceCents) || 0;
+    const fullUnit = Number(item.unitPriceCents) || 0;
+    const unit = baseUnitPriceCents(fullUnit, item.extras);
     rows.push(row("T", { bold: true, text: `${quantity}x ${item.name || "Item"}`, after: 2 }));
-    rows.push(row("L", { text: `(un ${formatBRL(unit)})`, right: formatBRL(quantity * unit), after: 2 }));
+    rows.push(row("L", { text: `(un ${formatBRL(unit)})`, right: formatBRL(quantity * fullUnit), after: 2 }));
     const extras = [
       item.notes ? `obs.: ${item.notes}` : "",
       crustNames(item.extras).length ? `Borda: ${crustNames(item.extras).join(", ")}` : "",

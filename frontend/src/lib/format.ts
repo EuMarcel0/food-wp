@@ -18,6 +18,30 @@ export function addonLabel(
   return `Adicionais: ${names.join(", ")}`;
 }
 
+/** Preço unitário sem adicionais (extras entram no subtotal/total). */
+export function baseUnitPriceCents(
+  unitPriceCents: number,
+  extras?:
+    | {
+        groupId: string;
+        options?: { name?: string; extraPrice?: number }[] | null;
+      }[]
+    | null,
+) {
+  const addonCents = (extras ?? [])
+    .filter((item) => item.groupId === ADDON_GROUP_ID)
+    .reduce(
+      (sum, item) =>
+        sum +
+        (item.options ?? []).reduce(
+          (line, option) => line + Math.round(Number(option.extraPrice || 0) * 100),
+          0,
+        ),
+      0,
+    );
+  return Math.max(0, Math.round(Number(unitPriceCents) || 0) - addonCents);
+}
+
 export function crustLabel(
   extras?: { groupId: string; options?: { name: string }[] }[] | null,
 ) {

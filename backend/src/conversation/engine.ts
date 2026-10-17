@@ -47,6 +47,7 @@ import {
   assembledName,
   addonLabel,
   addonOptionLabel,
+  baseUnitPriceCents,
   crustLabel,
   flavorShareLine,
   productBaseLabel,
@@ -493,9 +494,11 @@ function itemHeading(
   const title = sepAt >= 0 ? raw.slice(0, sepAt).trim() : raw;
   const detail = sepAt >= 0 ? raw.slice(sepAt + sep.length).trim() : "";
 
+  // Na linha do item: preço da pizza/produto sem adicionais (eles entram só no subtotal/total).
+  const displayUnit = baseUnitPriceCents(item.unitPriceCents, item.extras);
   let heading = opts?.withQuantity && item.quantity > 0 ? `${item.quantity}x ${title}` : title;
   if (opts?.withUnitPrice) {
-    heading = `${heading} — ${formatBRL(item.unitPriceCents)}`;
+    heading = `${heading} — ${formatBRL(displayUnit)}`;
   }
   const lines = [`*${heading}*`];
   if (detail) lines.push(detail);
@@ -503,13 +506,14 @@ function itemHeading(
   if (crust) lines.push(crust);
   const addons = addonLabel(item.extras);
   if (addons) lines.push(addons);
-  return { title, lines };
+  return { title, lines, displayUnit };
 }
 
 function itemPriceLine(item: CartItem) {
-  const unit = formatBRL(item.unitPriceCents);
+  const displayUnit = baseUnitPriceCents(item.unitPriceCents, item.extras);
+  const unit = formatBRL(displayUnit);
   if (item.quantity <= 1) return `Unitário ${unit}`;
-  const total = formatBRL(item.quantity * item.unitPriceCents);
+  const total = formatBRL(item.quantity * displayUnit);
   return `Unitário ${unit} · ${item.quantity}x = ${total}`;
 }
 
@@ -2044,12 +2048,13 @@ async function groupWantingMore(product: Product, drafts: CartSelection[]) {
 
 async function askQuantity(to: string, product: Product, extras: CartSelection[], batchAbort = false) {
   const variant = assembledName(product, extras);
-  const price = unitPriceCents(product, extras);
+  const fullPrice = unitPriceCents(product, extras);
+  const displayPrice = baseUnitPriceCents(fullPrice, extras);
   const sep = " — ";
   const sepAt = variant.indexOf(sep);
   const title = sepAt >= 0 ? variant.slice(0, sepAt).trim() : variant;
   const detail = sepAt >= 0 ? variant.slice(sepAt + sep.length).trim() : "";
-  const heading = [`*${title}*`, detail || null, crustLabel(extras), addonLabel(extras), formatReais(price / 100)]
+  const heading = [`*${title}*`, detail || null, crustLabel(extras), addonLabel(extras), formatReais(displayPrice / 100)]
     .filter(Boolean)
     .join("\n");
   await sendButtons(

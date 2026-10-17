@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   orderPaymentLabel,
   addonLabel,
+  baseUnitPriceCents,
   crustLabel,
   cashChangeLabel,
   formatBRL,
@@ -200,7 +201,9 @@ export function ReceiptTicket({ order, store }: { order: Order; store?: Store })
             const crust = crustLabel(item.extras);
             const addons = addonLabel(item.extras);
             const lineTotal = item.quantity * item.unitPriceCents;
-            const unit = formatBRL(item.unitPriceCents);
+            const unit = formatBRL(
+              baseUnitPriceCents(item.unitPriceCents, item.extras),
+            );
             return (
               <div
                 key={item.id ?? `${item.name}-${index}`}

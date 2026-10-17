@@ -14,6 +14,7 @@ import {
   formatBRL,
   formatDate,
   addonLabel,
+  baseUnitPriceCents,
   crustLabel,
 } from "../../lib/format";
 import { entityItems, entityMeta, entityPrice } from "../../ui";
@@ -151,7 +152,7 @@ export function OrderCard({
                 <span>
                   {`${item.quantity}x ${item.name}`}
                   {item.notes ? ` (obs.: ${item.notes})` : ""}
-                  {` - ${formatBRL(item.unitPriceCents)}`}
+                  {` - ${formatBRL(baseUnitPriceCents(item.unitPriceCents, item.extras))}`}
                   {crust ? (
                     <div className="font-normal text-food-muted">{crust}</div>
                   ) : null}

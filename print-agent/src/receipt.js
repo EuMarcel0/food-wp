@@ -157,6 +157,22 @@ export function addonNames(extras) {
     .flatMap((item) => (item.options ?? []).map((opt) => opt.name).filter(Boolean));
 }
 
+/** Preço unitário sem adicionais (eles entram no subtotal/total da linha). */
+export function baseUnitPriceCents(unitPriceCents, extras) {
+  const addonCents = (extras ?? [])
+    .filter((item) => item.groupId === "__addon__")
+    .reduce(
+      (sum, item) =>
+        sum +
+        (item.options ?? []).reduce(
+          (line, opt) => line + Math.round(Number(opt.extraPrice || 0) * 100),
+          0,
+        ),
+      0,
+    );
+  return Math.max(0, Math.round(Number(unitPriceCents) || 0) - addonCents);
+}
+
 export function crustNames(extras) {
   return (extras ?? [])
     .filter((item) => item.groupId === "__crust__")
@@ -315,8 +331,9 @@ export function buildReceiptEscPos(input) {
   section("Itens do pedido");
   for (const item of items) {
     const qty = Number(item.quantity) || 1;
-    const unit = Number(item.unitPriceCents) || 0;
-    const total = qty * unit;
+    const fullUnit = Number(item.unitPriceCents) || 0;
+    const unit = baseUnitPriceCents(fullUnit, item.extras);
+    const total = qty * fullUnit;
     // Título do item em negrito; preço unitário/total em normal
     setBold(true);
     for (const row of wrap(`${qty}x ${item.name || "Item"}`, columns)) {

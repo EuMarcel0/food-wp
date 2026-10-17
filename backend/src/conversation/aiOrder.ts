@@ -160,7 +160,10 @@ async function buildCatalog(opts?: { onlyProducts?: (product: Product) => boolea
 
   const activeAddons = allAddons.filter(item => item.active);
   if (activeAddons.length) {
-    lines.push("", "ADICIONAIS (só se o cliente pedir):");
+    lines.push(
+      "",
+      "ADICIONAIS (só com pedido explícito: 'adicional', 'extra', 'por cima'. Nome solto numa lista de pizza = SABOR, não adicional):",
+    );
     activeAddons.forEach((addon, index) => {
       const key = `a${index + 1}`;
       addons.set(key, addon);
@@ -325,8 +328,11 @@ function systemPrompt(catalogText: string) {
     "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família' = tamanho que começa com F). Se não der para saber o tamanho de uma pizza, deixe size=null e pergunte em 'question'.",
     "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L; 'creme cheese' / 'creme chesse' = o sabor do cardápio).",
     "- Nunca coloque em not_found um sabor que existe no cardápio com grafia parecida. Use o código pN e o trecho do cliente em flavor_terms.",
-    "- Borda e adicionais só quando o cliente pedir explicitamente. Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
+    "- Borda só quando o cliente pedir (ex.: 'borda de catupiry', 'com borda'). Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
     "- 'Com borda' sem sabor: use a BORDA PADRÃO do cardápio para o tipo da pizza, sem perguntar. Se não houver borda padrão para esse tipo, pergunte o sabor da borda em 'question'.",
+    "- Adicionais (aN) SÓ com pedido explícito: 'adicional de…', 'extra…', 'por cima', 'mais catupiry no adicional'. Sem essas palavras, NÃO use addons.",
+    "- Lista 'pizza nordestina, queijo, borda catupiry' = sabores [nordestina, queijo/mussarela] + crust. NUNCA trate 'queijo'/'mussarela'/'calabresa' como adicional quando vier na lista de sabores.",
+    "- 'queijo' como sabor = pizza Mussarela / 4 Queijos / Queijo do cardápio (flavor_terms='queijo'), nunca addon Mussarela.",
     "- Outros produtos: kind=product, product=código iN, com options quando houver opções obrigatórias ditas pelo cliente.",
     "- quantity >= 1. 'duas cocas' = quantity 2.",
     "- Itens que não existem no cardápio vão em not_found (texto curto como o cliente escreveu). Não coloque ali saudações, perguntas, endereço, pagamento ou palavras soltas.",
@@ -544,6 +550,64 @@ function resolveFlavor(term: string, guess: Product, catalog: Pick<Catalog, "piz
   if (alreadyAsked && candidates.some(product => product.id === guess.id)) return { product: guess };
 
   return { choice: { term, products: candidates.slice(0, MAX_FLAVOR_CHOICES) } };
+}
+
+const EXPLICIT_ADDON =
+  /\b(adiciona(?:l|is)?|extras?|por cima|a mais)\b/;
+
+/** "queijo" e variações costumam ser sabor (mussarela), não adicional. */
+function cheeseFlavorTerms(addonName: string) {
+  const name = normalize(addonName);
+  if (!/mussarela|mucarela|mu[cç]arela|queijo/.test(name)) return [] as string[];
+  return ["queijo", "mussarela", "mucarela", "muçarela", addonName];
+}
+
+/**
+ * Se a IA marcou um sabor como adicional (ex.: "nordestina, queijo" → addon Mussarela),
+ * move para flavors quando o cliente não pediu adicional/extra explicitamente.
+ */
+function reclassifyPizzaAddons(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+  const said = normalize(
+    turns
+      .filter(turn => turn.role === "user" && !turn.content.startsWith("Bebidas:"))
+      .map(turn => turn.content)
+      .join("\n"),
+  );
+  if (!said || EXPLICIT_ADDON.test(said)) return;
+
+  for (const item of result.items) {
+    if (item.kind !== "pizza" || !item.addons?.length) continue;
+    const keep: string[] = [];
+    const flavorTerms = [...(item.flavor_terms ?? [])];
+    for (const key of item.addons) {
+      const addon = catalog.addons.get(key);
+      if (!addon) continue;
+
+      const tryTerms = [addon.name, ...cheeseFlavorTerms(addon.name)];
+      let pizzaKey: string | null = null;
+      for (const term of tryTerms) {
+        // Só promove se o cliente citou o termo (ou "queijo" para mussarela).
+        const termNorm = normalize(term);
+        const cited =
+          said.includes(termNorm) ||
+          (termNorm.includes("mussarela") && /\bqueijo\b/.test(said)) ||
+          (termNorm.includes("queijo") && /\bqueijo\b/.test(said));
+        if (!cited) continue;
+        const matches = flavorCandidates(term, catalog);
+        if (matches.length !== 1) continue;
+        const entry = [...catalog.pizzas.entries()].find(([, product]) => product.id === matches[0].id);
+        if (!entry || item.flavors.includes(entry[0])) continue;
+        pizzaKey = entry[0];
+        flavorTerms.push(term);
+        break;
+      }
+
+      if (pizzaKey) item.flavors.push(pizzaKey);
+      else keep.push(key);
+    }
+    item.addons = keep;
+    item.flavor_terms = flavorTerms;
+  }
 }
 
 /**
@@ -777,6 +841,7 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   }
 
   mergeSinglePizzaSplit(result, catalog, turns);
+  reclassifyPizzaAddons(result, catalog, turns);
   rescueNotFoundFlavors(result, catalog);
   const { items, problems, choices } = toCartItems(result, catalog, turns);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
