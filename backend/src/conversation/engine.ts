@@ -571,6 +571,25 @@ function isSkipDrinks(incoming: string, normalized: string) {
   );
 }
 
+function isSkipCrust(incoming: string, normalized: string) {
+  const compact = normalized
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (
+    incoming === "skip_crust" ||
+    compact === "pular" ||
+    compact === "nao" ||
+    compact === "nao obrigado" ||
+    compact === "nao quero" ||
+    compact === "sem borda" ||
+    compact === "sem bordas" ||
+    compact === "sem" ||
+    compact === "nenhuma" ||
+    compact === "nenhum"
+  );
+}
+
 function wantsDrinks(incoming: string, normalized: string) {
   return (
     incoming === "order_drinks" ||
@@ -677,6 +696,42 @@ function setDraftCrust(drafts: CartSelection[], crust: Crust) {
       skipped: false
     }
   ];
+}
+
+function skipCartCrust(extras: CartSelection[] = []) {
+  const others = extras.filter(item => item.groupId !== CRUST_GROUP_ID);
+  return [
+    ...others,
+    {
+      groupId: CRUST_GROUP_ID,
+      groupName: "Borda",
+      priceMode: "addon" as const,
+      options: [] as { id: string; name: string; extraPrice: number }[],
+      skipped: true
+    }
+  ];
+}
+
+function cartItemHasCrustDecision(item: CartItem) {
+  return (item.extras ?? []).some(entry => entry.groupId === CRUST_GROUP_ID);
+}
+
+function matchCrustByText(crusts: Crust[], text: string) {
+  const typed = normalize(text)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!typed || typed.length < 2) return undefined;
+  const stripped = typed
+    .replace(/^(com\s+)?borda(\s+(de|com))?\s+/u, "")
+    .replace(/^borda\s+/u, "")
+    .trim();
+  const needle = stripped || typed;
+  return (
+    crusts.find(item => normalize(item.name) === needle) ??
+    crusts.find(item => normalize(item.name).includes(needle)) ??
+    crusts.find(item => needle.includes(normalize(item.name)))
+  );
 }
 
 function crustsForPizza(product: Product, crusts: Crust[]) {
@@ -1062,6 +1117,18 @@ async function resumeCurrentStep(
       await sendHintIfNeeded();
       await askAiDrink(to);
       return;
+    case "awaiting_ai_crust": {
+      const needing = await aiCrustItems(context);
+      const index = context.aiStepIndex ?? needing[0]?.index;
+      const target = needing.find(entry => entry.index === index) ?? needing[0];
+      if (!target) {
+        await showAiCartOptions(to, store, context, hint || "✅ Continue seu pedido");
+        return;
+      }
+      await sendHintIfNeeded();
+      await askAiCrust(to, target.item, target.crusts);
+      return;
+    }
     case "awaiting_ai_change":
       await sendText(to, `${AI_CHANGE_PROMPT}\nSe preferir manter como está, digite *seguir*.`);
       return;
@@ -1179,6 +1246,39 @@ async function askItemNote(to: string, item: CartItem) {
       .filter(Boolean)
       .join("\n"),
     [{ id: "skip_note", title: "Pular" }]
+  );
+}
+
+/** v2: pizzas do carrinho da IA que aceitam borda e ainda não têm decisão de borda. */
+async function aiCrustItems(context: ConversationContext) {
+  const allCrusts = await listCrusts();
+  const found: { index: number; item: CartItem; product: Product; crusts: Crust[] }[] = [];
+  for (const [index, item] of context.cart.entries()) {
+    if (cartItemHasCrustDecision(item)) continue;
+    const product = await getProduct(item.productId);
+    if (!product?.crustsEnabled) continue;
+    const crusts = crustsForPizza(product, allCrusts);
+    if (!crusts.length) continue;
+    found.push({ index, item, product, crusts });
+  }
+  return found;
+}
+
+/** v2: pergunta borda quando o pedido digitado não trouxe. */
+async function askAiCrust(to: string, item: CartItem, crusts: Crust[]) {
+  const rows = [
+    { id: "skip_crust", title: "Sem borda", description: "Seguir sem borda" },
+    ...crusts.slice(0, WA_LIST_MAX_ROWS - 1).map(crust => ({
+      id: `crust:${crust.id}`,
+      title: crust.name.slice(0, 24),
+      ...(crust.addsPrice && crust.price > 0 ? { description: `+ ${formatReais(crust.price)}` } : {})
+    }))
+  ];
+  await sendList(
+    to,
+    `🧀 Deseja *borda* na *${item.name}*?\nEscolha na lista ou digite o sabor (ex.: *Catupiry*). Se não quiser, toque em *Sem borda*.`,
+    "Ver bordas",
+    [{ title: "Bordas", rows }]
   );
 }
 
@@ -2648,6 +2748,7 @@ const AI_TEXT_STATES = new Set<ConversationState>([
 /** v2: etapas após o carrinho em que "quero adicionar/tirar/trocar…" modifica o pedido pela IA. */
 const ORDER_CHANGE_STATES: Partial<Record<ConversationState, OrderChangeContext>> = {
   awaiting_ai_drink: "drink",
+  awaiting_ai_crust: "note",
   awaiting_ai_addon: "note",
   awaiting_ai_note: "note",
   awaiting_saved_address: "checkout",
@@ -2661,6 +2762,7 @@ const ORDER_CHANGE_STATES: Partial<Record<ConversationState, OrderChangeContext>
 /** v2: etapas logo após o carrinho, onde pode cair texto enviado enquanto a IA ainda respondia. */
 const LATE_TEXT_STATES = new Set<ConversationState>([
   "awaiting_ai_drink",
+  "awaiting_ai_crust",
   "awaiting_ai_addon",
   "awaiting_ai_note",
   "awaiting_fulfillment"
@@ -2941,7 +3043,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       content: [outcome.answer, `Pedido montado:\n${renderCart(ctx)}`].filter(Boolean).join("\n")
     });
     const intro = [outcome.answer, "✅ Entendi seu pedido!", notFoundLine].filter(Boolean).join("\n");
-    ctx.aiExtraPhase = "addon_ask";
+    ctx.aiExtraPhase = "crust_ask";
     ctx.aiStepIndex = undefined;
     if (!ctx.aiDrinkAsked) {
       const drinksCategoryId = await activeDrinkCategoryId();
@@ -3040,15 +3142,16 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       const drinksCategoryId = await activeDrinkCategoryId();
       if (!drinksCategoryId || (await cartHasDrink(ctx, drinksCategoryId))) {
         ctx.aiDrinkAsked = true;
-        ctx.aiExtraPhase = "addon_ask";
+        ctx.aiExtraPhase = "crust_ask";
         ctx.aiStepIndex = undefined;
         await nextAiExtraStep(ctx, intro);
         return;
       }
     }
-    if (target === "awaiting_ai_addon" || target === "awaiting_ai_note") {
+    if (target === "awaiting_ai_crust" || target === "awaiting_ai_addon" || target === "awaiting_ai_note") {
       // Índices do carrinho podem ter mudado: refaz a pergunta da etapa.
-      ctx.aiExtraPhase = target === "awaiting_ai_addon" ? "addon_ask" : "note";
+      ctx.aiExtraPhase =
+        target === "awaiting_ai_crust" ? "crust_ask" : target === "awaiting_ai_addon" ? "addon_ask" : "note";
       ctx.aiStepIndex = undefined;
       ctx.addonOffset = 0;
       await nextAiExtraStep(ctx, intro);
@@ -3119,7 +3222,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     ctx.aiDrinkAsked = true;
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: `Bebidas: ${text}` });
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
-    ctx.aiExtraPhase = "addon_ask";
+    ctx.aiExtraPhase = "crust_ask";
     ctx.aiStepIndex = undefined;
     const intro = ["🥤 Bebida adicionada!", notFoundLine].filter(Boolean).join("\n");
     await nextAiExtraStep(ctx, intro);
@@ -3131,8 +3234,26 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     item.unitPriceCents = unitPriceCents(product, extras);
   }
 
+  /** v2: após decidir borda de um item, pergunta a próxima pizza sem borda ou segue para adicionais. */
+  async function advanceAfterAiCrust(ctx: ConversationContext, intro?: string) {
+    const needing = await aiCrustItems(ctx);
+    if (needing.length) {
+      ctx.aiExtraPhase = "crust_ask";
+      ctx.aiStepIndex = needing[0].index;
+      if (intro) {
+        await sendText(input.from, [intro, "", "🛒 *Seu carrinho*", "", renderCart(ctx)].join("\n"));
+      }
+      await persist("awaiting_ai_crust", ctx);
+      await askAiCrust(input.from, needing[0].item, needing[0].crusts);
+      return;
+    }
+    ctx.aiExtraPhase = "addon_ask";
+    ctx.aiStepIndex = undefined;
+    await nextAiExtraStep(ctx, intro);
+  }
+
   /**
-   * v2: depois do carrinho da IA, pergunta adicionais uma única vez (e em qual item, se houver vários)
+   * v2: depois do carrinho da IA, pergunta borda (se faltou), adicionais uma única vez
    * e a observação uma única vez para o pedido inteiro; no fim segue para Entrega/Retirada.
    */
   async function nextAiExtraStep(ctx: ConversationContext, intro?: string) {
@@ -3144,6 +3265,18 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
     if (!ctx.aiExtrasAsked) {
       const asked = intro == null;
+      if ((ctx.aiExtraPhase ?? "crust_ask") === "crust_ask") {
+        const needing = await aiCrustItems(ctx);
+        if (needing.length) {
+          ctx.aiExtraPhase = "crust_ask";
+          ctx.aiStepIndex = needing[0].index;
+          await showCart();
+          await persist("awaiting_ai_crust", ctx);
+          await askAiCrust(input.from, needing[0].item, needing[0].crusts);
+          return;
+        }
+        ctx.aiExtraPhase = "addon_ask";
+      }
       if ((ctx.aiExtraPhase ?? "addon_ask") === "addon_ask") {
         if ((await aiAddonItems(ctx)).length) {
           ctx.aiExtraPhase = "addon_ask";
@@ -3719,7 +3852,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       (!hasReply && text && (isSkipDrinks(incoming, normalized) || isAddonsDoneText(text)))
     ) {
       context.aiDrinkAsked = true;
-      context.aiExtraPhase = "addon_ask";
+      context.aiExtraPhase = "crust_ask";
       context.aiStepIndex = undefined;
       await nextAiExtraStep(context);
       return;
@@ -3729,6 +3862,56 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
     await handleAiDrinkText(context, text);
+    return;
+  }
+
+  if (state === "awaiting_ai_crust") {
+    const needing = await aiCrustItems(context);
+    const index = context.aiStepIndex ?? needing[0]?.index;
+    const target = needing.find(entry => entry.index === index) ?? needing[0];
+    if (!target) {
+      context.aiExtraPhase = "addon_ask";
+      context.aiStepIndex = undefined;
+      await nextAiExtraStep(context);
+      return;
+    }
+
+    const text = input.text.trim();
+    if (isSkipCrust(incoming, normalized) || (!hasReply && text && isAddonsDoneText(text))) {
+      target.item.extras = skipCartCrust(target.item.extras);
+      refreshCartItem(target.item, target.product);
+      await advanceAfterAiCrust(context);
+      return;
+    }
+
+    const crust = incoming.startsWith("crust:")
+      ? target.crusts.find(item => item.id === incoming.slice("crust:".length))
+      : !hasReply && text
+        ? matchCrustByText(target.crusts, text)
+        : undefined;
+
+    if (!crust) {
+      if (
+        !hasReply &&
+        text &&
+        (looksLikeQuestion(text) || looksLikeOrderChange(text, "note"))
+      ) {
+        await handleSideText(context, text, "awaiting_ai_crust");
+        return;
+      }
+      await persist("awaiting_ai_crust", context);
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+
+    target.item.extras = setDraftCrust(target.item.extras ?? [], crust);
+    refreshCartItem(target.item, target.product);
+    context.aiTurns = appendAiTurn(context.aiTurns, { role: "user", content: `Borda: ${crust.name}` });
+    context.aiTurns = appendAiTurn(context.aiTurns, {
+      role: "assistant",
+      content: `Pedido montado:\n${renderCart(context)}`
+    });
+    await advanceAfterAiCrust(context, `🧀 Borda *${crust.name}* adicionada!`);
     return;
   }
 
