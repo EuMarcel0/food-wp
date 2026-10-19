@@ -365,6 +365,17 @@ export type SalesByPaymentReport = {
   totals: { orderCount: number; totalCents: number };
 };
 
+export type BotInterventionItem = {
+  phone: string;
+  customerName: string | null;
+  orderId: string | null;
+  orderCode: string | null;
+  orderStatus: string | null;
+  conversationId: string | null;
+  handoffBy: string | null;
+  at: string;
+};
+
 export type BotPerformanceReport = {
   day: string;
   total: number;
@@ -372,6 +383,7 @@ export type BotPerformanceReport = {
   humanAssisted: number;
   other: number;
   tracking: boolean;
+  interventions: BotInterventionItem[];
 };
 
 export type NotificationType = "order_created" | "order_updated";

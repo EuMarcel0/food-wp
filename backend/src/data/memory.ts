@@ -1857,7 +1857,7 @@ export const memoryStore = {
         return ms >= fromMs && ms <= toMs;
       })
       .map((order) => ({ status: order.status, humanAssisted: false }));
-    return summarizeBotPerformance(input.day, rows, false);
+    return summarizeBotPerformance(input.day, rows, false, []);
   },
 
   getOrderStats(day?: string) {

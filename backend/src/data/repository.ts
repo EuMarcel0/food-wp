@@ -6,7 +6,11 @@ import type {
   OrderFilter,
   ProductFilter,
 } from "../lib/filters.js";
-import { summarizeBotPerformance, type BotPerformanceReport } from "../lib/botPerformance.js";
+import {
+  mergeBotInterventions,
+  summarizeBotPerformance,
+  type BotPerformanceReport,
+} from "../lib/botPerformance.js";
 import { buildOrderStats } from "../lib/orderStats.js";
 import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
@@ -3989,14 +3993,79 @@ export async function getBotPerformanceReport(input: {
     );
   }
   if (error) throw new Error(error.message);
-  return summarizeBotPerformance(
-    input.day,
-    ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
-      status: String(row.status ?? "received"),
-      humanAssisted: Boolean(row.human_assisted),
-    })),
-    true,
-  );
+
+  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
+    status: String(row.status ?? "received"),
+    humanAssisted: Boolean(row.human_assisted),
+  }));
+
+  const interventions = await listBotInterventionsForDay(input);
+  return summarizeBotPerformance(input.day, rows, true, interventions);
+}
+
+/** Pedidos com intervenção + conversas assumidas no dia (telefone para consultar). */
+async function listBotInterventionsForDay(input: {
+  createdFrom: string;
+  createdTo: string;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  type CustomerEmbed = { wa_phone?: string; name?: string | null } | null;
+
+  const [{ data: orderData, error: orderError }, { data: convData, error: convError }] =
+    await Promise.all([
+      supabase
+        .from("orders")
+        .select("id, code, status, created_at, customers(wa_phone, name)")
+        .eq("human_assisted", true)
+        .gte("created_at", input.createdFrom)
+        .lte("created_at", input.createdTo)
+        .order("created_at", { ascending: false })
+        .limit(SALES_REPORT_LIMIT),
+      supabase
+        .from("conversations")
+        .select("id, handoff_at, handoff_by, customers(wa_phone, name)")
+        .not("handoff_at", "is", null)
+        .gte("handoff_at", input.createdFrom)
+        .lte("handoff_at", input.createdTo)
+        .order("handoff_at", { ascending: false })
+        .limit(SALES_REPORT_LIMIT),
+    ]);
+
+  if (orderError && !orderError.message?.includes("human_assisted")) {
+    console.warn("[bot-performance] falha ao listar pedidos:", orderError.message);
+  }
+  if (convError && !convError.message?.includes("handoff_at")) {
+    console.warn("[bot-performance] falha ao listar conversas:", convError.message);
+  }
+
+  const orders = ((orderError ? [] : orderData) ?? []).map((row) => {
+    const typed = row as Record<string, unknown>;
+    const customer = typed.customers as CustomerEmbed;
+    return {
+      id: String(typed.id),
+      code: String(typed.code ?? ""),
+      status: String(typed.status ?? "received"),
+      createdAt: String(typed.created_at ?? ""),
+      phone: customer?.wa_phone ? String(customer.wa_phone) : "",
+      customerName: customer?.name != null ? String(customer.name).trim() || null : null,
+    };
+  });
+
+  const conversations = ((convError ? [] : convData) ?? []).map((row) => {
+    const typed = row as Record<string, unknown>;
+    const customer = typed.customers as CustomerEmbed;
+    return {
+      id: String(typed.id),
+      phone: customer?.wa_phone ? String(customer.wa_phone) : "",
+      customerName: customer?.name != null ? String(customer.name).trim() || null : null,
+      handoffBy: typed.handoff_by != null ? String(typed.handoff_by).trim() || null : null,
+      at: String(typed.handoff_at ?? ""),
+    };
+  });
+
+  return mergeBotInterventions(orders, conversations);
 }
 
 export async function getOrderStats(day?: string) {

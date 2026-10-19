@@ -213,7 +213,8 @@ export function WhatsAppInbox({
   releasingMany = false,
   onClose,
   // onCloseAll,
-  onMobileChatOpenChange
+  onMobileChatOpenChange,
+  initialPhoneQuery = null
 }: {
   items: LiveConversation[];
   loading: boolean;
@@ -235,13 +236,15 @@ export function WhatsAppInbox({
   onClose?: (item: LiveConversation) => void;
   // onCloseAll?: () => void;
   onMobileChatOpenChange?: (open: boolean) => void;
+  /** Pré-filtra a lista pelo telefone (ex.: link vindo dos gráficos). */
+  initialPhoneQuery?: string | null;
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { setViewingConversationId } = useConversationViewing();
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => initialPhoneQuery?.replace(/\D/g, "") || "");
   const [onlyHuman, setOnlyHuman] = useState(false);
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -304,6 +307,24 @@ export function WhatsAppInbox({
       setBulkMode(false);
     }
   }
+
+  const appliedPhoneRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const digits = initialPhoneQuery?.replace(/\D/g, "") || "";
+    if (!digits) return;
+    setQuery(digits);
+  }, [initialPhoneQuery]);
+
+  useEffect(() => {
+    const digits = initialPhoneQuery?.replace(/\D/g, "") || "";
+    if (!digits || !items.length || appliedPhoneRef.current === digits) return;
+    const match = items.find(item => (item.customerPhone ?? "").replace(/\D/g, "").includes(digits));
+    if (!match) return;
+    appliedPhoneRef.current = digits;
+    setSelectedId(match.id);
+    onMobileChatOpenChange?.(true);
+  }, [initialPhoneQuery, items, onMobileChatOpenChange]);
 
   useEffect(() => {
     if (selectedId && !items.some(item => item.id === selectedId)) {

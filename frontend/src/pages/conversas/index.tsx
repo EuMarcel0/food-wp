@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tag, Tabs } from "antd";
 import { CommentOutlined } from "@ant-design/icons";
@@ -26,6 +27,8 @@ export function ConversationsPage() {
   const dialog = useDialog();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const phoneFromQuery = searchParams.get("phone")?.replace(/\D/g, "") || null;
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [tab, setTab] = useState<TabKey>("active");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -322,6 +325,7 @@ export function ConversationsPage() {
             }}
             onRefresh={() => historyQuery.refetch()}
             onMobileChatOpenChange={setMobileChatOpen}
+            initialPhoneQuery={phoneFromQuery}
           />
         ) : (
           <WhatsAppInbox
@@ -356,6 +360,7 @@ export function ConversationsPage() {
             onClose={askClose}
             // onCloseAll={askCloseAll}
             onMobileChatOpenChange={setMobileChatOpen}
+            initialPhoneQuery={phoneFromQuery}
           />
         )}
       </div>
