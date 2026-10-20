@@ -3262,7 +3262,8 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       await nextAiExtraStep(ctx);
       return;
     }
-    const outcome = await interpretDrinks(text, product => product.categoryId === drinksCategoryId);
+    const turns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
+    const outcome = await interpretDrinks(turns, product => product.categoryId === drinksCategoryId);
 
     if (outcome.status === "error") {
       await persist("awaiting_ai_drink", ctx);
@@ -3275,8 +3276,10 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       : null;
 
     if (outcome.status === "question") {
+      const reply = [notFoundLine, outcome.question].filter(Boolean).join("\n");
+      ctx.aiTurns = appendAiTurn(turns, { role: "assistant", content: reply });
       await persist("awaiting_ai_drink", ctx);
-      await sendText(input.from, [notFoundLine, outcome.question].filter(Boolean).join("\n"));
+      await sendText(input.from, reply);
       return;
     }
 
@@ -3287,6 +3290,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     }
 
     if (outcome.status === "empty") {
+      ctx.aiTurns = turns;
       await persist("awaiting_ai_drink", ctx);
       await sendText(input.from, notFoundLine ?? "😕 Não encontrei essa bebida no cardápio.");
       await askAiDrink(input.from);
@@ -3295,8 +3299,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
     ctx.cart = [...ctx.cart, ...outcome.items];
     ctx.aiDrinkAsked = true;
-    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: `Bebidas: ${text}` });
-    ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
+    ctx.aiTurns = appendAiTurn(turns, { role: "assistant", content: `Pedido montado:\n${renderCart(ctx)}` });
     ctx.aiExtraPhase = "crust_ask";
     ctx.aiStepIndex = undefined;
     const intro = ["🥤 Bebida adicionada!", notFoundLine].filter(Boolean).join("\n");

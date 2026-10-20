@@ -869,12 +869,15 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
 
 function drinksSystemPrompt(catalogText: string) {
   return [
-    "Você identifica BEBIDAS pedidas numa mensagem de WhatsApp em português, respondendo à pergunta 'Deseja uma bebida?'.",
+    "Você identifica BEBIDAS pedidas numa conversa de WhatsApp em português, respondendo à pergunta 'Deseja uma bebida?'.",
     "Use SOMENTE os códigos do cardápio abaixo. Nunca invente itens, códigos ou preços.",
     "Regras:",
     "- Cada bebida: kind=product, product=código iN, com options quando houver opções obrigatórias ditas pelo cliente. size=null, flavors=[], crust=null, addons=[].",
-    "- Pode haver várias bebidas. quantity >= 1 ('duas cocas' = quantity 2; '2x guaraná lata' = quantity 2).",
-    "- Aceite erros de digitação e nomes aproximados ('coca 2l', 'coca zero 1l', 'guarana lata', 'agua com gas', 'suco de laranja').",
+    "- Pode haver várias bebidas. quantity >= 1 ('duas cocas' = quantity 2; '2x guaraná lata' = quantity 2). '2L'/'2 L'/'2 litros' é TAMANHO, não quantidade.",
+    "- Leia TODA a conversa. Resposta curta ('2L', '2 L', 'lata', 'zero', 'coca') completa o que o cliente já disse. Ex.: disse 'coca cola' e depois '2 L' = Coca 2L do cardápio.",
+    "- Nunca coloque tamanho/variante em not_found ('2 L', '2 litros', 'lata', 'zero').",
+    "- Aceite erros de digitação e nomes aproximados ('coca 2l', 'coca zero 1l', 'guarana lata').",
+    "- Só pergunte o que ainda faltar. Se marca + tamanho já existem no cardápio, feche o item (não-zero, salvo se o cliente pediu zero).",
     "- Se o cliente pedir algo vago ('um refri', 'uma coca') e houver várias opções, pergunte qual em 'question' (curta, simpática, sem códigos).",
     "- Bebidas que não existem no cardápio vão em not_found (texto curto como o cliente escreveu).",
     "- answer=null, menu_requested=false, fulfillment=null, address=null, payment=null, flavor_terms=[], fee_question=false, fee_neighborhood=null, hours_question=false.",
@@ -884,9 +887,103 @@ function drinksSystemPrompt(catalogText: string) {
   ].join("\n");
 }
 
+function compactDrink(text: string) {
+  return normalize(text).replace(/[^a-z0-9]+/g, "");
+}
+
+function isDrinkSizeOnly(value: string) {
+  const spaced = normalize(value).replace(/(\d)\s+l(itros?)?\b/g, "$1l");
+  const compact = compactDrink(spaced);
+  return /^(2l|2lt|2litros?|1l|1lt|1litro|350ml|lata|zero)$/.test(compact);
+}
+
+function drinkBrandKey(said: string) {
+  const compact = compactDrink(said);
+  const brands = [
+    ["cocacola", "coca"],
+    ["coca", "coca"],
+    ["guarana", "guarana"],
+    ["fanta", "fanta"],
+    ["sprite", "sprite"],
+    ["kuat", "kuat"],
+    ["redbull", "redbull"],
+    ["suco", "suco"],
+    ["agua", "agua"],
+  ] as const;
+  for (const [needle, key] of brands) {
+    if (compact.includes(needle)) return key;
+  }
+  return null;
+}
+
+function drinkSizeHints(said: string) {
+  const spaced = normalize(said).replace(/(\d)\s+l(itros?)?\b/g, "$1l");
+  const compact = compactDrink(spaced);
+  return {
+    twoL: /2l/.test(compact) || /\b2\s*litros?\b/.test(spaced),
+    oneL: (/1l/.test(compact) || /\b1\s*litro\b/.test(spaced)) && !/2l/.test(compact),
+    can: /\blata\b/.test(spaced) || /350ml/.test(compact),
+    zero: /\bzero\b/.test(spaced),
+  };
+}
+
+function scoreDrinkProduct(
+  product: Product,
+  brand: string,
+  size: ReturnType<typeof drinkSizeHints>,
+) {
+  const name = compactDrink(product.name);
+  if (!name.includes(brand) && !(brand === "coca" && name.includes("cocacola"))) return 0;
+  let score = 10;
+  if (size.twoL) score += /2l/.test(name) ? 25 : -12;
+  if (size.oneL) score += /1l/.test(name) && !/2l/.test(name) ? 25 : -12;
+  if (size.can) score += /lata|350/.test(name) ? 20 : -8;
+  if (size.zero) score += name.includes("zero") ? 20 : -15;
+  else if (name.includes("zero")) score -= 12;
+  return score;
+}
+
+/** Junta 'coca' + '2 L' no item certo do cardápio quando a IA trata o tamanho como produto novo. */
+function resolveDrinkFollowUp(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+  const said = turns
+    .filter(turn => turn.role === "user")
+    .map(turn => turn.content.replace(/^(bebida|bebidas)\s*:\s*/i, ""))
+    .join(" ");
+  const brand = drinkBrandKey(said);
+  const size = drinkSizeHints(said);
+  if (!brand || !(size.twoL || size.oneL || size.can || size.zero)) return;
+
+  const ranked = [...catalog.products.values()]
+    .map(product => ({ product, score: scoreDrinkProduct(product, brand, size) }))
+    .filter(entry => entry.score >= 30)
+    .sort((left, right) => right.score - left.score);
+  const best = ranked[0];
+  if (!best) return;
+  if (ranked[1] && ranked[1].score >= best.score - 4) return;
+
+  const key = [...catalog.products.entries()].find(([, product]) => product.id === best.product.id)?.[0];
+  if (!key) return;
+  result.items = [
+    {
+      kind: "product",
+      quantity: 1,
+      size: null,
+      flavors: [],
+      flavor_terms: [],
+      product: key,
+      options: [],
+      crust: null,
+      addons: [],
+      notes: null,
+    },
+  ];
+  result.question = null;
+  result.not_found = [];
+}
+
 /** v2: interpreta a resposta de "Deseja uma bebida?" usando só os produtos de bebida. */
 export async function interpretDrinks(
-  text: string,
+  turns: AiTurn[],
   isDrink: (product: Product) => boolean,
 ): Promise<AiOrderOutcome> {
   let catalog: Catalog;
@@ -896,28 +993,40 @@ export async function interpretDrinks(
     return { status: "error", message: error instanceof Error ? error.message : "Falha ao carregar o cardápio." };
   }
 
+  const history = turns.slice(-8);
   let result: AiResult;
   try {
     result = await chatJson<AiResult>({
       schemaName: "bebidas",
       schema: SCHEMA as unknown as Record<string, unknown>,
       metadata: { flow: "v2-drinks" },
-      messages: [
-        { role: "system", content: drinksSystemPrompt(catalog.text) },
-        { role: "user", content: text.slice(0, 1200) },
-      ],
+      messages: [{ role: "system", content: drinksSystemPrompt(catalog.text) }, ...history],
     });
   } catch (error) {
     console.error("[ai-drinks] falha na OpenAI:", error instanceof Error ? error.message : error);
     return { status: "error", message: error instanceof Error ? error.message : "Falha na IA." };
   }
 
+  resolveDrinkFollowUp(result, catalog, history);
+  result.not_found = (result.not_found ?? []).filter(item => !isDrinkSizeOnly(item));
+
   const { items, problems } = toCartItems(
     { ...result, items: result.items.filter(item => item.kind === "product") },
     catalog,
   );
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
-  const question = problems[0] ?? (result.question?.trim() || undefined);
+  const lastUser = [...history].reverse().find(turn => turn.role === "user")?.content ?? "";
+  const sizeQuestion =
+    !items.length && isDrinkSizeOnly(lastUser)
+      ? drinkSizeHints(lastUser).twoL
+        ? "Qual bebida de *2 litros* você gostaria?"
+        : drinkSizeHints(lastUser).oneL
+          ? "Qual bebida de *1 litro* você gostaria?"
+          : drinkSizeHints(lastUser).can
+            ? "Qual bebida em *lata* você gostaria?"
+            : "Qual bebida você gostaria?"
+      : undefined;
+  const question = problems[0] ?? (result.question?.trim() || sizeQuestion);
   const extras: AiOutcomeExtras = { notFound, menuRequested: false, hints: {} };
 
   if (question) return { status: "question", question, items, ...extras };
