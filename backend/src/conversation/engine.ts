@@ -572,22 +572,17 @@ function isSkipDrinks(incoming: string, normalized: string) {
 }
 
 function isSkipCrust(incoming: string, normalized: string) {
+  if (incoming === "skip_crust") return true;
   const compact = normalized
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return (
-    incoming === "skip_crust" ||
-    compact === "pular" ||
-    compact === "nao" ||
-    compact === "nao obrigado" ||
-    compact === "nao quero" ||
-    compact === "sem borda" ||
-    compact === "sem bordas" ||
-    compact === "sem" ||
-    compact === "nenhuma" ||
-    compact === "nenhum"
-  );
+  if (!compact) return false;
+  const first = compact.split(" ")[0] ?? "";
+  if (["n", "nao", "no", "nn", "nop", "nope"].includes(first)) return true;
+  if (["pular", "pula", "nenhuma", "nenhum", "nada", "dispenso"].includes(compact)) return true;
+  if (compact === "sem" || compact.startsWith("sem borda") || compact === "sem recheio") return true;
+  return /nao (quero|precisa|obrigad)/.test(compact);
 }
 
 function wantsDrinks(incoming: string, normalized: string) {
@@ -716,22 +711,98 @@ function cartItemHasCrustDecision(item: CartItem) {
   return (item.extras ?? []).some(entry => entry.groupId === CRUST_GROUP_ID);
 }
 
-function matchCrustByText(crusts: Crust[], text: string) {
-  const typed = normalize(text)
+function lettersOnly(text: string) {
+  return normalize(text).replace(/[^a-z0-9]/g, "");
+}
+
+function editDistance(left: string, right: string) {
+  if (left === right) return 0;
+  if (!left.length) return right.length;
+  if (!right.length) return left.length;
+  const prev = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    let diagonal = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const next = prev[j];
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diagonal + cost);
+      diagonal = next;
+    }
+  }
+  return prev[right.length];
+}
+
+function nearText(left: string, right: string) {
+  if (left === right) return true;
+  const minLen = Math.min(left.length, right.length);
+  if (minLen < 3) return false;
+  const allowed = Math.max(left.length, right.length) >= 7 ? 2 : 1;
+  if (Math.abs(left.length - right.length) > allowed) return false;
+  return editDistance(left, right) <= allowed;
+}
+
+function cleanCrustReply(text: string) {
+  return normalize(text)
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(
+      /\b(quero|queria|pode|ser|uma|um|a|o|de|da|do|com|borda|recheada|recheio|por|favor|pf|pfv|coloca|coloque|bota|botar|porfa)\b/gu,
+      " "
+    )
     .replace(/\s+/g, " ")
     .trim();
-  if (!typed || typed.length < 2) return undefined;
-  const stripped = typed
-    .replace(/^(com\s+)?borda(\s+(de|com))?\s+/u, "")
-    .replace(/^borda\s+/u, "")
-    .trim();
-  const needle = stripped || typed;
-  return (
-    crusts.find(item => normalize(item.name) === needle) ??
-    crusts.find(item => normalize(item.name).includes(needle)) ??
-    crusts.find(item => needle.includes(normalize(item.name)))
-  );
+}
+
+function crustAliasNeedles(needle: string) {
+  const compact = lettersOnly(needle);
+  const needles = new Set<string>([needle, compact].filter(Boolean));
+  if (/catupir/.test(compact) || nearText(compact, "catupiry") || nearText(compact, "catupiri")) {
+    needles.add("catupiry");
+    needles.add("catupiri");
+  }
+  if (/ched+ar|cheder|xedar|sheddar/.test(compact) || nearText(compact, "cheddar") || nearText(compact, "chedar")) {
+    needles.add("cheddar");
+    needles.add("chedar");
+  }
+  return [...needles];
+}
+
+function crustMatchScore(crust: Crust, needle: string) {
+  const name = normalize(crust.name);
+  const nameLetters = lettersOnly(crust.name);
+  let best = 0;
+  for (const item of crustAliasNeedles(needle)) {
+    const letters = lettersOnly(item) || item;
+    if (!letters) continue;
+    if (name === item || nameLetters === letters) best = Math.max(best, 100);
+    else if (nameLetters.startsWith(letters) && letters.length >= 4) best = Math.max(best, 90);
+    else if (nameLetters.includes(letters) && letters.length >= 4) best = Math.max(best, 80);
+    else if (letters.includes(nameLetters) && nameLetters.length >= 4) best = Math.max(best, 75);
+    else if (nearText(nameLetters, letters)) best = Math.max(best, 70);
+    else {
+      const nameTokens = name.split(/\s+/).filter(Boolean);
+      const typedTokens = item.split(/\s+/).filter(token => token.length >= 3);
+      if (typedTokens.some(token => nameTokens.some(part => part === token || nearText(lettersOnly(part), lettersOnly(token))))) {
+        best = Math.max(best, 60);
+      }
+    }
+  }
+  return best;
+}
+
+function matchCrustByText(crusts: Crust[], text: string) {
+  const needle = cleanCrustReply(text);
+  if (!needle || needle.length < 3) return undefined;
+  const ranked = crusts
+    .map(crust => ({ crust, score: crustMatchScore(crust, needle) }))
+    .filter(entry => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.crust.name.length - right.crust.name.length);
+  const best = ranked[0];
+  if (!best) return undefined;
+  const tied = ranked.filter(entry => entry.score === best.score);
+  if (tied.length === 1) return best.crust;
+  // "catupiry" com "Catupiry" e "Catupiry com bacon": fica a mais curta.
+  return tied.sort((left, right) => left.crust.name.length - right.crust.name.length)[0]?.crust;
 }
 
 function crustsForPizza(product: Product, crusts: Crust[]) {
@@ -1264,22 +1335,16 @@ async function aiCrustItems(context: ConversationContext) {
   return found;
 }
 
+function joinCrustChoices(crusts: Crust[]) {
+  const names = crusts.map(crust => crust.name.trim()).filter(Boolean);
+  if (!names.length) return "sem";
+  if (names.length === 1) return `${names[0]} ou sem`;
+  return `${names.slice(0, -1).join(", ")}, ${names[names.length - 1]} ou sem`;
+}
+
 /** v2: pergunta borda quando o pedido digitado não trouxe. */
 async function askAiCrust(to: string, item: CartItem, crusts: Crust[]) {
-  const rows = [
-    { id: "skip_crust", title: "Sem borda", description: "Seguir sem borda" },
-    ...crusts.slice(0, WA_LIST_MAX_ROWS - 1).map(crust => ({
-      id: `crust:${crust.id}`,
-      title: crust.name.slice(0, 24),
-      ...(crust.addsPrice && crust.price > 0 ? { description: `+ ${formatReais(crust.price)}` } : {})
-    }))
-  ];
-  await sendList(
-    to,
-    `🧀 Deseja *borda* na *${item.name}*?\nEscolha na lista ou digite o sabor (ex.: *Catupiry*). Se não quiser, toque em *Sem borda*.`,
-    "Ver bordas",
-    [{ title: "Bordas", rows }]
-  );
+  await sendText(to, `Qual borda deseja na *${item.name}*?\n${joinCrustChoices(crusts)}?`);
 }
 
 /** v2: itens do carrinho da IA que aceitam adicionais. */
