@@ -97,8 +97,23 @@ export async function logOutboundByPhone(
   options?: { bumpLastMessageAt?: boolean },
 ) {
   try {
-    const found = await findConversationByCustomerPhone(to);
-    if (!found) return;
+    let found = await findConversationByCustomerPhone(to);
+    if (!found) {
+      const customer = await upsertCustomer(to);
+      const conversation = await getConversation(customer.id);
+      if (conversation) {
+        found = {
+          conversation,
+          customerId: customer.id,
+          storeId: customer.storeId,
+          phone: customer.waPhone,
+        };
+      }
+    }
+    if (!found) {
+      console.warn("[message-log] outbound sem conversa para", String(to ?? "").replace(/\D/g, ""));
+      return;
+    }
     const extracted = extractOutboundBody(payload);
     const { body, msgType, actions } = extracted;
     if (!body.trim()) return;

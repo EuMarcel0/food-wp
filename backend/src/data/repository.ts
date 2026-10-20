@@ -14,6 +14,7 @@ import {
 import { buildOrderStats } from "../lib/orderStats.js";
 import type { PageResult } from "../lib/pagination.js";
 import { getSupabase } from "../lib/supabase.js";
+import { sameWaPhone, waPhoneVariants } from "../lib/phone.js";
 import {
   isOrderFlowState,
   type Addon,
@@ -2102,6 +2103,7 @@ export async function upsertCustomer(
 
   const store = await getStore();
   const phone = waPhone.replace(/\D/g, "");
+  const phoneVariants = waPhoneVariants(phone);
   const incomingName = name?.replace(/\s+/g, " ").trim() || "";
   const storeName = store.name?.trim() || "";
   const incomingIsStore = Boolean(
@@ -2109,12 +2111,16 @@ export async function upsertCustomer(
   );
   const safeName = incomingIsStore ? "" : incomingName;
 
-  const { data: existing } = await supabase
+  const { data: existingRows } = await supabase
     .from("customers")
     .select("*")
     .eq("store_id", store.id)
-    .eq("wa_phone", phone)
-    .maybeSingle();
+    .in("wa_phone", phoneVariants);
+  const existing =
+    (existingRows ?? []).find(row => String(row.wa_phone ?? "") === phone) ??
+    (existingRows ?? []).sort(
+      (left, right) => String(right.wa_phone ?? "").length - String(left.wa_phone ?? "").length,
+    )[0];
 
   if (existing) {
     const patch: Record<string, unknown> = {};
@@ -3248,22 +3254,19 @@ export async function findConversationByCustomerPhone(waPhone: string) {
   if (!supabase) return memoryStore.findConversationByCustomerPhone(waPhone);
 
   const digits = waPhone.replace(/\D/g, "");
+  const variants = waPhoneVariants(digits);
+  if (!variants.length) return null;
   const store = await getStore();
   const { data: customers } = await supabase
     .from("customers")
     .select("id, store_id, wa_phone")
     .eq("store_id", store.id)
-    .limit(500);
+    .in("wa_phone", variants);
 
-  const customer = (customers ?? []).find((row) => {
-    const phone = String(row.wa_phone ?? "").replace(/\D/g, "");
-    if (!phone) return false;
-    return (
-      phone === digits ||
-      phone.endsWith(digits.slice(-11)) ||
-      digits.endsWith(phone.slice(-11))
-    );
-  });
+  const customer =
+    (customers ?? []).find(row => String(row.wa_phone ?? "").replace(/\D/g, "") === digits) ??
+    (customers ?? []).find(row => sameWaPhone(String(row.wa_phone ?? ""), digits)) ??
+    null;
 
   if (!customer) return null;
 

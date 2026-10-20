@@ -10,6 +10,7 @@ import { paginateItems } from "../lib/pagination.js";
 import { STATUS_LABEL, isAllowedOrderStatus } from "../conversation/status.js";
 import { resolveDeliveryFee } from "../conversation/deliveryFee.js";
 import { env } from "../config/env.js";
+import { sameWaPhone } from "../lib/phone.js";
 import {
   isOrderFlowState,
   type Addon,
@@ -992,7 +993,9 @@ export const memoryStore = {
         .trim();
     const safeName =
       incoming && storeName && sameName(incoming, storeName) ? "" : incoming;
-    const existing = customers.get(key);
+    const existing =
+      customers.get(key) ??
+      [...customers.values()].find(row => sameWaPhone(row.waPhone, key));
     if (existing) {
       const current = existing.name?.trim() || "";
       const currentIsStore = Boolean(current && storeName && sameName(current, storeName));
@@ -1034,14 +1037,7 @@ export const memoryStore = {
 
   findConversationByCustomerPhone(waPhone: string) {
     const digits = phoneKey(waPhone);
-    const customer = [...customers.values()].find((row) => {
-      const phone = phoneKey(row.waPhone);
-      return (
-        phone === digits ||
-        phone.endsWith(digits.slice(-11)) ||
-        digits.endsWith(phone.slice(-11))
-      );
-    });
+    const customer = [...customers.values()].find((row) => sameWaPhone(row.waPhone, digits));
     if (!customer) return null;
     const conversation = conversations.get(customer.id);
     if (!conversation) return null;
