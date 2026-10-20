@@ -332,11 +332,15 @@ export function WhatsAppInbox({
     }
   }, [items, selectedId]);
 
+  const filteringList = Boolean(query.trim()) || filtered.length !== items.length;
+
   useEffect(() => {
-    if (!onLoadMore || !hasMore || loadingMore) return;
+    if (!onLoadMore || !hasMore || loadingMore || filteringList) return;
     const root = listScrollRef.current;
     const el = listSentinelRef.current;
     if (!el || !root) return;
+    // Lista curta: o sentinela fica visível e dispararia load o tempo todo.
+    if (root.scrollHeight <= root.clientHeight + 8) return;
 
     const observer = new IntersectionObserver(
       entries => {
@@ -348,7 +352,7 @@ export function WhatsAppInbox({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loadingMore, onLoadMore, items.length]);
+  }, [filteringList, hasMore, loadingMore, onLoadMore, items.length, filtered.length]);
 
   useEffect(() => {
     if (!selectedId && filtered[0] && isDesktop) {
@@ -971,8 +975,11 @@ export function WhatsAppInbox({
               </button>
             );
           })}
-          {hasMore ? (
-            <div ref={listSentinelRef} className='flex h-10 items-center justify-center'>
+          {hasMore && !filteringList ? (
+            <div
+              ref={listSentinelRef}
+              className={loadingMore ? "flex h-10 items-center justify-center" : "h-px w-full"}
+            >
               {loadingMore ? <Spin size='small' /> : null}
             </div>
           ) : null}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tag, Tabs } from "antd";
@@ -23,6 +23,12 @@ type TabKey = "active" | "history";
 const LIST_FIRST_PAGE = 30;
 const LIST_PAGE_SIZE = 15;
 
+function conversationHasPhone(item: { customerPhone?: string | null }, digits: string) {
+  if (!digits) return false;
+  const phone = (item.customerPhone ?? "").replace(/\D/g, "");
+  return Boolean(phone) && (phone.includes(digits) || digits.includes(phone));
+}
+
 export function ConversationsPage() {
   const dialog = useDialog();
   const { user } = useAuth();
@@ -32,6 +38,7 @@ export function ConversationsPage() {
   const isDesktop = useMediaQuery("(min-width: 992px)");
   const [tab, setTab] = useState<TabKey>("active");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const phoneTabLookupRef = useRef<string | null>(null);
 
   const activeQuery = useInfiniteQuery({
     queryKey: queryKeys.conversations.live,
@@ -212,6 +219,19 @@ export function ConversationsPage() {
   const activeTotal = activeQuery.data?.pages[0]?.total ?? activeItems.length;
   const historyTotal = historyQuery.data?.pages[0]?.total ?? historyItems.length;
   const humanCount = activeItems.filter(item => item.handoffMode === "human").length;
+
+  useEffect(() => {
+    if (!phoneFromQuery) {
+      phoneTabLookupRef.current = null;
+      return;
+    }
+    if (!activeQuery.isFetched) return;
+    if (phoneTabLookupRef.current === phoneFromQuery) return;
+
+    const inActive = activeItems.some(item => conversationHasPhone(item, phoneFromQuery));
+    phoneTabLookupRef.current = phoneFromQuery;
+    setTab(inActive ? "active" : "history");
+  }, [phoneFromQuery, activeQuery.isFetched, activeItems]);
 
   // function askCloseAll() {
   //   void dialog.confirm({
