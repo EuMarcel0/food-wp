@@ -1335,8 +1335,17 @@ async function aiCrustItems(context: ConversationContext) {
   return found;
 }
 
+function crustAskName(crust: Crust) {
+  return crust.name
+    .replace(/^\s*borda\s+/i, "")
+    .replace(/\s*\(\s*gr[aá]tis\s*\)\s*$/i, "")
+    .trim();
+}
+
 function joinCrustChoices(crusts: Crust[]) {
-  const names = crusts.map(crust => crust.name.trim()).filter(Boolean);
+  const names = crusts
+    .map(crustAskName)
+    .filter(name => name && !/^sem(\s+borda)?$/i.test(name));
   if (!names.length) return "sem";
   if (names.length === 1) return `${names[0]} ou sem`;
   return `${names.slice(0, -1).join(", ")}, ${names[names.length - 1]} ou sem`;
@@ -2816,7 +2825,6 @@ const AI_TEXT_STATES = new Set<ConversationState>([
 /** v2: etapas após o carrinho em que "quero adicionar/tirar/trocar…" modifica o pedido pela IA. */
 const ORDER_CHANGE_STATES: Partial<Record<ConversationState, OrderChangeContext>> = {
   awaiting_ai_drink: "drink",
-  awaiting_ai_crust: "note",
   awaiting_ai_addon: "note",
   awaiting_ai_note: "note",
   awaiting_saved_address: "checkout",
@@ -2830,7 +2838,6 @@ const ORDER_CHANGE_STATES: Partial<Record<ConversationState, OrderChangeContext>
 /** v2: etapas logo após o carrinho, onde pode cair texto enviado enquanto a IA ainda respondia. */
 const LATE_TEXT_STATES = new Set<ConversationState>([
   "awaiting_ai_drink",
-  "awaiting_ai_crust",
   "awaiting_ai_addon",
   "awaiting_ai_note",
   "awaiting_fulfillment"
@@ -2913,7 +2920,7 @@ function isKeepOrderText(text: string) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return /^(nao|n|nada|nenhum|nenhuma|deixa|deixa assim|deixa como esta|esquece|esquece isso|pode seguir|seguir|segue|continuar|ta bom|ta bom assim|nao precisa|mantem|manter|mantenha)$/.test(
+  return /^(nao|n|nada|nenhum|nenhuma|deixa|deixa assim|deixa como esta|esquece|esquece isso|pode seguir|seguir|segue|continuar|ta bom|ta bom assim|nao precisa|mantem|manter|mantenha|nao vou trocar nada|nao quero trocar nada|nao vou mudar nada|nao quero mudar nada|nao vou alterar nada|sem alteracao)$/.test(
     plain
   );
 }
@@ -3838,6 +3845,58 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     return;
   }
 
+  if (state === "awaiting_ai_crust") {
+    const needing = await aiCrustItems(context);
+    const index = context.aiStepIndex ?? needing[0]?.index;
+    const target = needing.find(entry => entry.index === index) ?? needing[0];
+    if (!target) {
+      context.aiExtraPhase = "addon_ask";
+      context.aiStepIndex = undefined;
+      await nextAiExtraStep(context);
+      return;
+    }
+
+    const text = input.text.trim();
+    if (isSkipCrust(incoming, normalized) || (!hasReply && text && isAddonsDoneText(text))) {
+      target.item.extras = skipCartCrust(target.item.extras);
+      refreshCartItem(target.item, target.product);
+      await advanceAfterAiCrust(context);
+      return;
+    }
+
+    const crust = incoming.startsWith("crust:")
+      ? target.crusts.find(item => item.id === incoming.slice("crust:".length))
+      : !hasReply && text
+        ? matchCrustByText(target.crusts, text)
+        : undefined;
+
+    if (!crust) {
+      const looksLikeBordaPick = /\bbordas?\b/.test(normalized);
+      if (
+        !hasReply &&
+        text &&
+        !looksLikeBordaPick &&
+        (looksLikeQuestion(text) || looksLikeOrderChange(text, "note"))
+      ) {
+        await handleSideText(context, text, "awaiting_ai_crust");
+        return;
+      }
+      await persist("awaiting_ai_crust", context);
+      await resumeCurrentStep(input.from, store, state, context);
+      return;
+    }
+
+    target.item.extras = setDraftCrust(target.item.extras ?? [], crust);
+    refreshCartItem(target.item, target.product);
+    context.aiTurns = appendAiTurn(context.aiTurns, { role: "user", content: `Borda: ${crust.name}` });
+    context.aiTurns = appendAiTurn(context.aiTurns, {
+      role: "assistant",
+      content: `Pedido montado:\n${renderCart(context)}`
+    });
+    await advanceAfterAiCrust(context, `🧀 Borda *${crustAskName(crust) || crust.name}* adicionada!`);
+    return;
+  }
+
   // v2: texto que chegou enquanto a IA montava o carrinho complementa o pedido (ex.: "pra entregar"),
   // em vez de ser lido como resposta da etapa que apareceu depois.
   if (
@@ -3930,56 +3989,6 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return;
     }
     await handleAiDrinkText(context, text);
-    return;
-  }
-
-  if (state === "awaiting_ai_crust") {
-    const needing = await aiCrustItems(context);
-    const index = context.aiStepIndex ?? needing[0]?.index;
-    const target = needing.find(entry => entry.index === index) ?? needing[0];
-    if (!target) {
-      context.aiExtraPhase = "addon_ask";
-      context.aiStepIndex = undefined;
-      await nextAiExtraStep(context);
-      return;
-    }
-
-    const text = input.text.trim();
-    if (isSkipCrust(incoming, normalized) || (!hasReply && text && isAddonsDoneText(text))) {
-      target.item.extras = skipCartCrust(target.item.extras);
-      refreshCartItem(target.item, target.product);
-      await advanceAfterAiCrust(context);
-      return;
-    }
-
-    const crust = incoming.startsWith("crust:")
-      ? target.crusts.find(item => item.id === incoming.slice("crust:".length))
-      : !hasReply && text
-        ? matchCrustByText(target.crusts, text)
-        : undefined;
-
-    if (!crust) {
-      if (
-        !hasReply &&
-        text &&
-        (looksLikeQuestion(text) || looksLikeOrderChange(text, "note"))
-      ) {
-        await handleSideText(context, text, "awaiting_ai_crust");
-        return;
-      }
-      await persist("awaiting_ai_crust", context);
-      await resumeCurrentStep(input.from, store, state, context);
-      return;
-    }
-
-    target.item.extras = setDraftCrust(target.item.extras ?? [], crust);
-    refreshCartItem(target.item, target.product);
-    context.aiTurns = appendAiTurn(context.aiTurns, { role: "user", content: `Borda: ${crust.name}` });
-    context.aiTurns = appendAiTurn(context.aiTurns, {
-      role: "assistant",
-      content: `Pedido montado:\n${renderCart(context)}`
-    });
-    await advanceAfterAiCrust(context, `🧀 Borda *${crust.name}* adicionada!`);
     return;
   }
 
