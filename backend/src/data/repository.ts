@@ -2834,6 +2834,38 @@ export async function listLiveConversations(options: {
   };
 }
 
+/** Conversas do mesmo WhatsApp (com/sem 9) — o bot às vezes gravou o outbound na ficha duplicada. */
+async function conversationIdsForSamePhone(conversationId: string) {
+  const supabase = getSupabase();
+  if (!supabase) return [conversationId];
+
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("id, customer_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conv) return [conversationId];
+
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("id, store_id, wa_phone")
+    .eq("id", conv.customer_id)
+    .maybeSingle();
+  const variants = waPhoneVariants(String(customer?.wa_phone ?? ""));
+  if (!customer || !variants.length) return [conversationId];
+
+  const { data: siblings } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("store_id", customer.store_id)
+    .in("wa_phone", variants);
+  const customerIds = [...new Set((siblings ?? []).map(row => String(row.id)))];
+  if (customerIds.length <= 1) return [conversationId];
+
+  const { data: convs } = await supabase.from("conversations").select("id").in("customer_id", customerIds);
+  return [...new Set([conversationId, ...(convs ?? []).map(row => String(row.id))])];
+}
+
 export async function listConversationMessages(
   conversationId: string,
   options: {
@@ -2854,12 +2886,14 @@ export async function listConversationMessages(
     });
   }
 
+  const threadIds = await conversationIdsForSamePhone(conversationId);
+
   // Mais recentes primeiro; depois invertimos para ordem cronológica.
   // `before` busca mensagens mais antigas que o cursor (infinite scroll para cima).
   let query = supabase
     .from("conversation_messages")
     .select("*")
-    .eq("conversation_id", conversationId);
+    .in("conversation_id", threadIds);
 
   if (beforeAt && beforeId) {
     query = query.or(
