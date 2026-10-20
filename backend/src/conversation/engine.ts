@@ -1343,8 +1343,11 @@ function joinCrustChoices(crusts: Crust[]) {
 }
 
 /** v2: pergunta borda quando o pedido digitado não trouxe. */
-async function askAiCrust(to: string, item: CartItem, crusts: Crust[]) {
-  await sendText(to, `Qual borda deseja na *${item.name}*?\n${joinCrustChoices(crusts)}?`);
+async function askAiCrust(to: string, _item: CartItem, crusts: Crust[]) {
+  const lines = [`Qual borda deseja?`, `${joinCrustChoices(crusts)}?`];
+  const allFree = crusts.every(crust => !crust.addsPrice || crust.price <= 0);
+  if (allFree) lines.push("Lembrando que a borda é *grátis*.");
+  await sendText(to, lines.join("\n"));
 }
 
 /** v2: itens do carrinho da IA que aceitam adicionais. */
