@@ -11,7 +11,12 @@ import { sendButtons, sendImage, sendList, sendText, sendTypingIndicator } from 
 import { appendAiTurn, interpretDrinks, interpretOrder, mergeAiHints, type AiOrderOutcome } from "./aiOrder.js";
 import { enqueueWaitByUser, queueKeyForPhone } from "../lib/userQueue.js";
 import { matchNeighborhoodQuery } from "./neighborhoodMatch.js";
-import { looksLikeOrderChange, looksLikeQuestion, type OrderChangeContext } from "./orderChange.js";
+import {
+  looksLikeOrderChange,
+  looksLikePrepNote,
+  looksLikeQuestion,
+  type OrderChangeContext
+} from "./orderChange.js";
 import { NEW_ORDER_NO, NEW_ORDER_YES } from "../lib/orderNotify.js";
 import {
   recordConversationOrder,
@@ -1791,6 +1796,7 @@ function wantsAnotherOrder(text: string) {
     .replace(/\s+/g, " ")
     .trim();
   if (!plain) return false;
+  if (plain === "novo pedido" || plain === "outra pedido" || plain === "outro pedido") return true;
   return [
     /\b(outr[oa]s?|nov[oa]s?)\s+(pedido|pedidos|pizza|pizzas|lanche|compra)\b/,
     /\bmais\s+(uma?\s+)?(pizza|pizzas|pedido|refri|refrigerante|coca|bebida|suco)\b/,
@@ -3139,6 +3145,18 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
    */
   async function handleAiOrderChange(ctx: ConversationContext, text: string, resumeState: ConversationState) {
     ctx.aiResumeState = resumeState;
+    // "retirar cebola" / "só nas bordas" = observação, não troca de item.
+    if (looksLikePrepNote(text)) {
+      const note = clipNote(text);
+      if (note) {
+        ctx.orderNotes = [ctx.orderNotes, note].filter(Boolean).join(" · ").slice(0, 500);
+        for (const item of ctx.cart) {
+          if (!item.notes) item.notes = note;
+        }
+      }
+      await resumeAfterAiChange(ctx, "📝 Anotei sua observação!");
+      return;
+    }
     const before = cartKey(ctx.cart);
     ctx.aiTurns = appendAiTurn(ctx.aiTurns, { role: "user", content: text });
     const outcome = await interpretOrder(ctx.aiTurns);
@@ -3158,6 +3176,15 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       : null;
 
     if (outcome.status !== "ok" || cartKey(outcome.items) === before) {
+      // IA não mudou o carrinho: se parece observação, grava e segue (evita loop do prompt).
+      if (looksLikePrepNote(text) || outcome.status === "question") {
+        const note = clipNote(text);
+        if (note && looksLikePrepNote(text)) {
+          ctx.orderNotes = [ctx.orderNotes, note].filter(Boolean).join(" · ").slice(0, 500);
+          await resumeAfterAiChange(ctx, "📝 Anotei sua observação!");
+          return;
+        }
+      }
       const reply = [outcome.answer, notFoundLine, outcome.status === "question" ? outcome.question : AI_CHANGE_PROMPT]
         .filter(Boolean)
         .join("\n");
@@ -3588,7 +3615,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       return true;
     }
     await sendButtons(input.from, `${status}\n\nQuer fazer *outro pedido*? Toque em *Novo pedido*.`, [
-      { id: "order", title: "Novo pedido" }
+      { id: NEW_ORDER_YES, title: "Novo pedido" }
     ]);
     return true;
   }
@@ -3658,7 +3685,7 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
           "Seu pedido foi cancelado e seu atendimento finalizado.",
           'Caso queira fazer um novo pedido, clique em "Novo pedido".'
         ].join("\n"),
-        [{ id: "order", title: "Novo pedido" }]
+        [{ id: NEW_ORDER_YES, title: "Novo pedido" }]
       );
       return;
     }
@@ -3698,7 +3725,12 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
   const idleMinutes = store.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
   if (isConversationIdle(existing?.lastMessageAt, idleMinutes)) {
-    if (incoming === "order" || (!input.replyId && wantsAnotherOrder(input.text))) {
+    if (
+      incoming === "order" ||
+      incoming === NEW_ORDER_YES ||
+      incoming === "handoff_new_order:yes" ||
+      (!input.replyId && wantsAnotherOrder(input.text))
+    ) {
       await startAnotherOrder(input.replyId ? undefined : input.text);
       return;
     }
@@ -3961,6 +3993,25 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       await resumeCurrentStep(input.from, store, state, context);
       return;
     }
+    // Cliente respondeu entrega/retirada no meio do "corrigir": aplica e segue.
+    if (/^(entrega|entregar|delivery)$/.test(normalized) && store.deliveryEnabled) {
+      context.fulfillment = "delivery";
+      context.aiHints = { ...context.aiHints, fulfillment: "delivery" };
+      await resumeAfterAiChange(context, "🛵 Beleza, vai ser *entrega*.");
+      return;
+    }
+    if (
+      /^(retirada|retirar|buscar|vou buscar|busco|pickup)$/.test(normalized) &&
+      store.pickupEnabled
+    ) {
+      context.fulfillment = "pickup";
+      context.neighborhoodId = undefined;
+      context.neighborhoodName = undefined;
+      context.addressText = undefined;
+      context.aiHints = { ...context.aiHints, fulfillment: "pickup", address: undefined };
+      await resumeAfterAiChange(context, "🏪 Beleza, vai ser *retirada*.");
+      return;
+    }
     await handleAiOrderChange(context, text, context.aiResumeState ?? "awaiting_fulfillment");
     return;
   }
@@ -4186,6 +4237,18 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     return;
   }
 
+  // "Novo pedido" (botão ou texto) com pedido ainda em andamento / após Aceito.
+  if (
+    !orderActive &&
+    (incoming === "order" ||
+      incoming === NEW_ORDER_YES ||
+      incoming === "handoff_new_order:yes" ||
+      (!hasReply && wantsAnotherOrder(input.text)))
+  ) {
+    await startAnotherOrder(hasReply ? undefined : input.text);
+    return;
+  }
+
   if (isV2(store) && ["menu", "ver cardapio", "cardapio", "order", "fazer pedido", "pedir"].includes(normalized)) {
     await startConversationV2();
     return;
@@ -4228,15 +4291,27 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
     return;
   }
 
-  if (!orderActive && !hasReply && wantsAnotherOrder(input.text)) {
-    await startAnotherOrder(input.text);
-    return;
-  }
-
   // Após o pedido (conversa em welcome/fechada), texto livre não reinicia o menu
   // enquanto houver pedido em aberto — responde o status (com "Por nada" se for ack).
-  if (!orderActive && !hasReply && (await replyOpenOrderStatus(isCustomerAck(input.text, command)))) {
-    return;
+  // Exceto "novo pedido" (já tratado acima) e pergunta de tempo (responde direto).
+  if (!orderActive && !hasReply && !wantsAnotherOrder(input.text)) {
+    const plain = normalize(input.text)
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (/^(quanto tempo|qual o tempo|tempo de espera|demora quanto|quanto demora)\b/.test(plain)) {
+      const latest = await findLatestOrder(customer.id);
+      if (latest && isOpenOrderStatus(latest.status)) {
+        await sendText(
+          input.from,
+          formatOrderStatusMessage(latest, { allowCustomerCancel: store.allowCustomerCancel })
+        );
+        return;
+      }
+    }
+    if (await replyOpenOrderStatus(isCustomerAck(input.text, command))) {
+      return;
+    }
   }
 
   // Fora do pedido e sem pedido em aberto, texto livre volta ao menu inicial.

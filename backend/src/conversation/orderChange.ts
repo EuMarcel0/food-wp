@@ -50,6 +50,12 @@ const CHECKOUT_WORDS =
   /\b(pix|cartao|credito|debito|dinheiro|especie|retirada|retirar ai|vou buscar|buscar ai|busco|entrega|entregar|endereco|rua|avenida|av|travessa|bairro|numero|casa|apto|apartamento|quadra|lote|condominio|nome)\b/;
 /** "uma coca 2l", "2 guaraná lata" digitado solto numa etapa do checkout. */
 const BARE_ITEM = /^(e |mais )?(\d+|um|uma|dois|duas|tres)\s/;
+/**
+ * Observação de preparo ("retirar cebola", "sem catupiry de cima", "pouca cebola"):
+ * não é troca de item do carrinho — fica na etapa de observação.
+ */
+const PREP_NOTE =
+  /\b(sem|pouc[oa]|sem bastante|bem passad[oa]|mal passad[oa]|bem assad[oa]|sem cebola|sem azeitona|sem milho|sem piment[ao]|sem or[eé]gano|retirar o|retirar a|tira o|tira a|tire o|tire a|s[oó] (nas|na|no|em)|deixar s[oó]|deixe s[oó]|de cima|por cima|nas bordas?|na borda)\b/;
 
 const QUESTION_START =
   /^(qual|quais|quanto|quanta|quantos|quantas|como|quando|onde|cade|por que|porque|pq|sera que|voces|vcs|aceita|aceitam)\b/;
@@ -63,12 +69,25 @@ export function looksLikeQuestion(text: string) {
   return Boolean(plain) && (QUESTION_START.test(plain) || QUESTION_PHRASE.test(plain));
 }
 
+/** Observação de preparo do item (não é adicionar/remover produto do carrinho). */
+export function looksLikePrepNote(text: string) {
+  const plain = plainText(text);
+  if (!plain || plain.length < 3) return false;
+  if (GENERIC.test(plain)) return false;
+  if (PREP_NOTE.test(plain)) return true;
+  // "sem cebola", "pouca cebola", "calabresa sem cebola"
+  return /\b(sem|pouc[oa])\s+[a-z]{3,}\b/.test(plain) && !/\b(coca|guarana|refri|pizza|borda|bebida|suco)\b/.test(plain);
+}
+
 export function looksLikeOrderChange(text: string, context: OrderChangeContext) {
   const plain = plainText(text);
   if (!plain || plain.length < 3) return false;
   if (GENERIC.test(plain)) return true;
-  // Borda é sempre do pedido ("quero com borda", "sem borda", "borda de cheddar").
-  if (/\bbordas?\b/.test(plain)) return true;
+  // Na etapa de observação/adicional, "retirar cebola" / "só nas bordas" é nota, não troca de item.
+  if (context === "note" && looksLikePrepNote(text)) return false;
+  // Borda é sempre do pedido ("quero com borda", "sem borda", "borda de cheddar"),
+  // exceto quando é instrução de preparo ("deixar só nas bordas").
+  if (/\bbordas?\b/.test(plain) && !looksLikePrepNote(text)) return true;
 
   const hasProduct = PRODUCT.test(plain);
   if (!hasProduct && FALSE_POSITIVE.test(plain)) return false;
@@ -80,7 +99,11 @@ export function looksLikeOrderChange(text: string, context: OrderChangeContext) 
   const qty = QTY.test(plain);
 
   if (context === "note") {
-    return hasProduct && (add || remove || swap || qty);
+    // Só desvia se for claramente item do cardápio (bebida/pizza inteira), não ingrediente.
+    const menuItem =
+      /\b(cocas?|guarana|fanta|refri|refrigerante|suco|agua|cerveja|bebida|pizzas?)\b/.test(plain) &&
+      !PREP_NOTE.test(plain);
+    return menuItem && (add || remove || swap || qty);
   }
   if (context === "drink") {
     // Adicionar bebida responde a própria etapa; só desvia para remover/trocar ou mexer em pizza.

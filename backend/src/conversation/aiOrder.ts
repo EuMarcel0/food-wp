@@ -1,4 +1,4 @@
-import { listAddons, listCrusts, listPaymentMethods, listProducts, listSizes } from "../data/repository.js";
+import { getStore, listAddons, listCrusts, listPaymentMethods, listProducts, listSizes } from "../data/repository.js";
 import { formatReais } from "../lib/money.js";
 import { chatJson } from "../lib/openai.js";
 import {
@@ -324,8 +324,10 @@ function systemPrompt(catalogText: string) {
     "Retorne SEMPRE o pedido COMPLETO (todos os itens pedidos até agora na conversa), aplicando correções que o cliente fizer.",
     "Regras:",
     "- Pizza: kind=pizza, size=código sN, flavors=lista de pN. 'meia', 'metade', '1/2', 'meio a meio' = 2 sabores; '1/3' = 3 sabores.",
+    "- NUNCA misture sabores salgados e doces na mesma pizza. Se o cliente pedir, pergunte em 'question' se prefere só salgada ou só doce.",
     "- Respeite o limite de sabores do tamanho. Se o cliente passar do limite, pergunte em 'question'.",
-    "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família' = tamanho que começa com F). Se não der para saber o tamanho de uma pizza, deixe size=null e pergunte em 'question'.",
+    "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família', 'F - 12 Fatias', '12 fatias' = tamanho F). Se o tamanho já foi dito na conversa (ou na pergunta anterior do assistente), aplique em TODAS as pizzas sem size. Só deixe size=null e pergunte se realmente não houver tamanho.",
+    "- Nome da loja / 'casa das pizzas' NÃO é sabor. Ignore como sabor.",
     "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L; 'creme cheese' / 'creme chesse' = o sabor do cardápio).",
     "- Nunca coloque em not_found um sabor que existe no cardápio com grafia parecida. Use o código pN e o trecho do cliente em flavor_terms.",
     "- Borda só quando o cliente pedir (ex.: 'borda de catupiry', 'com borda'). Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
@@ -430,6 +432,94 @@ function findSizeGroup(product: Product, sizeName: string) {
     }) ??
     null
   );
+}
+
+function sizeCodeFromText(text: string, catalog: Pick<Catalog, "sizes">) {
+  const plain = normalize(text)
+    .replace(/(\d)\s*fatias?\b/g, "$1 fatias")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return null;
+  const letter = plain.match(/\b([pmgf])\b(?:\s*[-–]?\s*\d+\s*fatias?)?/)?.[1];
+  const fatias = plain.match(/\b(\d+)\s*fatias?\b/)?.[1];
+  const named =
+    /\b(familias?|gigantes?)\b/.test(plain)
+      ? "f"
+      : /\b(grandes?)\b/.test(plain)
+        ? "g"
+        : /\b(medias?)\b/.test(plain)
+          ? "m"
+          : /\b(pequenas?|brotos?)\b/.test(plain)
+            ? "p"
+            : null;
+  const wantLetter = letter ?? named;
+  const entries = [...catalog.sizes.entries()];
+  if (wantLetter) {
+    const match =
+      entries.find(([, size]) => normalize(size.name).startsWith(wantLetter)) ??
+      entries.find(([, size]) => normalize(size.name).includes(` ${wantLetter} `));
+    if (match) return match[0];
+  }
+  if (fatias) {
+    const match = entries.find(([, size]) => normalize(size.name).includes(`${fatias} fatia`));
+    if (match) return match[0];
+  }
+  return (
+    entries.find(([, size]) => {
+      const name = normalize(size.name);
+      return plain === name || plain.startsWith(name) || name.startsWith(plain);
+    })?.[0] ?? null
+  );
+}
+
+/** Se o assistente perguntou o tamanho e o cliente respondeu só o tamanho, aplica nas pizzas sem size. */
+function applySizeFollowUp(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+  const missing = result.items.filter(item => item.kind === "pizza" && !item.size);
+  if (!missing.length) return;
+
+  const lastUser = [...turns].reverse().find(turn => turn.role === "user")?.content ?? "";
+  const lastAssistant = [...turns].reverse().find(turn => turn.role === "assistant")?.content ?? "";
+  const askedSize = /qual o \*?tamanho\*?/i.test(lastAssistant) || /tamanho da pizza/i.test(lastAssistant);
+  const fromLast = sizeCodeFromText(lastUser, catalog);
+  if (askedSize && fromLast) {
+    for (const item of missing) item.size = fromLast;
+    return;
+  }
+
+  // Tamanho já dito na conversa (ex.: "pizza F") e a IA deixou size=null.
+  const fromHistory = sizeCodeFromText(
+    turns.filter(turn => turn.role === "user").map(turn => turn.content).join("\n"),
+    catalog,
+  );
+  if (!fromHistory) return;
+  for (const item of missing) item.size = fromHistory;
+}
+
+function isStoreNameFlavor(term: string, storeName: string) {
+  const flavor = normalize(term).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const store = normalize(storeName).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!flavor || !store) return false;
+  if (flavor === store || store.includes(flavor) || flavor.includes(store)) return true;
+  return /^(casa das pizzas|casa da pizza|pizzaria)$/.test(flavor);
+}
+
+/** Remove "sabor" que na verdade é o nome da loja (ex.: meia casa das pizzas). */
+function dropStoreNameFlavors(result: AiResult, catalog: Catalog, storeName: string) {
+  for (const item of result.items) {
+    if (item.kind !== "pizza") continue;
+    const keep: string[] = [];
+    const keepTerms: string[] = [];
+    item.flavors.forEach((key, index) => {
+      const product = catalog.pizzas.get(key);
+      const term = item.flavor_terms?.[index] ?? product?.name ?? key;
+      if (isStoreNameFlavor(term, storeName) || (product && isStoreNameFlavor(product.name, storeName))) return;
+      keep.push(key);
+      keepTerms.push(item.flavor_terms?.[index] ?? "");
+    });
+    item.flavors = keep;
+    if (item.flavor_terms) item.flavor_terms = keepTerms;
+  }
+  result.items = result.items.filter(item => item.kind !== "pizza" || item.flavors.length > 0);
 }
 
 const STOPWORDS = new Set([
@@ -710,6 +800,19 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       if (ambiguous) continue;
       const flavors = resolved.filter((item, index) => resolved.findIndex(other => other.id === item.id) === index);
       if (!flavors.length) continue;
+      const kinds = [...new Set(flavors.map(item => item.pizzaKind).filter(Boolean))];
+      if (kinds.length > 1) {
+        problems.push(
+          `Não dá para misturar pizza *salgada* e *doce* no mesmo pedido. Qual você prefere: *${flavors
+            .filter(item => item.pizzaKind === "salgada")
+            .map(item => cleanFlavorName(item.name))
+            .join(", ") || "salgada"}* ou *${flavors
+            .filter(item => item.pizzaKind === "doce")
+            .map(item => cleanFlavorName(item.name))
+            .join(", ") || "doce"}*?`,
+        );
+        continue;
+      }
       if (!size) {
         const sizeNames = [...catalog.sizes.values()].map(item => item.name).join(", ");
         problems.push(
@@ -821,8 +924,11 @@ function flavorChoiceQuestion(choice: FlavorChoice | undefined) {
  */
 export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   let catalog: Catalog;
+  let storeName = "";
   try {
-    catalog = await buildCatalog();
+    const [built, store] = await Promise.all([buildCatalog(), getStore().catch(() => null)]);
+    catalog = built;
+    storeName = store?.name?.trim() || "";
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Falha ao carregar o cardápio." };
   }
@@ -840,9 +946,13 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
     return { status: "error", message: error instanceof Error ? error.message : "Falha na IA." };
   }
 
+  if (storeName) dropStoreNameFlavors(result, catalog, storeName);
+  applySizeFollowUp(result, catalog, turns);
   mergeSinglePizzaSplit(result, catalog, turns);
   reclassifyPizzaAddons(result, catalog, turns);
   rescueNotFoundFlavors(result, catalog);
+  if (storeName) dropStoreNameFlavors(result, catalog, storeName);
+  applySizeFollowUp(result, catalog, turns);
   const { items, problems, choices } = toCartItems(result, catalog, turns);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
   const question = flavorChoiceQuestion(choices[0]) ?? problems[0] ?? (result.question?.trim() || undefined);
