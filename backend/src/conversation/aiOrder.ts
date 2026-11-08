@@ -152,7 +152,7 @@ async function buildCatalog(opts?: { onlyProducts?: (product: Product) => boolea
       for (const kind of new Set(defaults.map(([, crust]) => crust.pizzaKind))) {
         const [key, crust] = defaults.find(([, item]) => item.pizzaKind === kind)!;
         lines.push(
-          `BORDA PADRÃO (pizza ${kind}): se o cliente pedir "com borda"/"borda recheada" sem dizer o sabor, use ${key} (${crust.name}).`,
+          `BORDA PADRÃO (pizza ${kind}): se o cliente pedir "com borda"/"borda" sem sabor, use ${key} (${crust.name}). Nunca pergunte se a borda é salgada ou doce.`,
         );
       }
     }
@@ -324,14 +324,15 @@ function systemPrompt(catalogText: string) {
     "Retorne SEMPRE o pedido COMPLETO (todos os itens pedidos até agora na conversa), aplicando correções que o cliente fizer.",
     "Regras:",
     "- Pizza: kind=pizza, size=código sN, flavors=lista de pN. 'meia', 'metade', '1/2', 'meio a meio' = 2 sabores; '1/3' = 3 sabores.",
-    "- NUNCA misture sabores salgados e doces na mesma pizza. Se o cliente pedir, pergunte em 'question' se prefere só salgada ou só doce.",
+    "- NUNCA monte UMA pizza com sabores salgados E doces juntos (ex.: meia calabresa meia chocolate). Se o cliente pedir isso, pergunte em 'question' quais sabores ficarão na pizza (só salgados ou só doces). Pode haver pizzas separadas: uma salgada e outra doce.",
     "- Respeite o limite de sabores do tamanho. Se o cliente passar do limite, pergunte em 'question'.",
     "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família', 'F - 12 Fatias', '12 fatias' = tamanho F). Se o tamanho já foi dito na conversa (ou na pergunta anterior do assistente), aplique em TODAS as pizzas sem size. Só deixe size=null e pergunte se realmente não houver tamanho.",
     "- Nome da loja / 'casa das pizzas' NÃO é sabor. Ignore como sabor.",
     "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L; 'creme cheese' / 'creme chesse' = o sabor do cardápio).",
     "- Nunca coloque em not_found um sabor que existe no cardápio com grafia parecida. Use o código pN e o trecho do cliente em flavor_terms.",
-    "- Borda só quando o cliente pedir (ex.: 'borda de catupiry', 'com borda'). Borda precisa ser do mesmo tipo da pizza (salgada/doce).",
-    "- 'Com borda' sem sabor: use a BORDA PADRÃO do cardápio para o tipo da pizza, sem perguntar. Se não houver borda padrão para esse tipo, pergunte o sabor da borda em 'question'.",
+    "- Borda só quando o cliente pedir (ex.: 'borda de catupiry', 'com borda', 'borda'). O tipo da borda (salgada/doce) SEGUE o tipo dos sabores da pizza: NUNCA pergunte 'borda salgada ou doce'.",
+    "- 'Com borda'/'borda' sem sabor: use a BORDA PADRÃO do cardápio para o tipo da pizza (salgada→borda salgada, doce→borda doce), sem perguntar. Se não houver borda padrão, pergunte só o SABOR da borda (ex.: Catupiry ou Cheddar), nunca salgada/doce.",
+    "- 'borda pra retirar' / 'com borda, vou buscar' = crust + fulfillment=pickup (retirada). Não é pergunta de tipo de borda.",
     "- Adicionais (aN) SÓ com pedido explícito: 'adicional de…', 'extra…', 'por cima', 'mais catupiry no adicional'. Sem essas palavras, NÃO use addons.",
     "- Lista 'pizza nordestina, queijo, borda catupiry' = sabores [nordestina, queijo/mussarela] + crust. NUNCA trate 'queijo'/'mussarela'/'calabresa' como adicional quando vier na lista de sabores.",
     "- 'queijo' como sabor = pizza Mussarela / 4 Queijos / Queijo do cardápio (flavor_terms='queijo'), nunca addon Mussarela.",
@@ -520,6 +521,53 @@ function dropStoreNameFlavors(result: AiResult, catalog: Catalog, storeName: str
     if (item.flavor_terms) item.flavor_terms = keepTerms;
   }
   result.items = result.items.filter(item => item.kind !== "pizza" || item.flavors.length > 0);
+}
+
+function defaultCrustKey(catalog: Catalog, kind: "salgada" | "doce" | null | undefined) {
+  const entries = [...catalog.crusts.entries()].filter(([, crust]) => !kind || crust.pizzaKind === kind);
+  if (!entries.length) return null;
+  const preferred = entries
+    .filter(([, crust]) => /catupiry|catupiri/.test(normalize(crust.name)))
+    .sort(([, left], [, right]) => left.name.length - right.name.length);
+  return (preferred[0] ?? entries[0])?.[0] ?? null;
+}
+
+function pizzaKindFromItem(item: AiItem, catalog: Catalog) {
+  for (const key of item.flavors) {
+    const kind = catalog.pizzas.get(key)?.pizzaKind;
+    if (kind === "salgada" || kind === "doce") return kind;
+  }
+  return null;
+}
+
+/**
+ * Cliente pediu borda sem sabor: aplica a padrão do tipo da pizza.
+ * Nunca deixa a IA perguntar "borda salgada ou doce".
+ */
+function applyDefaultCrust(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+  const said = normalize(
+    turns
+      .filter(turn => turn.role === "user")
+      .map(turn => turn.content)
+      .join("\n"),
+  );
+  const wantsCrust = /\bborda\b/.test(said) && !/\bsem borda\b/.test(said);
+  if (!wantsCrust) return;
+
+  for (const item of result.items) {
+    if (item.kind !== "pizza" || item.crust) continue;
+    const kind = pizzaKindFromItem(item, catalog);
+    const key = defaultCrustKey(catalog, kind);
+    if (key) item.crust = key;
+  }
+}
+
+/** Pergunta inválida da IA sobre tipo de borda — descartar. */
+function sanitizeAiQuestion(question: string | null | undefined) {
+  const text = question?.trim() || "";
+  if (!text) return undefined;
+  if (/borda\s+(salgada|doce)|salgada\s+ou\s+doce|doce\s+ou\s+salgada/i.test(text)) return undefined;
+  return text;
 }
 
 const STOPWORDS = new Set([
@@ -802,14 +850,10 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       if (!flavors.length) continue;
       const kinds = [...new Set(flavors.map(item => item.pizzaKind).filter(Boolean))];
       if (kinds.length > 1) {
+        const salty = flavors.filter(item => item.pizzaKind === "salgada").map(item => cleanFlavorName(item.name));
+        const sweet = flavors.filter(item => item.pizzaKind === "doce").map(item => cleanFlavorName(item.name));
         problems.push(
-          `Não dá para misturar pizza *salgada* e *doce* no mesmo pedido. Qual você prefere: *${flavors
-            .filter(item => item.pizzaKind === "salgada")
-            .map(item => cleanFlavorName(item.name))
-            .join(", ") || "salgada"}* ou *${flavors
-            .filter(item => item.pizzaKind === "doce")
-            .map(item => cleanFlavorName(item.name))
-            .join(", ") || "doce"}*?`,
+          `Não dá para fazer *meia a meia* misturando *salgada* e *doce* na mesma pizza. Quais sabores ficam nela?\nSalgados: *${salty.join(", ") || "—"}*\nDoces: *${sweet.join(", ") || "—"}*`,
         );
         continue;
       }
@@ -953,9 +997,11 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   rescueNotFoundFlavors(result, catalog);
   if (storeName) dropStoreNameFlavors(result, catalog, storeName);
   applySizeFollowUp(result, catalog, turns);
+  applyDefaultCrust(result, catalog, turns);
   const { items, problems, choices } = toCartItems(result, catalog, turns);
   const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
-  const question = flavorChoiceQuestion(choices[0]) ?? problems[0] ?? (result.question?.trim() || undefined);
+  const question =
+    flavorChoiceQuestion(choices[0]) ?? problems[0] ?? sanitizeAiQuestion(result.question);
   const address = result.address?.replace(/\s+/g, " ").trim().slice(0, 300);
   const extras: AiOutcomeExtras = {
     notFound,
