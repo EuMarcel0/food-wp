@@ -11,11 +11,17 @@ import type { BotFlowVersion, Store } from "../../types";
 const DEFAULT_ORDER_EXAMPLE =
   "2 pizzas família, uma meia calabresa e meia frango com catupiry com borda de cheddar e outra portuguesa, e 2 Coca-Cola 2L";
 
-const FLOW_OPTIONS: { value: BotFlowVersion; title: string; description: string }[] = [
+const FLOW_OPTIONS: {
+  value: BotFlowVersion;
+  title: string;
+  description: string;
+  disabled?: boolean;
+}[] = [
   {
     value: "v1",
     title: "v1 · Completa",
     description: "Cliente navega pelo cardápio em menus e botões, item por item.",
+    disabled: true,
   },
   {
     value: "v2",
@@ -141,7 +147,8 @@ export function BotFlowSettingsCard({ store }: { store?: Store }) {
           <Radio
             key={option.value}
             value={option.value}
-            className="!me-0 rounded-xl border border-food-border !px-4 !py-3 [&>span:last-child]:!ps-3 [&.ant-radio-wrapper-checked]:border-food-accent [&.ant-radio-wrapper-checked]:bg-food-accent-soft"
+            disabled={option.disabled}
+            className="!me-0 rounded-xl border border-food-border !px-4 !py-3 [&>span:last-child]:!ps-3 [&.ant-radio-wrapper-checked]:border-food-accent [&.ant-radio-wrapper-checked]:bg-food-accent-soft [&.ant-radio-wrapper-disabled]:opacity-50"
           >
             <span className="block text-sm font-semibold text-food-text">{option.title}</span>
             <span className="block text-[13px] leading-snug text-food-muted">{option.description}</span>
