@@ -154,6 +154,9 @@ export function OrderEditItemsModal({
           placeholder="Nome para o pedido e o cupom"
           onChange={(event) => setCustomerName(event.target.value)}
         />
+        <p className="m-0 mt-1 text-xs text-food-muted">
+          Ao salvar, este nome fica neste pedido e no cadastro do cliente (próximos pedidos).
+        </p>
       </div>
 
       <div className="mb-3 flex shrink-0 flex-wrap items-end gap-2 rounded-lg border border-food-border bg-food-surface p-3">

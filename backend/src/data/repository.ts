@@ -3618,6 +3618,9 @@ export async function createOrder(input: {
   const contactName = input.contactName?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
   const paymentMethodLabel =
     input.paymentMethodLabel?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+  if (contactName) {
+    await updateCustomerName(input.customer.id, contactName);
+  }
   const subtotalCents = input.items.reduce(
     (sum, item) => sum + item.quantity * item.unitPriceCents,
     0,
@@ -4858,6 +4861,11 @@ export async function updateOrderItems(
 
   if (updateError || !updated) {
     throw new Error(updateError?.message || "Falha ao atualizar totais do pedido.");
+  }
+
+  // Nome corrigido no pedido fica salvo no cliente (próximos pedidos / conversas).
+  if (customerNameChanged && currentRow.customer_id) {
+    await updateCustomerName(String(currentRow.customer_id), nextCustomerName);
   }
 
   const order = mapOrder(updated as Record<string, unknown>);

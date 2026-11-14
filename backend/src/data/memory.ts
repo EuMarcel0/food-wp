@@ -2206,7 +2206,10 @@ export const memoryStore = {
     const order = orders.get(id);
     if (!order) return null;
     const nextCustomerName = input.customerName?.replace(/\s+/g, " ").trim().slice(0, 80);
-    if (nextCustomerName) order.customerName = nextCustomerName;
+    if (nextCustomerName && nextCustomerName !== (order.customerName ?? "").trim()) {
+      order.customerName = nextCustomerName;
+      this.updateCustomerName(order.customerId, nextCustomerName);
+    }
     if (order.status === "delivered") {
       throw new Error("Pedido entregue não pode ter os itens alterados.");
     }

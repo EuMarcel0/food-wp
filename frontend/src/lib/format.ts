@@ -43,12 +43,24 @@ export function baseUnitPriceCents(
 }
 
 export function crustLabel(
-  extras?: { groupId: string; options?: { name: string }[] }[] | null,
+  extras?:
+    | {
+        groupId: string;
+        skipped?: boolean;
+        options?: { name: string }[] | null;
+      }[]
+    | null,
 ) {
-  const names = (extras ?? [])
-    .filter((item) => item.groupId === CRUST_GROUP_ID)
-    .flatMap((item) => (item.options ?? []).map((option) => option.name).filter(Boolean));
-  if (!names.length) return null;
+  const crust = (extras ?? []).find((item) => item.groupId === CRUST_GROUP_ID);
+  if (!crust) return null;
+  const names = (crust.options ?? []).map((option) => option.name).filter(Boolean);
+  if (
+    crust.skipped ||
+    !names.length ||
+    (names.length === 1 && /^sem(\s+borda)?$/i.test(names[0]!))
+  ) {
+    return "Sem borda";
+  }
   return `Borda: ${names.join(", ")}`;
 }
 

@@ -54,6 +54,7 @@ import {
   addonOptionLabel,
   baseUnitPriceCents,
   crustLabel,
+  noCrustSelection,
   flavorShareLine,
   productBaseLabel,
   groupPrompt,
@@ -700,16 +701,7 @@ function setDraftCrust(drafts: CartSelection[], crust: Crust) {
 
 function skipCartCrust(extras: CartSelection[] = []) {
   const others = extras.filter(item => item.groupId !== CRUST_GROUP_ID);
-  return [
-    ...others,
-    {
-      groupId: CRUST_GROUP_ID,
-      groupName: "Borda",
-      priceMode: "addon" as const,
-      options: [] as { id: string; name: string; extraPrice: number }[],
-      skipped: true
-    }
-  ];
+  return [...others, noCrustSelection()];
 }
 
 function cartItemHasCrustDecision(item: CartItem) {
@@ -3591,7 +3583,12 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
 
   /** Nome para contato: se o cliente já informou em um pedido anterior, não pergunta de novo. */
   async function askContactOrFinish(ctx: ConversationContext = context) {
-    const known = ctx.contactName?.trim() || (await findLastContactName(customer.id));
+    const lastOrderName = await findLastContactName(customer.id);
+    // Se já houve nome em pedido, prefere o cadastro do cliente (pode ter sido corrigido no painel).
+    const fromCustomer = lastOrderName
+      ? customer.name?.replace(/\s+/g, " ").trim() || null
+      : null;
+    const known = ctx.contactName?.trim() || fromCustomer || lastOrderName;
     if (known) {
       ctx.contactName = known;
       await finishOrder(input.from, store, customer, ctx, persist);

@@ -4,6 +4,7 @@ import { chatJson } from "../lib/openai.js";
 import {
   ADDON_GROUP_ID,
   CRUST_GROUP_ID,
+  noCrustSelection,
   activeGroups,
   assembledName,
   cleanFlavorName,
@@ -332,6 +333,7 @@ function systemPrompt(catalogText: string) {
     "- Nunca coloque em not_found um sabor que existe no cardápio com grafia parecida. Use o código pN e o trecho do cliente em flavor_terms.",
     "- Borda só quando o cliente pedir (ex.: 'borda de catupiry', 'com borda', 'borda'). O tipo da borda (salgada/doce) SEGUE o tipo dos sabores da pizza: NUNCA pergunte 'borda salgada ou doce'.",
     "- 'Com borda'/'borda' sem sabor: use a BORDA PADRÃO do cardápio para o tipo da pizza (salgada→borda salgada, doce→borda doce), sem perguntar. Se não houver borda padrão, pergunte só o SABOR da borda (ex.: Catupiry ou Cheddar), nunca salgada/doce.",
+    "- 'sem borda' / 'sem recheio na borda': crust=null. O sistema marca Sem borda no pedido — não pergunte borda.",
     "- 'borda pra retirar' / 'com borda, vou buscar' = crust + fulfillment=pickup (retirada). Não é pergunta de tipo de borda.",
     "- Adicionais (aN) SÓ com pedido explícito: 'adicional de…', 'extra…', 'por cima', 'mais catupiry no adicional'. Sem essas palavras, NÃO use addons.",
     "- Lista 'pizza nordestina, queijo, borda catupiry' = sabores [nordestina, queijo/mussarela] + crust. NUNCA trate 'queijo'/'mussarela'/'calabresa' como adicional quando vier na lista de sabores.",
@@ -540,18 +542,29 @@ function pizzaKindFromItem(item: AiItem, catalog: Catalog) {
   return null;
 }
 
-/**
- * Cliente pediu borda sem sabor: aplica a padrão do tipo da pizza.
- * Nunca deixa a IA perguntar "borda salgada ou doce".
- */
-function applyDefaultCrust(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+function userSaidNoCrust(turns: AiTurn[]) {
   const said = normalize(
     turns
       .filter(turn => turn.role === "user")
       .map(turn => turn.content)
       .join("\n"),
   );
-  const wantsCrust = /\bborda\b/.test(said) && !/\bsem borda\b/.test(said);
+  return /\bsem borda\b/.test(said) || /\bsem recheio\b/.test(said);
+}
+
+/**
+ * Cliente pediu borda sem sabor: aplica a padrão do tipo da pizza.
+ * Nunca deixa a IA perguntar "borda salgada ou doce".
+ */
+function applyDefaultCrust(result: AiResult, catalog: Catalog, turns: AiTurn[]) {
+  if (userSaidNoCrust(turns)) return;
+  const said = normalize(
+    turns
+      .filter(turn => turn.role === "user")
+      .map(turn => turn.content)
+      .join("\n"),
+  );
+  const wantsCrust = /\bborda\b/.test(said);
   if (!wantsCrust) return;
 
   for (const item of result.items) {
@@ -887,6 +900,8 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       const crust = raw.crust ? catalog.crusts.get(raw.crust) : undefined;
       if (crust && base.crustsEnabled && (!base.pizzaKind || crust.pizzaKind === base.pizzaKind)) {
         extras.push(crustSelection(crust));
+      } else if (!raw.crust && base.crustsEnabled && userSaidNoCrust(turns)) {
+        extras.push(noCrustSelection());
       }
       const addons = raw.addons.map(key => catalog.addons.get(key)).filter((item): item is Addon => Boolean(item));
       if (addons.length && base.addonsEnabled) extras.push(addonSelection(addons));

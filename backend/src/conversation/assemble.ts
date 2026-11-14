@@ -176,6 +176,19 @@ function cheapestSum(group: ProductOptionGroup, count: number) {
 
 export const ADDON_GROUP_ID = "__addon__";
 export const CRUST_GROUP_ID = "__crust__";
+export const NO_CRUST_OPTION_ID = "__no_crust__";
+export const NO_CRUST_LABEL = "Sem borda";
+
+/** Marca explícita de “sem borda” (aparece no pedido, cupom e impressão). */
+export function noCrustSelection(): CartSelection {
+  return {
+    groupId: CRUST_GROUP_ID,
+    groupName: "Borda",
+    priceMode: "addon",
+    options: [{ id: NO_CRUST_OPTION_ID, name: NO_CRUST_LABEL, extraPrice: 0 }],
+    skipped: true,
+  };
+}
 
 function isCatalogExtraGroup(groupId: string) {
   return groupId === ADDON_GROUP_ID || groupId === CRUST_GROUP_ID;
@@ -478,10 +491,16 @@ export function baseUnitPriceCents(
 }
 
 export function crustLabel(selections?: CartSelection[]) {
-  const names = (selections ?? [])
-    .filter((item) => item.groupId === CRUST_GROUP_ID)
-    .flatMap((item) => item.options.map((option) => option.name));
-  if (!names.length) return null;
+  const crust = (selections ?? []).find((item) => item.groupId === CRUST_GROUP_ID);
+  if (!crust) return null;
+  const names = crust.options.map((option) => option.name).filter(Boolean);
+  if (
+    crust.skipped ||
+    !names.length ||
+    (names.length === 1 && /^sem(\s+borda)?$/i.test(names[0]!))
+  ) {
+    return NO_CRUST_LABEL;
+  }
   return `Borda: ${names.join(", ")}`;
 }
 

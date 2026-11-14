@@ -83,9 +83,14 @@ export function buildReceiptLayout(input) {
     const unit = baseUnitPriceCents(fullUnit, item.extras);
     rows.push(row("T", { bold: true, text: `${quantity}x ${item.name || "Item"}`, after: 2 }));
     rows.push(row("L", { text: `(un ${formatBRL(unit)})`, right: formatBRL(quantity * fullUnit), after: 2 }));
+    const crust = crustNames(item.extras);
     const extras = [
       item.notes ? `obs.: ${item.notes}` : "",
-      crustNames(item.extras).length ? `Borda: ${crustNames(item.extras).join(", ")}` : "",
+      crust.length
+        ? crust.length === 1 && /^sem(\s+borda)?$/i.test(crust[0])
+          ? "Sem borda"
+          : `Borda: ${crust.join(", ")}`
+        : "",
       addonNames(item.extras).length ? `Adicionais: ${addonNames(item.extras).join(", ")}` : "",
     ].filter(Boolean);
     for (const text of extras) rows.push(row("T", { size: 11, indent: 8, text, before: 2 }));

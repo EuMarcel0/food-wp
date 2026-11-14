@@ -174,9 +174,17 @@ export function baseUnitPriceCents(unitPriceCents, extras) {
 }
 
 export function crustNames(extras) {
-  return (extras ?? [])
-    .filter((item) => item.groupId === "__crust__")
-    .flatMap((item) => (item.options ?? []).map((opt) => opt.name).filter(Boolean));
+  const crust = (extras ?? []).find((item) => item.groupId === "__crust__");
+  if (!crust) return [];
+  const names = (crust.options ?? []).map((opt) => opt.name).filter(Boolean);
+  if (
+    crust.skipped ||
+    !names.length ||
+    (names.length === 1 && /^sem(\s+borda)?$/i.test(names[0]))
+  ) {
+    return ["Sem borda"];
+  }
+  return names;
 }
 
 /**
@@ -346,7 +354,11 @@ export function buildReceiptEscPos(input) {
     }
     const crust = crustNames(item.extras);
     if (crust.length) {
-      for (const row of wrap(`Borda: ${crust.join(", ")}`, columns)) emit(row);
+      const crustLine =
+        crust.length === 1 && /^sem(\s+borda)?$/i.test(crust[0])
+          ? "Sem borda"
+          : `Borda: ${crust.join(", ")}`;
+      for (const row of wrap(crustLine, columns)) emit(row);
     }
     const addons = addonNames(item.extras);
     if (addons.length) {
