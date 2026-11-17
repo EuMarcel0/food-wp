@@ -328,7 +328,7 @@ function systemPrompt(catalogText: string) {
     "- NUNCA monte UMA pizza com sabores salgados E doces juntos (ex.: meia calabresa meia chocolate). Se o cliente pedir isso, pergunte em 'question' quais sabores ficarão na pizza (só salgados ou só doces). Pode haver pizzas separadas: uma salgada e outra doce.",
     "- Respeite o limite de sabores do tamanho. Se o cliente passar do limite, pergunte em 'question'.",
     "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família', 'F - 12 Fatias', '12 fatias' = tamanho F). Se o tamanho já foi dito na conversa (ou na pergunta anterior do assistente), aplique em TODAS as pizzas sem size. Só deixe size=null e pergunte se realmente não houver tamanho.",
-    "- Nome da loja / 'casa das pizzas' NÃO é sabor. Ignore como sabor.",
+    "- Nome da loja em si não é sabor — EXCETO se existir no cardápio um SABOR com esse nome (ex.: pizza 'Casa das Pizzas'): aí use o código pN desse sabor. Só ignore quando for só menção à pizzaria sem sabor no cardápio.",
     "- Aceite erros de digitação e nomes aproximados (ex.: 'frango c/ catupiry' = sabor com frango e catupiry; 'coca zero 1l' = Coca-Cola Zero 1L; 'creme cheese' / 'creme chesse' = o sabor do cardápio).",
     "- Nunca coloque em not_found um sabor que existe no cardápio com grafia parecida. Use o código pN e o trecho do cliente em flavor_terms.",
     "- Borda só quando o cliente pedir (ex.: 'borda de catupiry', 'com borda', 'borda'). O tipo da borda (salgada/doce) SEGUE o tipo dos sabores da pizza: NUNCA pergunte 'borda salgada ou doce'.",
@@ -498,15 +498,25 @@ function applySizeFollowUp(result: AiResult, catalog: Catalog, turns: AiTurn[]) 
   for (const item of missing) item.size = fromHistory;
 }
 
+function looseName(value: string) {
+  return normalize(value).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function isStoreNameFlavor(term: string, storeName: string) {
-  const flavor = normalize(term).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-  const store = normalize(storeName).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const flavor = looseName(term);
+  const store = looseName(storeName);
   if (!flavor || !store) return false;
   if (flavor === store || store.includes(flavor) || flavor.includes(store)) return true;
   return /^(casa das pizzas|casa da pizza|pizzaria)$/.test(flavor);
 }
 
-/** Remove "sabor" que na verdade é o nome da loja (ex.: meia casa das pizzas). */
+/** Sabor do cardápio cujo nome é (quase) o da loja — ex.: pizza "Casa das Pizzas". */
+function isCatalogHouseFlavor(product: Product | undefined, storeName: string) {
+  if (!product) return false;
+  return isStoreNameFlavor(cleanFlavorName(product.name), storeName) || isStoreNameFlavor(product.name, storeName);
+}
+
+/** Remove menção à loja que não é sabor — mas mantém se o cardápio tem pizza com esse nome. */
 function dropStoreNameFlavors(result: AiResult, catalog: Catalog, storeName: string) {
   for (const item of result.items) {
     if (item.kind !== "pizza") continue;
@@ -515,7 +525,13 @@ function dropStoreNameFlavors(result: AiResult, catalog: Catalog, storeName: str
     item.flavors.forEach((key, index) => {
       const product = catalog.pizzas.get(key);
       const term = item.flavor_terms?.[index] ?? product?.name ?? key;
-      if (isStoreNameFlavor(term, storeName) || (product && isStoreNameFlavor(product.name, storeName))) return;
+      // Pizza da casa cadastrada com o nome da loja: é sabor de verdade.
+      if (isCatalogHouseFlavor(product, storeName)) {
+        keep.push(key);
+        keepTerms.push(item.flavor_terms?.[index] ?? "");
+        return;
+      }
+      if (isStoreNameFlavor(term, storeName)) return;
       keep.push(key);
       keepTerms.push(item.flavor_terms?.[index] ?? "");
     });
@@ -523,6 +539,83 @@ function dropStoreNameFlavors(result: AiResult, catalog: Catalog, storeName: str
     if (item.flavor_terms) item.flavor_terms = keepTerms;
   }
   result.items = result.items.filter(item => item.kind !== "pizza" || item.flavors.length > 0);
+}
+
+/**
+ * Cliente pediu o sabor homônimo da loja (ex.: "Casa das Pizzas") e a IA ignorou.
+ * Se houver exatamente um sabor no cardápio com esse nome, aplica.
+ */
+function rescueHouseFlavorFromTurns(
+  result: AiResult,
+  catalog: Catalog,
+  storeName: string,
+  turns: AiTurn[],
+) {
+  if (!storeName) return;
+  const house = [...catalog.pizzas.entries()].filter(([, product]) =>
+    isCatalogHouseFlavor(product, storeName),
+  );
+  if (house.length !== 1) return;
+  const [key, product] = house[0];
+  const houseLoose = looseName(cleanFlavorName(product.name));
+  const storeLoose = looseName(storeName);
+  const userText = looseName(
+    turns
+      .filter(turn => turn.role === "user")
+      .map(turn => turn.content)
+      .join("\n"),
+  );
+  const mentioned =
+    (houseLoose && userText.includes(houseLoose)) ||
+    (storeLoose && userText.includes(storeLoose)) ||
+    /\bcasa das pizzas\b/.test(userText) ||
+    /\bcasa da pizza\b/.test(userText);
+  if (!mentioned) return;
+
+  result.not_found = (result.not_found ?? []).filter(item => {
+    const loose = looseName(item);
+    return loose !== houseLoose && !isStoreNameFlavor(item, storeName);
+  });
+
+  const ensureHouseFlavor = () => {
+    if (result.items.some(item => item.kind === "pizza" && item.flavors.includes(key))) return;
+    const emptyPizza = result.items.find(item => item.kind === "pizza" && item.flavors.length === 0);
+    if (emptyPizza) {
+      emptyPizza.flavors = [key];
+      emptyPizza.flavor_terms = [cleanFlavorName(product.name)];
+      return;
+    }
+    const sizeFromItems = result.items.find(item => item.kind === "pizza" && item.size)?.size ?? null;
+    result.items.push({
+      kind: "pizza",
+      quantity: 1,
+      size: sizeFromItems,
+      flavors: [key],
+      flavor_terms: [cleanFlavorName(product.name)],
+      product: null,
+      options: [],
+      crust: null,
+      addons: [],
+      notes: null,
+    });
+  };
+  ensureHouseFlavor();
+
+  if (
+    result.question &&
+    result.items.some(item => item.kind === "pizza" && item.flavors.includes(key))
+  ) {
+    const q = normalize(result.question);
+    if (
+      /nao e um sabor|nao existe no cardapio|nao esta no cardapio|qual sabor/.test(q) &&
+      (q.includes(houseLoose) ||
+        q.includes(storeLoose) ||
+        /casa das pizzas/.test(q) ||
+        /qual sabor/.test(q))
+    ) {
+      result.question = null;
+    }
+  }
 }
 
 function defaultCrustKey(catalog: Catalog, kind: "salgada" | "doce" | null | undefined) {
@@ -656,9 +749,19 @@ type FlavorChoice = { term: string; products: Product[] };
 type FlavorResolution = { product: Product } | { choice: FlavorChoice };
 
 function flavorCandidates(term: string, catalog: Pick<Catalog, "pizzas">) {
+  const pizzas = [...catalog.pizzas.values()];
+  const looseTerm = looseName(term);
+  // Nome completo (ex.: "Casa das Pizzas") — antes de tirar stopwords ("das"/"pizzas").
+  if (looseTerm) {
+    const byFullName = pizzas.filter(product => {
+      const name = looseName(cleanFlavorName(product.name));
+      return name === looseTerm || looseName(product.name) === looseTerm;
+    });
+    if (byFullName.length) return byFullName;
+  }
+
   const tokens = termTokens(term);
   if (!tokens.length) return [] as Product[];
-  const pizzas = [...catalog.pizzas.values()];
   const phrase = ` ${tokens.join(" ")} `;
 
   const exact = pizzas.filter(product => {
@@ -1010,6 +1113,7 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   mergeSinglePizzaSplit(result, catalog, turns);
   reclassifyPizzaAddons(result, catalog, turns);
   rescueNotFoundFlavors(result, catalog);
+  rescueHouseFlavorFromTurns(result, catalog, storeName, turns);
   if (storeName) dropStoreNameFlavors(result, catalog, storeName);
   applySizeFollowUp(result, catalog, turns);
   applyDefaultCrust(result, catalog, turns);
