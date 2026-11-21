@@ -2188,6 +2188,43 @@ export async function updateCustomerName(customerId: string, name: string) {
   return mapCustomer(data as Record<string, unknown>);
 }
 
+/**
+ * Corrige o nome do cliente a partir da conversa: atualiza o cadastro e o
+ * contact_name dos pedidos em andamento (para aparecer em Pedidos).
+ */
+export async function renameCustomerFromConversation(
+  conversationId: string,
+  name: string,
+) {
+  const trimmed = name.replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!trimmed || trimmed.length < 2) {
+    throw new Error("Informe um nome válido.");
+  }
+  if (/\d/.test(trimmed) || !/^[\p{L}][\p{L}\s'.-]*$/u.test(trimmed)) {
+    throw new Error("Use apenas letras no nome.");
+  }
+
+  const conversation = await getConversationById(conversationId);
+  if (!conversation) return null;
+
+  const customer = await updateCustomerName(conversation.customerId, trimmed);
+  if (!customer) return null;
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    memoryStore.renameCustomerOpenOrders(conversation.customerId, trimmed);
+    return { customerName: trimmed, customerId: conversation.customerId };
+  }
+
+  await supabase
+    .from("orders")
+    .update({ contact_name: trimmed, updated_at: new Date().toISOString() })
+    .eq("customer_id", conversation.customerId)
+    .in("status", ["received", "accepted", "ready", "out_for_delivery"]);
+
+  return { customerName: trimmed, customerId: conversation.customerId };
+}
+
 function mapConversation(data: Record<string, unknown>): Conversation {
   return {
     id: String(data.id),

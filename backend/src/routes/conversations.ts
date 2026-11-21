@@ -8,6 +8,7 @@ import {
   listConversationMessages,
   listLiveConversations,
   listOpenConversationsForClose,
+  renameCustomerFromConversation,
   setConversationHandoff
 } from "../data/repository.js";
 import { getSupabase } from "../lib/supabase.js";
@@ -196,6 +197,23 @@ conversationsRouter.post("/:id/messages", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Falha ao enviar mensagem."
+    });
+  }
+});
+
+conversationsRouter.patch("/:id/customer-name", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const name = typeof req.body?.name === "string" ? req.body.name : "";
+    const updated = await renameCustomerFromConversation(id, name);
+    if (!updated) {
+      res.status(404).json({ error: "Conversa não encontrada." });
+      return;
+    }
+    res.json(updated);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao atualizar o nome.",
     });
   }
 });

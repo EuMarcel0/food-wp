@@ -1505,12 +1505,29 @@ async function askPayment(to: string, intro = "💳 Como deseja pagar?") {
   await sendList(to, intro, "Ver opções", [{ title: "Pagamento", rows }]);
 }
 
-async function askContactName(to: string) {
-  await sendText(to, "Informe seu nome para contato:");
+async function askContactName(to: string, opts?: { invalid?: boolean }) {
+  if (opts?.invalid) {
+    await sendText(
+      to,
+      "Ops! Não consegui identificar o seu nome. Por favor, digite apenas o seu *nome.*",
+    );
+    return;
+  }
+  await sendText(to, "Qual é o seu nome?");
 }
 
 function clipContactName(raw: string) {
   return raw.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+/** Aceita só nome (letras, espaços, hífen/apóstrofo) — rejeita números e lixo. */
+function isValidContactName(raw: string) {
+  const name = clipContactName(raw);
+  if (!name || name.length < 2) return false;
+  if (/\d/.test(name)) return false;
+  if (!/^[\p{L}][\p{L}\s'.-]*$/u.test(name)) return false;
+  const letters = name.replace(/[^\p{L}]/gu, "");
+  return letters.length >= 2;
 }
 
 function paymentKindAliases(kind: StorePaymentMethod["kind"]): string[] {
@@ -5305,9 +5322,13 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
   }
 
   if (state === "awaiting_contact_name") {
+    if (incoming.startsWith("pay:") || incoming.startsWith("fulfillment:")) {
+      await askContactName(input.from, { invalid: true });
+      return;
+    }
     const name = clipContactName(input.text);
-    if (!name || incoming.startsWith("pay:") || incoming.startsWith("fulfillment:")) {
-      await askContactName(input.from);
+    if (!isValidContactName(name)) {
+      await askContactName(input.from, { invalid: true });
       return;
     }
     context.contactName = name;

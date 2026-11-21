@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Avatar, Badge, Button, Checkbox, Dropdown, Empty, Input, Popover, Segmented, Spin, Tag } from "antd";
+import { Alert, Avatar, Badge, Button, Checkbox, Dropdown, Empty, Input, Modal, Popover, Segmented, Spin, Tag } from "antd";
 import {
   ArrowDownOutlined,
   ArrowLeftOutlined,
   CheckOutlined,
   CheckSquareOutlined,
   CloseCircleOutlined,
+  EditOutlined,
   MoreOutlined,
   RobotOutlined,
   SearchOutlined,
@@ -248,6 +249,8 @@ export function WhatsAppInbox({
   const [onlyHuman, setOnlyHuman] = useState(false);
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [readTick, setReadTick] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -683,6 +686,59 @@ export function WhatsAppInbox({
     }
   });
 
+  const renameMutation = useMutation({
+    mutationFn: ({ conversationId, name }: { conversationId: string; name: string }) =>
+      api.updateConversationCustomerName(conversationId, name),
+    onSuccess: async (result, variables) => {
+      const patchName = (list?: LiveConversation[]) =>
+        (list ?? []).map(item =>
+          item.id === variables.conversationId || item.customerId === result.customerId
+            ? { ...item, customerName: result.customerName }
+            : item,
+        );
+      queryClient.setQueriesData({ queryKey: queryKeys.conversations.live }, (old: unknown) => {
+        if (!old || typeof old !== "object") return old;
+        const pages = (old as { pages?: { items?: LiveConversation[] }[] }).pages;
+        if (!pages) return old;
+        return {
+          ...old,
+          pages: pages.map(page => ({ ...page, items: patchName(page.items) })),
+        };
+      });
+      queryClient.setQueriesData({ queryKey: queryKeys.conversations.history }, (old: unknown) => {
+        if (!old || typeof old !== "object") return old;
+        const pages = (old as { pages?: { items?: LiveConversation[] }[] }).pages;
+        if (!pages) return old;
+        return {
+          ...old,
+          pages: pages.map(page => ({ ...page, items: patchName(page.items) })),
+        };
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      setRenameOpen(false);
+      toast.success("Nome do cliente atualizado.");
+    },
+    onError: err => {
+      toast.error(err instanceof Error ? err.message : "Falha ao atualizar o nome.");
+    },
+  });
+
+  function openRename() {
+    if (!selected) return;
+    setRenameValue(selected.customerName?.trim() || "");
+    setRenameOpen(true);
+  }
+
+  function submitRename() {
+    if (!selectedId) return;
+    const name = renameValue.replace(/\s+/g, " ").trim();
+    if (!name) {
+      toast.error("Informe o nome do cliente.");
+      return;
+    }
+    renameMutation.mutate({ conversationId: selectedId, name });
+  }
+
   function keepComposerFocused() {
     const el = draftAreaRef.current;
     if (!el) return;
@@ -722,6 +778,7 @@ export function WhatsAppInbox({
   }
 
   return (
+    <>
     <div
       className={cn(
         "min-h-0 flex-1 overflow-hidden bg-food-surface",
@@ -1024,7 +1081,18 @@ export function WhatsAppInbox({
                   {(selected.customerName || selected.customerPhone || "?").slice(0, 1).toUpperCase()}
                 </Avatar>
                 <div className='min-w-0 flex-1'>
-                  <div className='truncate font-semibold text-food-text'>{customerLabel(selected)}</div>
+                  <div className='flex min-w-0 items-center gap-1'>
+                    <span className='truncate font-semibold text-food-text'>{customerLabel(selected)}</span>
+                    <Button
+                      type='text'
+                      size='small'
+                      className='!h-6 !w-6 shrink-0 !min-w-6 !p-0 text-food-muted hover:!text-food-accent'
+                      icon={<EditOutlined />}
+                      aria-label='Editar nome do cliente'
+                      title='Editar nome'
+                      onClick={openRename}
+                    />
+                  </div>
                   <div className='truncate text-xs text-food-muted'>{formatPhoneDisplay(selected.customerPhone)}</div>
                   {!readOnly && selected.handoffMode === "human" && selected.handoffBy?.trim() ? (
                     <div className='truncate text-[11px] text-food-muted'>Atendente: {selected.handoffBy.trim()}</div>
@@ -1513,5 +1581,30 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
         ) : null}
       </div>
     </div>
+
+    <Modal
+      title="Editar nome do cliente"
+      open={renameOpen}
+      onCancel={() => setRenameOpen(false)}
+      onOk={submitRename}
+      okText="Salvar"
+      cancelText="Cancelar"
+      confirmLoading={renameMutation.isPending}
+      destroyOnHidden
+      centered
+    >
+      <p className="mb-3 text-sm text-food-muted">
+        O nome corrigido fica salvo no cadastro do cliente e aparece nos pedidos em andamento.
+      </p>
+      <Input
+        value={renameValue}
+        maxLength={80}
+        placeholder="Nome do cliente"
+        autoFocus
+        onChange={event => setRenameValue(event.target.value)}
+        onPressEnter={submitRename}
+      />
+    </Modal>
+    </>
   );
 }

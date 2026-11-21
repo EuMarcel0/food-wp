@@ -474,6 +474,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text, by }),
     }),
+  updateConversationCustomerName: (id: string, name: string) =>
+    request<{ customerName: string; customerId: string }>(
+      `/api/conversations/${id}/customer-name`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      },
+    ),
   takeoverConversation: (id: string, by?: string) =>
     request<unknown>(`/api/conversations/${id}/takeover`, {
       method: "POST",

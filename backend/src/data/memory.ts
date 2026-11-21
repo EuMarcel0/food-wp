@@ -1028,6 +1028,17 @@ export const memoryStore = {
     return null;
   },
 
+  renameCustomerOpenOrders(customerId: string, name: string) {
+    const trimmed = name.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!trimmed) return;
+    const open = new Set(["received", "accepted", "ready", "out_for_delivery"]);
+    for (const order of orders.values()) {
+      if (order.customerId === customerId && open.has(order.status)) {
+        order.customerName = trimmed;
+      }
+    }
+  },
+
   findCustomerPhone(customerId: string) {
     for (const customer of customers.values()) {
       if (customer.id === customerId) return customer.waPhone;
