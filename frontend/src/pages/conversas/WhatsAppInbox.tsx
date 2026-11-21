@@ -1321,6 +1321,31 @@ export function WhatsAppInbox({
         )}
       </section>
     </div>
+
+    <Modal
+      title="Editar nome do cliente"
+      open={renameOpen}
+      onCancel={() => setRenameOpen(false)}
+      onOk={submitRename}
+      okText="Salvar"
+      cancelText="Cancelar"
+      confirmLoading={renameMutation.isPending}
+      destroyOnHidden
+      centered
+    >
+      <p className="mb-3 text-sm text-food-muted">
+        O nome corrigido fica salvo no cadastro do cliente e aparece nos pedidos em andamento.
+      </p>
+      <Input
+        value={renameValue}
+        maxLength={80}
+        placeholder="Nome do cliente"
+        autoFocus
+        onChange={event => setRenameValue(event.target.value)}
+        onPressEnter={submitRename}
+      />
+    </Modal>
+    </>
   );
 }
 
@@ -1581,30 +1606,5 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
         ) : null}
       </div>
     </div>
-
-    <Modal
-      title="Editar nome do cliente"
-      open={renameOpen}
-      onCancel={() => setRenameOpen(false)}
-      onOk={submitRename}
-      okText="Salvar"
-      cancelText="Cancelar"
-      confirmLoading={renameMutation.isPending}
-      destroyOnHidden
-      centered
-    >
-      <p className="mb-3 text-sm text-food-muted">
-        O nome corrigido fica salvo no cadastro do cliente e aparece nos pedidos em andamento.
-      </p>
-      <Input
-        value={renameValue}
-        maxLength={80}
-        placeholder="Nome do cliente"
-        autoFocus
-        onChange={event => setRenameValue(event.target.value)}
-        onPressEnter={submitRename}
-      />
-    </Modal>
-    </>
   );
 }
