@@ -920,6 +920,7 @@ catalogRouter.post("/products", async (req, res) => {
   const addonsEnabled = Boolean(req.body?.addonsEnabled);
   const crustsEnabled = Boolean(req.body?.crustsEnabled);
   const quantityEnabled = Boolean(req.body?.quantityEnabled);
+  const menuCode = parseProductMenuCode(req.body?.menuCode);
   const addonIds = parseAddonIds(req.body?.addonIds) ?? [];
   const optionGroups = parseOptionGroups(req.body?.optionGroups) ?? [];
 
@@ -954,6 +955,7 @@ catalogRouter.post("/products", async (req, res) => {
         active,
         customizable,
         pizzaKind: customizable ? pizzaKind : null,
+        menuCode: customizable ? menuCode : null,
         notesEnabled,
         addonsEnabled,
         crustsEnabled,
@@ -969,6 +971,15 @@ catalogRouter.post("/products", async (req, res) => {
   }
 });
 
+function parseProductMenuCode(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const value = Math.round(Number(raw));
+  if (!Number.isFinite(value) || value <= 0 || value > 999) {
+    throw new Error("Informe um código do cardápio válido (ex.: 1 a 28).");
+  }
+  return value;
+}
+
 function productPatch(body: Record<string, unknown>) {
   const patch: {
     categoryId?: string;
@@ -978,6 +989,7 @@ function productPatch(body: Record<string, unknown>) {
     active?: boolean;
     customizable?: boolean;
     pizzaKind?: PizzaKind | null;
+    menuCode?: number | null;
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
     crustsEnabled?: boolean;
@@ -1012,6 +1024,9 @@ function productPatch(body: Record<string, unknown>) {
   }
   if (body.pizzaKind !== undefined) {
     patch.pizzaKind = parsePizzaKind(body.pizzaKind) ?? null;
+  }
+  if (body.menuCode !== undefined) {
+    patch.menuCode = parseProductMenuCode(body.menuCode);
   }
   if (body.notesEnabled !== undefined) {
     patch.notesEnabled = Boolean(body.notesEnabled);

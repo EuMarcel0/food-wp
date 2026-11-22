@@ -213,6 +213,8 @@ export type Product = {
   active: boolean;
   customizable: boolean;
   pizzaKind: PizzaKind | null;
+  /** Nº do sabor no cardápio impresso (único na loja). */
+  menuCode: number | null;
   notesEnabled: boolean;
   addonsEnabled: boolean;
   crustsEnabled: boolean;

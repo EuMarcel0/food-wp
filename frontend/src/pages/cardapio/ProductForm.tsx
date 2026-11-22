@@ -115,6 +115,10 @@ export function ProductForm({
     active: product?.active ?? true,
     customizable: product?.customizable ?? false,
     pizzaKind: product?.customizable ? (product.pizzaKind ?? null) : null,
+    menuCode:
+      product?.customizable && product.menuCode != null
+        ? String(product.menuCode)
+        : "",
     notesEnabled: product?.notesEnabled ?? false,
     addonsEnabled: product?.addonsEnabled ?? false,
     crustsEnabled: product?.crustsEnabled ?? false,
@@ -278,29 +282,53 @@ export function ProductForm({
                           checked={Boolean(value)}
                           onChange={(checked) => {
                             setValue(checked);
-                            if (!checked) setFieldValue("pizzaKind", null);
+                            if (!checked) {
+                              setFieldValue("pizzaKind", null);
+                              setFieldValue("menuCode", "");
+                            }
                           }}
                         />
                       )}
                     </FormControl>
                   </label>
                   {values.customizable ? (
-                    <FormControl name="pizzaKind" label="Tipo da pizza">
-                      {({ value, setValue, setTouched, invalid }) => (
-                        <Radio.Group
-                          value={value ?? undefined}
-                          onChange={(event) => setValue(event.target.value)}
-                          onBlur={setTouched}
-                          optionType="button"
-                          buttonStyle="solid"
-                          className={invalid ? "ring-2 ring-red-400 rounded-md" : undefined}
-                          options={[
-                            { label: "Salgada", value: "salgada" },
-                            { label: "Doce", value: "doce" },
-                          ]}
-                        />
-                      )}
-                    </FormControl>
+                    <>
+                      <FormControl name="pizzaKind" label="Tipo da pizza">
+                        {({ value, setValue, setTouched, invalid }) => (
+                          <Radio.Group
+                            value={value ?? undefined}
+                            onChange={(event) => setValue(event.target.value)}
+                            onBlur={setTouched}
+                            optionType="button"
+                            buttonStyle="solid"
+                            className={invalid ? "ring-2 ring-red-400 rounded-md" : undefined}
+                            options={[
+                              { label: "Salgada", value: "salgada" },
+                              { label: "Doce", value: "doce" },
+                            ]}
+                          />
+                        )}
+                      </FormControl>
+                      <div>
+                        <FormControl name="menuCode" label="Código do cardápio">
+                          {({ value, setValue, setTouched, invalid }) => (
+                            <Input
+                              value={value ?? ""}
+                              inputMode="numeric"
+                              placeholder="Ex.: 5"
+                              status={invalid ? "error" : undefined}
+                              onBlur={setTouched}
+                              onChange={(event) =>
+                                setValue(event.target.value.replace(/\D/g, "").slice(0, 3))
+                              }
+                            />
+                          )}
+                        </FormControl>
+                        <p className={`${formHint} -mt-2`}>
+                          Número único no cardápio (ex.: 05, 27). No WhatsApp o cliente pode pedir só o número.
+                        </p>
+                      </div>
+                    </>
                   ) : null}
                   <label className={formToggle}>
                     <div>
@@ -492,6 +520,13 @@ export function toProductPayload(values: ProductValues) {
       return values.pizzaKind === "doce" || values.pizzaKind === "salgada"
         ? values.pizzaKind
         : null;
+    })(),
+    menuCode: ((): number | null => {
+      if (!values.customizable) return null;
+      const text = String(values.menuCode ?? "").trim();
+      if (!text) return null;
+      const parsed = Number(text);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
     })(),
     notesEnabled: Boolean(values.notesEnabled),
     addonsEnabled: Boolean(values.addonsEnabled),

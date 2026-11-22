@@ -54,6 +54,7 @@ import {
   addonOptionLabel,
   baseUnitPriceCents,
   crustLabel,
+  menuFlavorLabel,
   noCrustSelection,
   flavorShareLine,
   productBaseLabel,
@@ -2091,9 +2092,10 @@ async function showFlavorList(
   const rows: { id: string; title: string; description?: string }[] = page.map(pizza => {
     const detail = pizza.description?.trim();
     const description = detail && detail.toLowerCase() !== "null" ? detail.slice(0, 72) : undefined;
+    const label = menuFlavorLabel(pizza);
     return {
       id: `flavor:${pizza.id}`,
-      title: pizza.name.slice(0, 24),
+      title: label.slice(0, 24),
       ...(description ? { description } : {})
     };
   });
@@ -4445,7 +4447,13 @@ export async function handleIncomingMessage(input: IncomingMessageInput) {
       if (group && usesCatalogFlavors(group) && !option) {
         const pizza = (await pizzaFlavorChoices(product.pizzaKind, [product.id])).find(item => item.id === optionId);
         if (pizza) {
-          option = { id: pizza.id, name: pizza.name, extraPrice: 0, sortOrder: 0, active: true };
+          option = {
+            id: pizza.id,
+            name: menuFlavorLabel(pizza),
+            extraPrice: 0,
+            sortOrder: 0,
+            active: true,
+          };
         }
       }
 

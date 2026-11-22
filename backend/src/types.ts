@@ -309,6 +309,8 @@ export type Product = {
   active: boolean;
   customizable: boolean;
   pizzaKind: PizzaKind | null;
+  /** Nº do sabor no cardápio impresso (único na loja). Ex.: 5 → pedido "pizza 05". */
+  menuCode: number | null;
   notesEnabled: boolean;
   addonsEnabled: boolean;
   crustsEnabled: boolean;

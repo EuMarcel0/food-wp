@@ -309,6 +309,7 @@ export const api = {
     active: boolean;
     customizable: boolean;
     pizzaKind: Product["pizzaKind"];
+    menuCode: Product["menuCode"];
     notesEnabled: boolean;
     addonsEnabled: boolean;
     crustsEnabled: boolean;
@@ -335,6 +336,7 @@ export const api = {
       active: boolean;
       customizable: boolean;
       pizzaKind: Product["pizzaKind"];
+      menuCode: Product["menuCode"];
       notesEnabled: boolean;
       addonsEnabled: boolean;
       crustsEnabled: boolean;

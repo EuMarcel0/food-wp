@@ -47,7 +47,9 @@ export function ProductCard({
             ) : null}
           </div>
           <h4 className="m-0 truncate text-[15px] font-bold leading-tight tracking-tight text-food-text">
-            {product.name}
+            {product.menuCode != null && product.menuCode > 0
+              ? `${String(product.menuCode).padStart(2, "0")} · ${product.name}`
+              : product.name}
           </h4>
           <strong className={cn(entityPrice, "!mt-0.5 !text-sm")}>
             {catalogPriceLabel(product)}

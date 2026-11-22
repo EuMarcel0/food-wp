@@ -9,6 +9,7 @@ import {
   assembledName,
   cleanFlavorName,
   isSizeGroup,
+  menuFlavorLabel,
   sizePrice,
   unitPriceCents,
 } from "./assemble.js";
@@ -123,10 +124,14 @@ async function buildCatalog(opts?: { onlyProducts?: (product: Product) => boolea
       const key = `p${index + 1}`;
       pizzas.set(key, product);
       const description = product.description?.trim();
+      const code =
+        product.menuCode != null && product.menuCode > 0
+          ? `nº ${String(product.menuCode).padStart(2, "0")}`
+          : null;
       lines.push(
         `${key}: ${product.name}${product.pizzaKind ? ` (${product.pizzaKind})` : ""}${
-          description && description.toLowerCase() !== "null" ? ` — ${description.slice(0, 140)}` : ""
-        }`,
+          code ? ` · ${code}` : ""
+        }${description && description.toLowerCase() !== "null" ? ` — ${description.slice(0, 140)}` : ""}`,
       );
     });
 
@@ -325,7 +330,9 @@ function systemPrompt(catalogText: string) {
     "Retorne SEMPRE o pedido COMPLETO (todos os itens pedidos até agora na conversa), aplicando correções que o cliente fizer.",
     "Regras:",
     "- Pizza: kind=pizza, size=código sN, flavors=lista de pN. 'meia', 'metade', '1/2', 'meio a meio' = 2 sabores; '1/3' = 3 sabores.",
-    "- NUNCA monte UMA pizza com sabores salgados E doces juntos (ex.: meia calabresa meia chocolate). Se o cliente pedir isso, pergunte em 'question' quais sabores ficarão na pizza (só salgados ou só doces). Pode haver pizzas separadas: uma salgada e outra doce.",
+    "- Número do cardápio (nº no texto do sabor): '12', '01', 'pizza 12', 'nº 28', 'sabor 05', '12 e 15', '12/15', 'metade 01 e metade 05', '12 e calabresa' → use o pN cujo nº corresponde. Aceite zero à esquerda (01=1).",
+    "- Se o cliente citar um número que NÃO existe no cardápio, coloque o número em not_found (ex.: '99').",
+    "- NUNCA monte UMA pizza com sabores salgados E doces juntos (ex.: meia calabresa meia chocolate, 05 e 28). Se o cliente pedir isso, pergunte em 'question' que não dá para misturar salgada e doce na mesma pizza — peça só salgados, só doces, ou duas pizzas separadas.",
     "- Respeite o limite de sabores do tamanho. Se o cliente passar do limite, pergunte em 'question'.",
     "- Tamanho: associe apelidos pela letra/nome do tamanho: P = pequena/broto, M = média, G = grande, F = família/gigante (ex.: 'uma família', 'F - 12 Fatias', '12 fatias' = tamanho F). Se o tamanho já foi dito na conversa (ou na pergunta anterior do assistente), aplique em TODAS as pizzas sem size. Só deixe size=null e pergunte se realmente não houver tamanho.",
     "- Nome da loja em si não é sabor — EXCETO se existir no cardápio um SABOR com esse nome (ex.: pizza 'Casa das Pizzas'): aí use o código pN desse sabor. Só ignore quando for só menção à pizzaria sem sabor no cardápio.",
@@ -748,8 +755,40 @@ type FlavorChoice = { term: string; products: Product[] };
 
 type FlavorResolution = { product: Product } | { choice: FlavorChoice };
 
+/** Extrai nº do cardápio: "12", "01", "pizza 12", "nº 28", "sabor 05". */
+function parseMenuCodeTerm(term: string): number | null {
+  const text = normalize(term)
+    .replace(/[º°]/g, " ")
+    .replace(/[^a-z0-9\s/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+  const prefixed = text.match(
+    /^(?:pizza|sabor|n|no|nr|num|numero)\s*0*([1-9]\d{0,2})$/,
+  );
+  if (prefixed) return Number(prefixed[1]);
+  const alone = text.match(/^0*([1-9]\d{0,2})$/);
+  if (alone) return Number(alone[1]);
+  return null;
+}
+
+function findPizzaByMenuCode(code: number, catalog: Pick<Catalog, "pizzas">) {
+  return [...catalog.pizzas.values()].find(product => product.menuCode === code) ?? null;
+}
+
+function pizzaKeyForProduct(product: Product, catalog: Catalog) {
+  return [...catalog.pizzas.entries()].find(([, item]) => item.id === product.id)?.[0] ?? null;
+}
+
 function flavorCandidates(term: string, catalog: Pick<Catalog, "pizzas">) {
   const pizzas = [...catalog.pizzas.values()];
+  const menuCode = parseMenuCodeTerm(term);
+  if (menuCode != null) {
+    const byCode = findPizzaByMenuCode(menuCode, catalog);
+    if (byCode) return [byCode];
+    return [] as Product[];
+  }
+
   const looseTerm = looseName(term);
   // Nome completo (ex.: "Casa das Pizzas") — antes de tirar stopwords ("das"/"pizzas").
   if (looseTerm) {
@@ -876,7 +915,12 @@ function rescueNotFoundFlavors(result: AiResult, catalog: Catalog) {
     if (!term) continue;
     const matches = flavorCandidates(term, catalog);
     if (matches.length !== 1) {
-      kept.push(term);
+      const code = parseMenuCodeTerm(term);
+      if (code != null) {
+        kept.push(`código ${String(code).padStart(2, "0")}`);
+      } else {
+        kept.push(term);
+      }
       continue;
     }
     const entry = [...catalog.pizzas.entries()].find(([, product]) => product.id === matches[0].id);
@@ -900,6 +944,34 @@ function rescueNotFoundFlavors(result: AiResult, catalog: Catalog) {
     });
   }
   result.not_found = kept;
+}
+
+/** Troca flavor_terms numéricos (ou pN errado) pelo pN do menu_code. */
+function resolveMenuCodeFlavors(result: AiResult, catalog: Catalog) {
+  for (const item of result.items) {
+    if (item.kind !== "pizza") continue;
+    const nextFlavors: string[] = [];
+    const nextTerms: string[] = [];
+    item.flavors.forEach((key, index) => {
+      const term = item.flavor_terms?.[index] ?? "";
+      const code = parseMenuCodeTerm(term) ?? parseMenuCodeTerm(key);
+      if (code != null) {
+        const product = findPizzaByMenuCode(code, catalog);
+        const mapped = product ? pizzaKeyForProduct(product, catalog) : null;
+        if (mapped) {
+          nextFlavors.push(mapped);
+          nextTerms.push(term || String(code).padStart(2, "0"));
+          return;
+        }
+      }
+      if (catalog.pizzas.has(key)) {
+        nextFlavors.push(key);
+        nextTerms.push(term);
+      }
+    });
+    item.flavors = nextFlavors;
+    if (item.flavor_terms) item.flavor_terms = nextTerms;
+  }
 }
 
 const PIZZA_SIZE_WORD = /\b(familias?|grandes?|gigantes?|medias?|pequenas?|brotos?)\b/g;
@@ -966,10 +1038,10 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       if (!flavors.length) continue;
       const kinds = [...new Set(flavors.map(item => item.pizzaKind).filter(Boolean))];
       if (kinds.length > 1) {
-        const salty = flavors.filter(item => item.pizzaKind === "salgada").map(item => cleanFlavorName(item.name));
-        const sweet = flavors.filter(item => item.pizzaKind === "doce").map(item => cleanFlavorName(item.name));
+        const salty = flavors.filter(item => item.pizzaKind === "salgada").map(item => menuFlavorLabel(item));
+        const sweet = flavors.filter(item => item.pizzaKind === "doce").map(item => menuFlavorLabel(item));
         problems.push(
-          `Não dá para fazer *meia a meia* misturando *salgada* e *doce* na mesma pizza. Quais sabores ficam nela?\nSalgados: *${salty.join(", ") || "—"}*\nDoces: *${sweet.join(", ") || "—"}*`,
+          `Não é possível combinar sabor *salgado* e *doce* na mesma pizza. Escolha sabores da mesma categoria ou peça *duas pizzas* separadas.\nSalgados: *${salty.join(", ") || "—"}*\nDoces: *${sweet.join(", ") || "—"}*`,
         );
         continue;
       }
@@ -996,7 +1068,11 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
           groupName: group.name,
           priceMode: group.priceMode,
           basePrice: sizePrice(base, group),
-          options: flavors.slice(1).map(item => ({ id: item.id, name: item.name, extraPrice: 0 })),
+          options: flavors.slice(1).map(item => ({
+            id: item.id,
+            name: menuFlavorLabel(item),
+            extraPrice: 0,
+          })),
           ...(flavors.length === 1 ? { skipped: true } : {}),
         },
       ];
@@ -1012,7 +1088,7 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       items.push({
         productId: base.id,
         name: assembledName(base, extras),
-        catalogName: base.name,
+        catalogName: menuFlavorLabel(base),
         quantity,
         unitPriceCents: unitPriceCents(base, extras),
         extras,
@@ -1112,13 +1188,27 @@ export async function interpretOrder(turns: AiTurn[]): Promise<AiOrderOutcome> {
   applySizeFollowUp(result, catalog, turns);
   mergeSinglePizzaSplit(result, catalog, turns);
   reclassifyPizzaAddons(result, catalog, turns);
+  resolveMenuCodeFlavors(result, catalog);
   rescueNotFoundFlavors(result, catalog);
+  resolveMenuCodeFlavors(result, catalog);
   rescueHouseFlavorFromTurns(result, catalog, storeName, turns);
   if (storeName) dropStoreNameFlavors(result, catalog, storeName);
   applySizeFollowUp(result, catalog, turns);
   applyDefaultCrust(result, catalog, turns);
   const { items, problems, choices } = toCartItems(result, catalog, turns);
-  const notFound = (result.not_found ?? []).map(item => item.trim()).filter(Boolean).slice(0, 5);
+  const codedNotFound = (result.not_found ?? [])
+    .map(item => item.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const notFound = codedNotFound.map(item => {
+    if (/^código\s+\d+/i.test(item) || parseMenuCodeTerm(item) != null) {
+      const code = parseMenuCodeTerm(item.replace(/^código\s+/i, "")) ?? parseMenuCodeTerm(item);
+      if (code != null) {
+        return `${String(code).padStart(2, "0")} (código inexistente — use um nº do cardápio ou o nome do sabor)`;
+      }
+    }
+    return item;
+  });
   const question =
     flavorChoiceQuestion(choices[0]) ?? problems[0] ?? sanitizeAiQuestion(result.question);
   const address = result.address?.replace(/\s+/g, " ").trim().slice(0, 300);

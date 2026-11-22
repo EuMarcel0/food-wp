@@ -90,6 +90,7 @@ const products: Product[] = [
     active: true,
     customizable: false,
     pizzaKind: null,
+    menuCode: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -109,6 +110,7 @@ const products: Product[] = [
     active: true,
     customizable: false,
     pizzaKind: null,
+    menuCode: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -128,6 +130,7 @@ const products: Product[] = [
     active: true,
     customizable: false,
     pizzaKind: null,
+    menuCode: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -147,6 +150,7 @@ const products: Product[] = [
     active: true,
     customizable: false,
     pizzaKind: null,
+    menuCode: null,
     notesEnabled: false,
     addonsEnabled: false,
     crustsEnabled: false,
@@ -858,6 +862,20 @@ export const memoryStore = {
     return product;
   },
 
+  assertUniqueMenuCode(menuCode: number | null, excludeProductId?: string) {
+    if (menuCode == null) return;
+    const clash = products.find(
+      (item) =>
+        item.menuCode === menuCode &&
+        (!excludeProductId || item.id !== excludeProductId),
+    );
+    if (clash) {
+      throw new Error(
+        `O código *${String(menuCode).padStart(2, "0")}* já está em uso em *${clash.name}*.`,
+      );
+    }
+  },
+
   createProduct(input: {
     categoryId: string;
     name: string;
@@ -866,6 +884,7 @@ export const memoryStore = {
     active: boolean;
     customizable?: boolean;
     pizzaKind?: PizzaKind | null;
+    menuCode?: number | null;
     notesEnabled?: boolean;
     addonsEnabled?: boolean;
     crustsEnabled?: boolean;
@@ -875,6 +894,12 @@ export const memoryStore = {
   }) {
     const category = categories.find((item) => item.id === input.categoryId);
     const customizable = Boolean(input.customizable);
+    const menuCode = customizable
+      ? (input.menuCode != null && Number(input.menuCode) > 0
+          ? Math.round(Number(input.menuCode))
+          : null)
+      : null;
+    this.assertUniqueMenuCode(menuCode);
     const sortOrder =
       products
         .filter((item) => item.categoryId === input.categoryId)
@@ -891,6 +916,7 @@ export const memoryStore = {
       active: input.active,
       customizable,
       pizzaKind: customizable ? (input.pizzaKind ?? null) : null,
+      menuCode,
       notesEnabled: Boolean(input.notesEnabled),
       addonsEnabled: Boolean(input.addonsEnabled),
       crustsEnabled: Boolean(input.crustsEnabled),
@@ -937,6 +963,7 @@ export const memoryStore = {
       active: boolean;
       customizable: boolean;
       pizzaKind: PizzaKind | null;
+      menuCode: number | null;
       notesEnabled: boolean;
       addonsEnabled: boolean;
       crustsEnabled: boolean;
@@ -959,7 +986,18 @@ export const memoryStore = {
     if (input.active !== undefined) product.active = input.active;
     if (input.customizable !== undefined) product.customizable = input.customizable;
     if (input.pizzaKind !== undefined) product.pizzaKind = input.pizzaKind;
-    if (input.customizable === false) product.pizzaKind = null;
+    if (input.customizable === false) {
+      product.pizzaKind = null;
+      product.menuCode = null;
+    }
+    if (input.menuCode !== undefined && input.customizable !== false) {
+      const nextCode =
+        input.menuCode != null && Number(input.menuCode) > 0
+          ? Math.round(Number(input.menuCode))
+          : null;
+      this.assertUniqueMenuCode(nextCode, id);
+      product.menuCode = nextCode;
+    }
     if (input.notesEnabled !== undefined) product.notesEnabled = input.notesEnabled;
     if (input.addonsEnabled !== undefined) product.addonsEnabled = input.addonsEnabled;
     if (input.crustsEnabled !== undefined) product.crustsEnabled = input.crustsEnabled;

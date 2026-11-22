@@ -297,6 +297,7 @@ function mapProduct(row: Record<string, unknown>): Product {
     active: Boolean(row.active ?? true),
     customizable: Boolean(row.customizable ?? false),
     pizzaKind: parsePizzaKind(row.pizza_kind),
+    menuCode: parseMenuCodeValue(row.menu_code),
     notesEnabled: Boolean(row.notes_enabled ?? false),
     addonsEnabled: Boolean(row.addons_enabled ?? false),
     crustsEnabled: Boolean(row.crusts_enabled ?? false),
@@ -323,6 +324,47 @@ function compareProductsByOrder(a: Product, b: Product) {
 
 function parsePizzaKind(raw: unknown): PizzaKind | null {
   return raw === "salgada" || raw === "doce" ? raw : null;
+}
+
+function parseMenuCodeValue(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const value = Math.round(Number(raw));
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+function missingMenuCodeColumn(message?: string) {
+  return Boolean(message?.includes("menu_code"));
+}
+
+async function assertUniqueMenuCode(
+  storeId: string,
+  menuCode: number | null,
+  excludeProductId?: string,
+) {
+  if (menuCode == null) return;
+  const supabase = getSupabase();
+  if (!supabase) {
+    memoryStore.assertUniqueMenuCode(menuCode, excludeProductId);
+    return;
+  }
+  let query = supabase
+    .from("products")
+    .select("id, name")
+    .eq("store_id", storeId)
+    .eq("menu_code", menuCode)
+    .limit(1);
+  if (excludeProductId) query = query.neq("id", excludeProductId);
+  const { data, error } = await query.maybeSingle();
+  if (error && missingMenuCodeColumn(error.message)) {
+    throw new Error("Rode a migration 058_product_menu_code.sql no Supabase.");
+  }
+  if (data) {
+    const other = String((data as { name?: string }).name ?? "outro item");
+    throw new Error(
+      `O código *${String(menuCode).padStart(2, "0")}* já está em uso em *${other}*.`,
+    );
+  }
 }
 
 function missingPizzaKindColumn(message?: string) {
@@ -1810,6 +1852,7 @@ export async function createProduct(input: {
   active: boolean;
   customizable?: boolean;
   pizzaKind?: PizzaKind | null;
+  menuCode?: number | null;
   notesEnabled?: boolean;
   addonsEnabled?: boolean;
   crustsEnabled?: boolean;
@@ -1822,6 +1865,8 @@ export async function createProduct(input: {
 
   const store = await getStore();
   const customizable = Boolean(input.customizable);
+  const menuCode = customizable ? parseMenuCodeValue(input.menuCode) : null;
+  await assertUniqueMenuCode(store.id, menuCode);
 
   const { data: lastInCategory } = await supabase
     .from("products")
@@ -1844,6 +1889,7 @@ export async function createProduct(input: {
       active: input.active,
       customizable,
       pizza_kind: customizable ? (input.pizzaKind ?? null) : null,
+      menu_code: menuCode,
       notes_enabled: Boolean(input.notesEnabled),
       addons_enabled: Boolean(input.addonsEnabled),
       crusts_enabled: Boolean(input.crustsEnabled),
@@ -1856,6 +1902,8 @@ export async function createProduct(input: {
     throw new Error(
       missingProductSortOrderColumn(error?.message)
         ? "Rode a migration 049_product_sort_order.sql no Supabase."
+        : missingMenuCodeColumn(error?.message)
+        ? "Rode a migration 058_product_menu_code.sql no Supabase."
         : missingPizzaKindColumn(error?.message)
         ? "Rode a migration 028_pizza_kind.sql no Supabase."
         : missingCrustsTable(error?.message)
@@ -1883,6 +1931,7 @@ export async function updateProduct(
     active: boolean;
     customizable: boolean;
     pizzaKind: PizzaKind | null;
+    menuCode: number | null;
     notesEnabled: boolean;
     addonsEnabled: boolean;
     crustsEnabled: boolean;
@@ -1902,7 +1951,13 @@ export async function updateProduct(
   if (input.active !== undefined) payload.active = input.active;
   if (input.customizable !== undefined) payload.customizable = input.customizable;
   if (input.pizzaKind !== undefined) payload.pizza_kind = input.pizzaKind;
-  if (input.customizable === false) payload.pizza_kind = null;
+  if (input.customizable === false) {
+    payload.pizza_kind = null;
+    payload.menu_code = null;
+  }
+  if (input.menuCode !== undefined && input.customizable !== false) {
+    payload.menu_code = parseMenuCodeValue(input.menuCode);
+  }
   if (input.notesEnabled !== undefined) payload.notes_enabled = input.notesEnabled;
   if (input.addonsEnabled !== undefined) payload.addons_enabled = input.addonsEnabled;
   if (input.crustsEnabled !== undefined) payload.crusts_enabled = input.crustsEnabled;
@@ -1911,8 +1966,19 @@ export async function updateProduct(
   }
 
   if (Object.keys(payload).length) {
+    if (payload.menu_code !== undefined) {
+      const store = await getStore();
+      await assertUniqueMenuCode(
+        store.id,
+        parseMenuCodeValue(payload.menu_code),
+        id,
+      );
+    }
     const { error } = await supabase.from("products").update(payload).eq("id", id);
     if (error) {
+      if (missingMenuCodeColumn(error.message)) {
+        throw new Error("Rode a migration 058_product_menu_code.sql no Supabase.");
+      }
       if (missingPizzaKindColumn(error.message)) {
         throw new Error("Rode a migration 028_pizza_kind.sql no Supabase.");
       }

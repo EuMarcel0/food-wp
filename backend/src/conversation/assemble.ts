@@ -335,6 +335,14 @@ export function cleanFlavorName(name: string) {
   return cleaned || name.trim();
 }
 
+/** Ex.: "27 - ROMEU E JULIETA" quando o produto tem menuCode. */
+export function menuFlavorLabel(product: Pick<Product, "name" | "menuCode">) {
+  const name = cleanFlavorName(product.name);
+  const code = product.menuCode;
+  if (code == null || !Number.isFinite(code) || code <= 0) return name;
+  return `${String(Math.round(code)).padStart(2, "0")} - ${name}`;
+}
+
 /** "Pizza Cangaceiro" → "Pizza"; demais produtos mantêm o nome. */
 export function productBaseLabel(productName: string) {
   if (/^pizza(?:\s+(?:salgada|doce))?(\s|$)/i.test(productName.trim())) {
@@ -440,7 +448,7 @@ export function assembledParts(
     [kind, sizeName].filter(Boolean).join(" ").trim() || product.name.trim();
   const flavors = formatFlavorShares(
     usedCatalogFlavors
-      ? resolveFlavorShareNames(product.name, flavorNames)
+      ? resolveFlavorShareNames(menuFlavorLabel(product), flavorNames)
       : flavorNames,
   );
 

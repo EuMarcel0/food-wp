@@ -86,6 +86,23 @@ export const productSchema = Yup.object({
           .required("Informe se é doce ou salgada"),
       otherwise: (schema) => schema.nullable().notRequired(),
     }),
+  menuCode: Yup.string()
+    .default("")
+    .when("customizable", {
+      is: true,
+      then: (schema) =>
+        schema.test(
+          "menu-code",
+          "Informe um número válido (ex.: 1 a 28)",
+          (value) => {
+            const text = String(value ?? "").trim();
+            if (!text) return true;
+            const parsed = Number(text);
+            return Number.isInteger(parsed) && parsed > 0 && parsed <= 999;
+          },
+        ),
+      otherwise: (schema) => schema.default(""),
+    }),
   notesEnabled: Yup.boolean().default(false),
   addonsEnabled: Yup.boolean().default(false),
   crustsEnabled: Yup.boolean().default(false),
