@@ -313,7 +313,7 @@ export function ProductForm({
                         <FormControl name="menuCode" label="Código do cardápio">
                           {({ value, setValue, setTouched, invalid }) => (
                             <Input
-                              value={value ?? ""}
+                              value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
                               inputMode="numeric"
                               placeholder="Ex.: 5"
                               status={invalid ? "error" : undefined}
