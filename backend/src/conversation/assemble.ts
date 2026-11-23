@@ -331,11 +331,16 @@ export function cleanFlavorName(name: string) {
     .replace(/^pizza\s+salgada\s+/i, "")
     .replace(/^pizza\s+doce\s+/i, "")
     .replace(/^pizza\s+/i, "")
+    // Remove prefixo de código do cardápio se já veio colado no nome.
+    .replace(/^\d{1,3}\s*[-–./]\s*/, "")
     .trim();
   return cleaned || name.trim();
 }
 
-/** Ex.: "27 - ROMEU E JULIETA" quando o produto tem menuCode. */
+/**
+ * Rótulo interno/admin com nº do cardápio. Não usar em mensagens ao cliente.
+ * Ex.: "27 - ROMEU E JULIETA"
+ */
 export function menuFlavorLabel(product: Pick<Product, "name" | "menuCode">) {
   const name = cleanFlavorName(product.name);
   const code = product.menuCode;
@@ -448,8 +453,8 @@ export function assembledParts(
     [kind, sizeName].filter(Boolean).join(" ").trim() || product.name.trim();
   const flavors = formatFlavorShares(
     usedCatalogFlavors
-      ? resolveFlavorShareNames(menuFlavorLabel(product), flavorNames)
-      : flavorNames,
+      ? resolveFlavorShareNames(cleanFlavorName(product.name), flavorNames.map(cleanFlavorName))
+      : flavorNames.map(cleanFlavorName),
   );
 
   return { title, flavors, extras: otherParts };

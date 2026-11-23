@@ -9,7 +9,6 @@ import {
   assembledName,
   cleanFlavorName,
   isSizeGroup,
-  menuFlavorLabel,
   sizePrice,
   unitPriceCents,
 } from "./assemble.js";
@@ -126,7 +125,7 @@ async function buildCatalog(opts?: { onlyProducts?: (product: Product) => boolea
       const description = product.description?.trim();
       const code =
         product.menuCode != null && product.menuCode > 0
-          ? `nº ${String(product.menuCode).padStart(2, "0")}`
+          ? `cardápio#${String(product.menuCode).padStart(2, "0")}`
           : null;
       lines.push(
         `${key}: ${product.name}${product.pizzaKind ? ` (${product.pizzaKind})` : ""}${
@@ -330,7 +329,9 @@ function systemPrompt(catalogText: string) {
     "Retorne SEMPRE o pedido COMPLETO (todos os itens pedidos até agora na conversa), aplicando correções que o cliente fizer.",
     "Regras:",
     "- Pizza: kind=pizza, size=código sN, flavors=lista de pN. 'meia', 'metade', '1/2', 'meio a meio' = 2 sabores; '1/3' = 3 sabores.",
-    "- Número do cardápio (nº no texto do sabor): '12', '01', 'pizza 12', 'nº 28', 'sabor 05', '12 e 15', '12/15', 'metade 01 e metade 05', '12 e calabresa' → use o pN cujo nº corresponde. Aceite zero à esquerda (01=1).",
+    "- Número do cardápio: o campo cardápio#NN no sabor é o código impresso. NUNCA use o índice pN como se fosse o número (p14 ≠ cardápio#14). Escolha o pN cuja linha tem cardápio#NN.",
+    "- '12', '01', 'pizza 12', 'nº 28', 'sabor 05', '12 e 15', '12/15', 'metade 01 e metade 05' → 1 sabor por número (pN da linha cardápio#NN).",
+    "- '14 casa das pizzas', '14 - Casa das Pizzas', 'metade 14 casa das pizzas' = UM único flavor (número + nome do mesmo item). Nunca 2 flavors para o mesmo produto.",
     "- Se o cliente citar um número que NÃO existe no cardápio, coloque o número em not_found (ex.: '99').",
     "- NUNCA monte UMA pizza com sabores salgados E doces juntos (ex.: meia calabresa meia chocolate, 05 e 28). Se o cliente pedir isso, pergunte em 'question' que não dá para misturar salgada e doce na mesma pizza — peça só salgados, só doces, ou duas pizzas separadas.",
     "- Respeite o limite de sabores do tamanho. Se o cliente passar do limite, pergunte em 'question'.",
@@ -753,44 +754,80 @@ const CHOICE_MARKER = "Há mais de um sabor";
 
 type FlavorChoice = { term: string; products: Product[] };
 
-type FlavorResolution = { product: Product } | { choice: FlavorChoice };
+type FlavorResolution =
+  | { product: Product }
+  | { choice: FlavorChoice }
+  | { missingCode: number };
 
-/** Extrai nº do cardápio: "12", "01", "pizza 12", "nº 28", "sabor 05". */
-function parseMenuCodeTerm(term: string): number | null {
-  const text = normalize(term)
+type MenuCodeParse = { code: number; rest: string };
+
+/**
+ * Extrai nº do cardápio. Nunca interpreta chave interna pN.
+ * Aceita: "12", "01", "pizza 12", "nº 28", "14 casa das pizzas", "14 - Casa das Pizzas".
+ */
+function parseMenuCodeParts(term: string): MenuCodeParse | null {
+  const raw = String(term ?? "").trim();
+  if (!raw || /^p\d+$/i.test(raw)) return null;
+  const text = normalize(raw)
     .replace(/[º°]/g, " ")
-    .replace(/[^a-z0-9\s/]/g, " ")
+    .replace(/[^a-z0-9\s/-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return null;
-  const prefixed = text.match(
+
+  const prefixedAlone = text.match(
     /^(?:pizza|sabor|n|no|nr|num|numero)\s*0*([1-9]\d{0,2})$/,
   );
-  if (prefixed) return Number(prefixed[1]);
+  if (prefixedAlone) return { code: Number(prefixedAlone[1]), rest: "" };
+
+  const prefixedRest = text.match(
+    /^(?:pizza|sabor|n|no|nr|num|numero)\s*0*([1-9]\d{0,2})\s+(.+)$/,
+  );
+  if (prefixedRest) return { code: Number(prefixedRest[1]), rest: prefixedRest[2].trim() };
+
   const alone = text.match(/^0*([1-9]\d{0,2})$/);
-  if (alone) return Number(alone[1]);
+  if (alone) return { code: Number(alone[1]), rest: "" };
+
+  const leading = text.match(/^0*([1-9]\d{0,2})\s*[-/]?\s+(.+)$/);
+  if (leading) return { code: Number(leading[1]), rest: leading[2].trim() };
+
   return null;
 }
 
+function parseMenuCodeTerm(term: string): number | null {
+  return parseMenuCodeParts(term)?.code ?? null;
+}
+
+/** Busca estrita por products.menu_code — nunca pelo índice pN. */
 function findPizzaByMenuCode(code: number, catalog: Pick<Catalog, "pizzas">) {
-  return [...catalog.pizzas.values()].find(product => product.menuCode === code) ?? null;
+  return (
+    [...catalog.pizzas.values()].find(
+      product => product.menuCode != null && product.menuCode === code,
+    ) ?? null
+  );
 }
 
 function pizzaKeyForProduct(product: Product, catalog: Catalog) {
   return [...catalog.pizzas.entries()].find(([, item]) => item.id === product.id)?.[0] ?? null;
 }
 
-function flavorCandidates(term: string, catalog: Pick<Catalog, "pizzas">) {
-  const pizzas = [...catalog.pizzas.values()];
-  const menuCode = parseMenuCodeTerm(term);
-  if (menuCode != null) {
-    const byCode = findPizzaByMenuCode(menuCode, catalog);
-    if (byCode) return [byCode];
-    return [] as Product[];
-  }
+function nameLooksLikeProduct(rest: string, product: Product) {
+  const needle = looseName(rest);
+  if (!needle) return true;
+  const name = looseName(cleanFlavorName(product.name));
+  const full = looseName(product.name);
+  if (!name) return false;
+  if (needle === name || needle === full) return true;
+  if (name.includes(needle) || needle.includes(name)) return true;
+  const restTokens = termTokens(rest);
+  const nameTokens = termTokens(cleanFlavorName(product.name));
+  if (!restTokens.length || !nameTokens.length) return false;
+  return restTokens.every(token => tokenInList(token, nameTokens));
+}
 
+function matchFlavorsByName(term: string, catalog: Pick<Catalog, "pizzas">) {
+  const pizzas = [...catalog.pizzas.values()];
   const looseTerm = looseName(term);
-  // Nome completo (ex.: "Casa das Pizzas") — antes de tirar stopwords ("das"/"pizzas").
   if (looseTerm) {
     const byFullName = pizzas.filter(product => {
       const name = looseName(cleanFlavorName(product.name));
@@ -822,18 +859,38 @@ function flavorCandidates(term: string, catalog: Pick<Catalog, "pizzas">) {
   });
 }
 
+function flavorCandidates(term: string, catalog: Pick<Catalog, "pizzas">) {
+  const parsed = parseMenuCodeParts(term);
+  if (parsed) {
+    const byCode = findPizzaByMenuCode(parsed.code, catalog);
+    if (byCode) {
+      if (!parsed.rest || nameLooksLikeProduct(parsed.rest, byCode)) return [byCode];
+      // "4 queijos": nº 4 ≠ Quatro Queijos — prefere nome se for inequívoco.
+      const byName = matchFlavorsByName(parsed.rest, catalog);
+      if (byName.length === 1) return byName;
+      if (byName.some(item => item.id === byCode.id)) return [byCode];
+      return [byCode];
+    }
+    if (parsed.rest) return matchFlavorsByName(parsed.rest, catalog);
+    return [] as Product[];
+  }
+
+  return matchFlavorsByName(term, catalog);
+}
+
 /**
  * Confere o termo que o cliente usou contra o cardápio (com tolerância a typo):
- * nome exato → esse sabor; termo presente no nome/descrição de 2+ → pergunta;
- * de 1 só → esse sabor; nenhum → palpite da IA.
+ * menu_code → esse sabor; nome exato → esse sabor; 2+ → pergunta; nenhum → palpite da IA.
  */
 function resolveFlavor(term: string, guess: Product, catalog: Pick<Catalog, "pizzas">, turns: AiTurn[]): FlavorResolution {
-  const tokens = termTokens(term);
-  if (!tokens.length) return { product: guess };
+  const parsed = parseMenuCodeParts(term);
+  if (parsed && !findPizzaByMenuCode(parsed.code, catalog) && !parsed.rest) {
+    return { missingCode: parsed.code };
+  }
 
   const candidates = flavorCandidates(term, catalog);
-  if (!candidates.length) return { product: guess };
   if (candidates.length === 1) return { product: candidates[0] };
+  if (!candidates.length) return { product: guess };
 
   // Cliente já escolheu numa lista anterior: aceita o sabor se ele estava entre os listados.
   const chosenName = cleanFlavorName(guess.name);
@@ -946,31 +1003,63 @@ function rescueNotFoundFlavors(result: AiResult, catalog: Catalog) {
   result.not_found = kept;
 }
 
-/** Troca flavor_terms numéricos (ou pN errado) pelo pN do menu_code. */
+/**
+ * Corrige flavors pelo menu_code do termo (nunca pelo índice pN) e remove
+ * duplicatas quando o cliente manda "14 casa das pizzas" (número + nome).
+ */
 function resolveMenuCodeFlavors(result: AiResult, catalog: Catalog) {
   for (const item of result.items) {
     if (item.kind !== "pizza") continue;
     const nextFlavors: string[] = [];
     const nextTerms: string[] = [];
+    const seen = new Set<string>();
+
     item.flavors.forEach((key, index) => {
       const term = item.flavor_terms?.[index] ?? "";
-      const code = parseMenuCodeTerm(term) ?? parseMenuCodeTerm(key);
-      if (code != null) {
-        const product = findPizzaByMenuCode(code, catalog);
-        const mapped = product ? pizzaKeyForProduct(product, catalog) : null;
-        if (mapped) {
-          nextFlavors.push(mapped);
-          nextTerms.push(term || String(code).padStart(2, "0"));
+      const parsed = parseMenuCodeParts(term);
+      let mappedKey = catalog.pizzas.has(key) ? key : null;
+      let mappedProduct = mappedKey ? catalog.pizzas.get(mappedKey)! : null;
+
+      if (parsed) {
+        const byCode = findPizzaByMenuCode(parsed.code, catalog);
+        if (byCode) {
+          const codeKey = pizzaKeyForProduct(byCode, catalog);
+          if (codeKey) {
+            mappedKey = codeKey;
+            mappedProduct = byCode;
+          }
+        } else if (!parsed.rest) {
+          // Número puro inexistente — descarta o pN inventado pela IA.
           return;
         }
       }
-      if (catalog.pizzas.has(key)) {
-        nextFlavors.push(key);
-        nextTerms.push(term);
-      }
+
+      if (!mappedKey || !mappedProduct) return;
+      if (seen.has(mappedProduct.id)) return;
+      seen.add(mappedProduct.id);
+      nextFlavors.push(mappedKey);
+      nextTerms.push(term || cleanFlavorName(mappedProduct.name));
     });
-    item.flavors = nextFlavors;
-    if (item.flavor_terms) item.flavor_terms = nextTerms;
+
+    // Pares soltos "14" + "casa das pizzas" em índices vizinhos → 1 sabor.
+    if (nextFlavors.length >= 2) {
+      const collapsedKeys: string[] = [];
+      const collapsedTerms: string[] = [];
+      const collapsedSeen = new Set<string>();
+      for (let i = 0; i < nextFlavors.length; i++) {
+        const key = nextFlavors[i]!;
+        const product = catalog.pizzas.get(key);
+        if (!product || collapsedSeen.has(product.id)) continue;
+        collapsedSeen.add(product.id);
+        collapsedKeys.push(key);
+        collapsedTerms.push(nextTerms[i] ?? cleanFlavorName(product.name));
+      }
+      item.flavors = collapsedKeys;
+      item.flavor_terms = collapsedTerms;
+    } else {
+      item.flavors = nextFlavors;
+      item.flavor_terms = nextTerms;
+    }
   }
 }
 
@@ -1022,24 +1111,50 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       const size = raw.size ? catalog.sizes.get(raw.size) : undefined;
       const resolved: Product[] = [];
       let ambiguous = false;
+      const missingCodes: number[] = [];
       raw.flavors.forEach((key, index) => {
+        const term = raw.flavor_terms?.[index] ?? "";
         const guess = catalog.pizzas.get(key);
-        if (!guess) return;
-        const outcome = resolveFlavor(raw.flavor_terms?.[index] ?? "", guess, catalog, turns);
+        // Mesmo sem pN válido, resolve pelo menu_code / nome do termo.
+        const outcome = guess
+          ? resolveFlavor(term || cleanFlavorName(guess.name), guess, catalog, turns)
+          : (() => {
+              const matches = flavorCandidates(term, catalog);
+              if (matches.length === 1) return { product: matches[0]! } as FlavorResolution;
+              if (matches.length > 1) return { choice: { term, products: matches.slice(0, MAX_FLAVOR_CHOICES) } } as FlavorResolution;
+              const code = parseMenuCodeTerm(term);
+              if (code != null) return { missingCode: code } as FlavorResolution;
+              return null;
+            })();
+        if (!outcome) return;
+        if ("missingCode" in outcome) {
+          missingCodes.push(outcome.missingCode);
+          return;
+        }
         if ("choice" in outcome) {
           ambiguous = true;
-          if (!choices.some(item => normalize(item.term) === normalize(outcome.choice.term))) choices.push(outcome.choice);
+          if (!choices.some(item => normalize(item.term) === normalize(outcome.choice.term))) {
+            choices.push(outcome.choice);
+          }
           return;
         }
         resolved.push(outcome.product);
       });
+      if (missingCodes.length) {
+        for (const code of missingCodes) {
+          problems.push(
+            `O código *${String(code).padStart(2, "0")}* não existe no cardápio. Informe um número válido ou o nome do sabor.`,
+          );
+        }
+        continue;
+      }
       if (ambiguous) continue;
       const flavors = resolved.filter((item, index) => resolved.findIndex(other => other.id === item.id) === index);
       if (!flavors.length) continue;
       const kinds = [...new Set(flavors.map(item => item.pizzaKind).filter(Boolean))];
       if (kinds.length > 1) {
-        const salty = flavors.filter(item => item.pizzaKind === "salgada").map(item => menuFlavorLabel(item));
-        const sweet = flavors.filter(item => item.pizzaKind === "doce").map(item => menuFlavorLabel(item));
+        const salty = flavors.filter(item => item.pizzaKind === "salgada").map(item => cleanFlavorName(item.name));
+        const sweet = flavors.filter(item => item.pizzaKind === "doce").map(item => cleanFlavorName(item.name));
         problems.push(
           `Não é possível combinar sabor *salgado* e *doce* na mesma pizza. Escolha sabores da mesma categoria ou peça *duas pizzas* separadas.\nSalgados: *${salty.join(", ") || "—"}*\nDoces: *${sweet.join(", ") || "—"}*`,
         );
@@ -1070,7 +1185,7 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
           basePrice: sizePrice(base, group),
           options: flavors.slice(1).map(item => ({
             id: item.id,
-            name: menuFlavorLabel(item),
+            name: cleanFlavorName(item.name),
             extraPrice: 0,
           })),
           ...(flavors.length === 1 ? { skipped: true } : {}),
@@ -1088,7 +1203,7 @@ function toCartItems(result: AiResult, catalog: Catalog, turns: AiTurn[] = []) {
       items.push({
         productId: base.id,
         name: assembledName(base, extras),
-        catalogName: menuFlavorLabel(base),
+        catalogName: cleanFlavorName(base.name),
         quantity,
         unitPriceCents: unitPriceCents(base, extras),
         extras,
